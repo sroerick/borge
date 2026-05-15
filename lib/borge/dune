@@ -1,0 +1,5 @@
+(library
+  (name borge_lib)
+  (public_name borge.lib)
+  (modules spec)
+  (libraries borge.sexp))

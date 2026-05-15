@@ -1,0 +1,7 @@
+(test
+  (name test_parse)
+  (libraries borge.sexp borge.lib alcotest))
+
+(test
+  (name test_balance)
+  (libraries borge.sexp alcotest))

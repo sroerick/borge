@@ -1,0 +1,268 @@
+(project borge
+ (doc "A spec-driven code orchestrator")
+ (status in-progress)
+ (convention ocaml-dune
+ )
+ (roerick
+  (|
+  I named this project after Victor Borge, my favorite orchestra conductor. 
+  the agent said .borg as the file extension was non-negotiable, 
+  and I guess that's true. 
+  |)
+ )
+ (section program-architecture
+  (doc "How borge is structured: one root spec, inlined sub-specs, no orphans")
+  (status planned)
+  (details
+   (doc (|
+        The root borge.borg file is the architectural contract. It
+        declares what modules exist and how they relate by inlining
+        their specs. It is the AGENTS.md equivalent for borge projects.
+
+        (convention ocaml-dune) declares the structural rules for this
+        project. Borge loads the rule set and uses it for structural drift
+        detection. The convention covers: lib/ owns domain logic, bin/ owns
+        CLI IO, dune files define libraries and executables, public_name
+        conventions, test/ structure. Other conventions: go-standard,
+        c-makefile, etc. This way lib.borg describes WHAT the lib does,
+        not HOW OCaml works — the convention handles the how.
+
+        Every .borg file must either be inlined by a parent or declare
+        no-inline itself. A .borg file with no parent and no no-inline
+        declaration is orphaned — this is structural drift.
+
+        The inline directive is by filename: (inline cli.borg) means
+        the file cli.borg is a sub-spec of this project. The parent owns
+        the architectural relationship. The child owns the detail.
+
+        Drift detection covers three layers:
+          1. Spec drift: .borg file describes something not in the code
+          2. Code drift: code implements something not in .borg
+          3. Structural drift: code organization violates the convention
+             (e.g. domain logic in bin/ when ocaml-dune says lib/ owns it)
+      |))
+  )
+ )
+ (section modules
+  (doc "The modules that make up borge, inlined by filename")
+  (status planned)
+  (subsection sexp
+   (doc "The sexp parsing, printing, and balancing library")
+   (status implemented)
+   (inline sexp.borg
+   )
+  )
+  (subsection lib
+   (doc "Domain operations: checking, reporting, formatting, spec extraction")
+   (status planned)
+   (inline lib.borg
+   )
+  )
+  (subsection cli
+   (doc "CLI entrypoints: thin wrappers that call lib functions")
+   (status planned)
+   (inline cli.borg
+   )
+  )
+  (subsection history
+   (doc "Change tracking and provenance for .borg files")
+   (status planned)
+   (inline history.borg
+   )
+  )
+  (subsection nvim
+   (doc "Neovim plugin for inline .borg editing")
+   (status planned)
+   (inline nvim.borg
+   )
+  )
+ )
+ (section format
+  (doc "The file format")
+  (status planned)
+  (details
+   (doc (|
+        Verbatim strings use open-pipe to open and pipe-close to close.
+        The parser tracks nesting depth. Content between the opening
+        delimiter and the final closing delimiter that returns depth
+        to 0 is v_content. The closing delimiter is NOT included in
+        v_content - it is a delimiter, not content. Nested delimiters
+        inside the content ARE included verbatim.
+
+        The inline directive: (inline filename.borg) declares that the
+        named file is a sub-spec of this section. The file must exist and
+        be parseable. The parent owns the architectural relationship;
+        the child owns the detail. Inline is by filename, relative to the
+        parent file.
+
+        The no-inline declaration: (no-inline) in a project form means
+        this project has no sub-specs. This is the legitimate standalone
+        case. Every .borg file must either be inlined by a parent or
+        declare no-inline. Any other .borg file is orphaned.
+      |))
+  )
+ )
+ (section tool-pipeline
+  (doc "Defensive toolkit for writing .borg files")
+  (status implemented)
+  (subsection balance
+   (doc "Check paren balance. Run FIRST after every edit.")
+   (status implemented)
+   (details
+    (doc (|
+          Balance is a fast character-level scanner that tracks paren nesting
+          depth. It skips verbatim strings, quoted strings, and comments so
+          only structural parens are counted. It is the #1 defensive tool:
+          run it after every edit to catch structural errors before parse.
+        |))
+   )
+  )
+  (subsection balance-verbose
+   (doc "Show paren stack on error: which ( matches which )")
+   (status planned)
+   (details
+    (doc (|
+          When balance finds an unexpected close-paren, it should report the
+          full paren stack: which open-paren is still open, at what line/col,
+          and what keyword it belongs to. This turns 'unexpected ) at line 46'
+          into: 'unexpected ) at line 46: the ( at line 38 (details) was
+          already closed at line 45, so this ) has no matching ('.
+        |))
+   )
+  )
+  (subsection parse
+   (doc "Full syntax validation. Run after balance passes.")
+   (status implemented)
+  )
+  (subsection report
+   (doc "Show status summary across all .borg files. Use this to plan work.")
+   (status implemented)
+  )
+  (subsection nodes
+   (doc "Dump the parsed AST with types and positions for debugging")
+   (status planned)
+   (details
+    (doc (|
+          Walks the AST and prints each node with its type, keyword (if
+          list), source position, and child count. Example output:
+            1:1  List "project" [5 children]
+              1:9  Atom "borge"
+              1:16 List "doc" [2 children]
+          This exposes what the parser actually sees - critical for
+          debugging mismatches between source and AST.
+        |))
+   )
+  )
+  (subsection lint
+   (doc "Semantic validation: invalid status, illegal placement.")
+   (status planned)
+  )
+  (subsection drift
+   (doc "Detect spec drift, code drift, and structural drift")
+   (status planned)
+   (details
+    (doc (|
+          Three layers of drift detection:
+
+          1. Spec drift: a .borg file describes something not in the
+             codebase. E.g. cli.borg says (status implemented) for a
+             command but no corresponding binary exists.
+
+          2. Code drift: the codebase has something not in any .borg
+             file. E.g. a .ml file exists but nothing in the specs
+             mentions it.
+
+          3. Structural drift: the code organization does not match the
+             inline architecture. E.g. lib.borg says it owns Check and
+             Report, but those modules live in bin/ instead. The root
+             borge.borg says (inline lib.borg) but the actual dune
+             library structure contradicts what lib.borg describes.
+        |))
+   )
+  )
+  (subsection fmt
+   (doc "Canonicalize indentation. Run before commit.")
+   (status implemented)
+   (details
+    (doc (|
+          Parses and re-prints with canonical indentation. Children of
+          keyword forms (project, section, subsection, details) go on
+          their own lines. Atom names stay inline with keyword.
+          (doc ...) and (status ...) always print inline. Verbatim
+          strings preserve their content verbatim.
+        |))
+   )
+  )
+  (subsection fmt-check
+   (doc "Dry-run: exit 1 if formatting would change the file")
+   (status planned)
+   (details
+    (doc (|
+          borge fmt --check: parse the file, format it, compare to
+          original. Exit 0 if identical, 1 if different. For CI
+          pre-commit hooks. Also: borge fmt --diff shows the actual
+          diff between current and formatted output.
+        |))
+   )
+  )
+  (subsection check
+   (doc "Recursive health check across all .borg files.")
+   (status implemented)
+  )
+  (subsection worst-failure-modes
+   (doc "What goes wrong and which tool catches it")
+   (status planned)
+   (details
+    (doc (|
+          Missing open-paren: caught by balance.
+          Extra close-paren: caught by balance.
+          Verbatim not closed: caught by balance (context tracking).
+          Annotated comment inside form body: caught by parse (syntax).
+          Invalid status value: caught by lint (semantics).
+          Duplicate project name: caught by check (cross-file).
+          Bad indentation: caught by fmt (auto-fixes).
+          Tracking progress: borge report shows what is done and what is next.
+          Formatter producing unbalanced output: caught by fmt --check
+            or by running borge balance on fmt output.
+          Orphaned .borg file: caught by drift (structural).
+          Domain logic in wrong layer: caught by drift (structural).
+        |))
+   )
+  )
+ )
+ (section ast-position-tracking
+  (doc "Source position tracking on AST nodes for better diagnostics")
+  (status planned)
+  (details
+   (doc (|
+        Currently only annotated comments have start_line/end_line. The
+        sexp type itself carries no position info. Adding start_pos and
+        end_pos to every sexp node would enable:
+          - balance to report which ( at which line was closed early
+          - nodes to show positions for each AST node
+          - drift to map spec nodes to source locations
+          - editors to jump to spec definitions
+        The position type should include line, col, and offset to
+        support both human-readable and machine-consumable output.
+      |))
+  )
+ )
+ (section future-work
+  (doc "Planned improvements and architectural decisions")
+  (status planned)
+  (subsection parser-rewrite
+   (doc "Replace hand-written recursive descent with sedlex+menhir")
+   (status planned)
+   (details
+    (doc (|
+          Current parser is hand-written character manipulation (C-style).
+          Replace with sedlex (Unicode lexer) + menhir (LR(1) parser
+          generator). Benefits: Unicode support, generated error messages,
+          grammar-as-spec. The .mly file becomes the canonical language
+          definition.
+        |))
+   )
+  )
+ )
+)
+

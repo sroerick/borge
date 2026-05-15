@@ -1,0 +1,85 @@
+(project borge-cli
+ (doc "Thin CLI entrypoints that call lib functions")
+ (status planned)
+ (section commands
+  (doc "The individual CLI commands")
+  (status planned)
+  (subsection balance
+   (doc "Fast paren balance check: run this FIRST before borge parse")
+   (status implemented)
+  )
+  (subsection balance-verbose
+   (doc "Show paren stack on error: which ( matches which ) and what keyword it opens")
+   (status planned)
+  )
+  (subsection parse
+   (doc "Parse a .borg file and validate its structure")
+   (status implemented)
+  )
+  (subsection check
+   (doc "Check all .borg files for syntax, structure, and consistency")
+   (status implemented)
+  )
+  (subsection report
+   (doc "Show status summary across all .borg files")
+   (status implemented)
+  )
+  (subsection nodes
+   (doc "Dump the parsed AST with types and positions for debugging")
+   (status planned)
+  )
+  (subsection lint
+   (doc "Semantic validation: invalid status, illegal placement, duplicate names")
+   (status planned)
+  )
+  (subsection drift
+   (doc "Detect spec drift, code drift, and structural drift")
+   (status planned)
+  )
+  (subsection print
+   (doc "Parse and re-print a .borg file")
+   (status planned)
+  )
+  (subsection fmt
+   (doc "Auto-format a .borg file to canonical indentation")
+   (status implemented)
+  )
+  (subsection fmt-check
+   (doc "Dry-run: exit 1 if formatting would change the file. For CI.")
+   (status planned)
+  )
+  (subsection fmt-diff
+   (doc "Show diff between current and formatted output")
+   (status planned)
+  )
+  (subsection expand
+   (doc "Expand a section by resolving ai-prompt directives")
+   (status planned)
+  )
+  (subsection version
+   (doc "Print the current version")
+   (status planned)
+  )
+ )
+ (section output-conventions
+  (doc "How the CLIs produce output.")
+  (status planned)
+  (subsection exit-codes
+   (doc "0 success, 1 issues found, 2 usage error")
+   (status planned)
+  )
+  (subsection human-output
+   (doc "Default. Formatted text for terminal consumption")
+   (status planned)
+  )
+  (subsection json-output
+   (doc "--json flag. Structured output for machine consumption")
+   (status planned)
+  )
+  (subsection quiet-mode
+   (doc "--quiet flag. Suppress all output except errors")
+   (status planned)
+  )
+ )
+)
+

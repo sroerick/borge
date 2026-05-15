@@ -1,0 +1,83 @@
+open Borge_sexp.Ast
+
+type status =
+  | Planned
+  | In_progress
+  | Partial
+  | Implemented
+  | Drifted
+  | Blank
+
+let status_of_string = function
+  | "planned" -> Some Planned
+  | "in-progress" -> Some In_progress
+  | "partial" -> Some Partial
+  | "implemented" -> Some Implemented
+  | "drifted" -> Some Drifted
+  | "blank" -> Some Blank
+  | _ -> None
+
+let string_of_status = function
+  | Planned -> "planned"
+  | In_progress -> "in-progress"
+  | Partial -> "partial"
+  | Implemented -> "implemented"
+  | Drifted -> "drifted"
+  | Blank -> "blank"
+
+(** Extract the project name from a top-level (project name ...) form *)
+let project_name (file : Borge_sexp.Ast.file) : string option =
+  let rec find = function
+    | [] -> None
+    | { node = List (Atom "project" :: Atom name :: _); _ } :: _ -> Some name
+    | _ :: rest -> find rest
+  in
+  find file.top_level
+
+(** Count sections in the file *)
+let count_sections (file : Borge_sexp.Ast.file) : int =
+  let rec count_in_sexp = function
+    | List (Atom kind :: _)
+      when List.mem kind ["section"; "subsection"; "subsubsection"] -> 1
+    | List sexps -> List.fold_left (fun acc s -> acc + count_in_sexp s) 0 sexps
+    | _ -> 0
+  in
+  let rec count_in_node = function
+    | [] -> 0
+    | { node; _ } :: rest -> count_in_sexp node + count_in_node rest
+  in
+  count_in_node file.top_level
+
+(** Extract all status values from the file *)
+let statuses (file : Borge_sexp.Ast.file) : status list =
+  let rec extract = function
+    | List (Atom "status" :: Atom s :: _) ->
+      (match status_of_string s with
+       | Some st -> [st]
+       | None -> [])
+    | List sexps -> List.concat_map extract sexps
+    | _ -> []
+  in
+  let rec walk = function
+    | [] -> []
+    | { node; _ } :: rest -> extract node @ walk rest
+  in
+  walk file.top_level
+
+let status_order = [Planned; In_progress; Partial; Implemented; Drifted; Blank]
+
+let status_counts (file : Borge_sexp.Ast.file) : (status * int) list =
+  let st_list = statuses file in
+  let init = List.map (fun s -> (s, 0)) status_order in
+  List.fold_left (fun acc st ->
+    let count =
+      try List.assoc st acc + 1
+      with Not_found -> 1
+    in
+    (st, count) :: List.remove_assoc st acc
+  ) init st_list
+  |> List.sort (fun (a, _) (b, _) ->
+    let idx_a = List.find_index (fun s -> s = a) status_order |> Option.get in
+    let idx_b = List.find_index (fun s -> s = b) status_order |> Option.get in
+    compare idx_a idx_b
+  )

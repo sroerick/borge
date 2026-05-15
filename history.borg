@@ -1,0 +1,83 @@
+; borge history spec
+; How borge tracks checkpoints, auditability, and rollback
+(project borge-history
+ (doc "Automatic checkpointing and semantic history for .borg files")
+ (status planned)
+ (section overview
+  (doc "Every save is a checkpoint. The user never thinks about commits")
+  (status planned)
+ )
+ (section checkpoint-model
+  (doc "How checkpoints are created and stored")
+  (status planned)
+  (subsection storage
+   (doc "Checkpoints stored in .borg-history/ git repo managed by borge")
+   (status planned)
+  )
+  (subsection triggers
+   (doc "Save, agent edit, or CLI modification triggers checkpoint")
+   (status planned)
+  )
+  (subsection deduplication
+   (doc "No-op if file unchanged since last checkpoint")
+   (status planned)
+  )
+ )
+ (section semantic-log
+  (doc "Semantic history: timestamped entries with author and change")
+  (status planned)
+  (subsection log-format
+   (doc "One entry per semantic change: status transitions, comment additions")
+   (status planned)
+  )
+  (subsection filtering
+   (doc "Filter by author, type, since, section. JSON output available")
+   (status planned)
+  )
+  (subsection extraction
+   (doc "AST diff that understands the borge model, not text diff")
+   (status planned)
+  )
+ )
+ (section semantic-diff
+  (doc "Diff shows changes in borge terms, not raw text")
+  (status planned)
+  (subsection diff-format
+   (doc "Grouped by section, showing status transitions and additions/removals")
+   (status planned)
+  )
+ )
+ (section rollback
+  (doc "Reverting to previous state. No branches, just linear history")
+  (status planned)
+  (subsection revert
+   (doc "borge revert ID. Current state preserved as checkpoint first")
+   (status planned)
+  )
+  (subsection undo
+   (doc "borge undo as shorthand for reverting to previous checkpoint")
+   (status planned)
+  )
+  (subsection safety
+   (doc "Rollback never destroys history. New checkpoint marks the revert")
+   (status planned)
+  )
+ )
+ (section git-implementation
+  (doc "Git is the storage engine, not the UI")
+  (status planned)
+  (subsection borg-history-directory
+   (doc ".borg-history/ at project root. Separate from project git")
+   (status planned)
+  )
+  (subsection no-branches
+   (doc "Single linear branch. Revert creates new checkpoint on top")
+   (status planned)
+  )
+  (subsection coexistence
+   (doc "Project git tracks source. .borg-history/ tracks specs only")
+   (status planned)
+  )
+ )
+)
+

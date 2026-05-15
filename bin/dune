@@ -1,0 +1,4 @@
+(executables
+  (names borge_parse borge_check borge_balance borge_report borge_fmt)
+  (public_names borge-parse borge-check borge-balance borge-report borge-fmt)
+  (libraries borge.sexp borge.lib cmdliner))

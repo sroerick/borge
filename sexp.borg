@@ -1,0 +1,66 @@
+(project borge-sexp
+ (doc "The sexp parsing, printing, and balancing library")
+ (status implemented)
+ (section ast
+  (doc "AST types for sexp, annotated comments, verbatim strings")
+  (status implemented)
+  (details
+   (doc (|
+        Core types: Atom, String (Quoted/Verbatim), List.
+        Comments: plain (;) and annotated (* *).
+        Annotated comments carry authorship and type.
+        Verbatim strings track nesting depth via v_content.
+        The closing delimiter is NOT included in v_content.
+      |))
+  )
+ )
+ (section positions
+  (doc "Source position tracking on sexp nodes for diagnostics")
+  (status planned)
+  (details
+   (doc (|
+        Add start_pos and end_pos to every sexp node. Position type:
+        { line: int; col: int; offset: int }. This enables balance
+        to report which ( was closed early, nodes to show positions,
+        and editors to jump to definitions.
+      |))
+  )
+ )
+ (section parse
+  (doc "Parse .borg files into AST. Handles comments, strings, symbols")
+  (status implemented)
+  (section print
+   (doc "Print AST back to .borg. Preserves comments, diffable output")
+   (status implemented)
+   (details
+    (doc (|
+        Canonical formatting rules: keyword forms get children on
+        their own lines. Atom names stay inline. (doc ...) and
+        (status ...) always inline. Verbatim strings preserve
+        content verbatim - the closing delimiter is re-added
+        during printing, never stored in v_content.
+      |))
+   )
+  )
+  (section balance
+   (doc "Fast paren balance check with lexical context tracking")
+   (status implemented)
+   (details
+    (doc (|
+        Character-level scanner that counts only structural parens,
+        skipping verbatim strings, quoted strings, and comments.
+        Reports: balanced with max nesting depth, or imbalanced
+        with line/col of mismatches.
+
+        Future: balance-verbose mode shows paren stack on error,
+        pairing each ( with its keyword and location.
+      |))
+   )
+  )
+  (section error
+   (doc "Error types for parse and balance failures")
+   (status implemented)
+  )
+ )
+)
+
