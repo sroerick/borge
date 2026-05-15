@@ -60,6 +60,10 @@
    (doc "Print the current version")
    (status planned)
   )
+  (subsection normalize
+   (doc "Human-made-changes: fmt all files, accept comment deletions as intentional")
+   (status planned)
+  )
  )
  (section output-conventions
   (doc "How the CLIs produce output.")

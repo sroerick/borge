@@ -226,8 +226,58 @@
             or by running borge balance on fmt output.
           Orphaned .borg file: caught by drift (structural).
           Domain logic in wrong layer: caught by drift (structural).
+          Human comment deleted by agent: caught by lint (comment integrity).
+          Undocumented function: caught by drift (code-documentation).
         |))
    )
+  )
+ )
+ (section comment-integrity
+  (doc "Protect human-authored comments from silent agent deletion")
+  (status planned)
+  (details
+   (doc (|
+        Annotated comments with a human author (e.g. (* roerick note ... *))
+        are first-class spec content. Agents must never delete them silently.
+
+        borge lint compares the working tree against git HEAD. If a
+        human-authored comment is present in HEAD but missing in the
+        working tree, lint emits a deletion warning. This is not an
+        error - the human may have intended the deletion - but it must
+        be surfaced so no comment disappears without acknowledgment.
+
+        borge normalize is the human saying "I made changes on purpose."
+        It runs borge fmt, then accepts all comment deletions as
+        intentional by recording the current state as the new baseline.
+        After normalize, lint will not warn about those deletions again.
+
+        The workflow: agent edits files, lint catches any comment
+        deletions, human reviews and either reverts the deletion or
+        runs borge normalize to accept it.
+      |))
+  )
+ )
+ (section code-documentation
+  (doc "Crawl .ml files for documentation coverage under ocaml-dune convention")
+  (status planned)
+  (details
+   (doc (|
+        Under the ocaml-dune convention, borge drift checks code files
+        too. For every .ml file it finds all let bindings (functions
+        and values). A binding is documented if it has a borge-style
+        annotated comment above it:
+          (* author note (|description of what this does|) *)
+
+        Undocumented bindings are reported as a coverage gap. This makes
+        literate programming the default: functions should explain
+        themselves. To exempt a binding from documentation:
+          (* exempt doc *)
+
+        The drift report shows: total bindings, documented count,
+        undocumented count, coverage percentage. This is code drift
+        by another name: the code exists but the spec (in the form of
+        inline documentation) does not cover it.
+      |))
   )
  )
  (section ast-position-tracking
