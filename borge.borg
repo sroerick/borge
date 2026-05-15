@@ -137,6 +137,17 @@
   (subsection report
    (doc "Show status summary across all .borg files. Use this to plan work.")
    (status implemented)
+   (details
+    (doc (|
+          CURRENT DRIFT: report treats all .borg files as peers and
+          counts statuses independently. It does not walk the inline
+          tree. This means inlined sub-specs are double-counted: if
+          borge.borg says (subsection sexp (status implemented)) and
+          sexp.borg also has its own statuses, both get counted. The
+          fix: report should start from the root file, follow inline
+          directives, and count each section once.
+        |))
+   )
   )
   (subsection nodes
    (doc "Dump the parsed AST with types and positions for debugging")
