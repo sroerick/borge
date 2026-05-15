@@ -1,82 +1,96 @@
-; borge history spec
-; How borge tracks checkpoints, auditability, and rollback
 (project borge-history
- (doc "Automatic checkpointing and semantic history for .borg files")
+ (doc "Git is the history engine. Every agent action gets a commit.")
  (status planned)
- (section overview
-  (doc "Every save is a checkpoint. The user never thinks about commits")
+ (section philosophy
+  (doc "Why git IS the history system")
   (status planned)
- )
- (section checkpoint-model
-  (doc "How checkpoints are created and stored")
-  (status planned)
-  (subsection storage
-   (doc "Checkpoints stored in .borg-history/ git repo managed by borge")
-   (status planned)
-  )
-  (subsection triggers
-   (doc "Save, agent edit, or CLI modification triggers checkpoint")
-   (status planned)
-  )
-  (subsection deduplication
-   (doc "No-op if file unchanged since last checkpoint")
-   (status planned)
+  (details
+   (doc (|
+        The original design had a separate .borg-history/ git repo for
+        checkpoints. That was over-engineering. The project already has
+        git. Every agent change gets a commit. The commit IS the
+        checkpoint. The commit message IS the log. Git diff IS the
+        semantic diff engine.
+
+        What makes borge history different from plain git is that borge
+        understands the structure of .borg files. It can give you a
+        semantic diff (status transitions, section additions, comment
+        changes) instead of a text diff. But the storage is still git.
+      |))
   )
  )
- (section semantic-log
-  (doc "Semantic history: timestamped entries with author and change")
+ (section agent-commit-discipline
+  (doc "Agent must commit after every action")
   (status planned)
-  (subsection log-format
-   (doc "One entry per semantic change: status transitions, comment additions")
-   (status planned)
-  )
-  (subsection filtering
-   (doc "Filter by author, type, since, section. JSON output available")
-   (status planned)
-  )
-  (subsection extraction
-   (doc "AST diff that understands the borge model, not text diff")
-   (status planned)
+  (details
+   (doc (|
+        Every agent action ends with a git commit. No exceptions. This
+        is what makes the audit trail work. If the agent does not
+        commit, that is a process violation.
+
+        The commit workflow:
+        1. Agent makes changes
+        2. Agent runs borge balance + borge check
+        3. Agent git adds relevant files
+        4. Agent git commits with a descriptive message
+        5. Agent runs worktree check (see below)
+
+        If balance or check fails, the agent fixes before committing.
+        The commit must never leave the worktree in a broken state.
+      |))
   )
  )
- (section semantic-diff
-  (doc "Diff shows changes in borge terms, not raw text")
+ (section worktree-check
+  (doc "Verify the worktree is clean and right before declaring done")
   (status planned)
-  (subsection diff-format
-   (doc "Grouped by section, showing status transitions and additions/removals")
-   (status planned)
+  (details
+   (doc (|
+        Two levels of worktree verification:
+
+        Deterministic (borge check --worktree):
+          - git diff is clean (no uncommitted changes)
+          - borge balance passes on all .borg files
+          - borge check passes on all .borg files
+          - dune build succeeds
+          - dune runtest passes
+          This is pass/fail. CI-friendly. No judgment calls.
+
+        Non-deterministic (borge review):
+          - borge lint: any human comment deletions?
+          - borge drift: any undocumented functions?
+          - Does the commit match what the agent claimed to do?
+          - Are there orphaned .borg files?
+          This is advisory. It surfaces information for human review.
+          It does not pass or fail - it informs.
+
+        Agents run the deterministic check at the end of every action.
+        Humans run the non-deterministic review when they want to
+        understand what changed.
+      |))
   )
  )
- (section rollback
-  (doc "Reverting to previous state. No branches, just linear history")
+ (section semantic-operations
+  (doc "Git operations that understand borge structure")
   (status planned)
-  (subsection revert
-   (doc "borge revert ID. Current state preserved as checkpoint first")
-   (status planned)
-  )
-  (subsection undo
-   (doc "borge undo as shorthand for reverting to previous checkpoint")
-   (status planned)
-  )
-  (subsection safety
-   (doc "Rollback never destroys history. New checkpoint marks the revert")
-   (status planned)
-  )
- )
- (section git-implementation
-  (doc "Git is the storage engine, not the UI")
-  (status planned)
-  (subsection borg-history-directory
-   (doc ".borg-history/ at project root. Separate from project git")
-   (status planned)
-  )
-  (subsection no-branches
-   (doc "Single linear branch. Revert creates new checkpoint on top")
-   (status planned)
-  )
-  (subsection coexistence
-   (doc "Project git tracks source. .borg-history/ tracks specs only")
-   (status planned)
+  (details
+   (doc (|
+        borge log: git log but with borge-aware summaries.
+          Shows status transitions, section additions, comment changes
+          per commit instead of raw file diffs.
+
+        borge diff: git diff grouped by borge sections.
+          Instead of line-by-line text diff, shows:
+            - status transitions (planned -> implemented)
+            - sections added or removed
+            - comments added or removed (with author)
+
+        borge undo: git revert HEAD.
+          Convenience command. Current state is preserved because
+          revert creates a new commit, not a destructive operation.
+
+        All of these are git operations that understand the borge
+        model. No separate storage engine needed.
+      |))
   )
  )
 )
