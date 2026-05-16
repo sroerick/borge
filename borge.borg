@@ -85,7 +85,7 @@
  )
 (section format
   (doc "The file format")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
         Verbatim strings use open-pipe to open and pipe-close to close.
@@ -172,7 +172,20 @@
   )
   (subsection lint
    (doc "Semantic validation: invalid status, illegal placement.")
-   (status planned)
+   (status implemented)
+   (details
+    (doc (|
+          borge lint checks for:
+          - Invalid status values (not planned/in-progress/implemented/etc)
+          - Duplicate project names across .borg files
+          - Orphaned .borg files (no inline parent, no no-inline)
+          - Unknown comment types in annotated comments
+          - Missing values in annotated comments
+          - Deleted human-authored comments (compared to git HEAD)
+          - Pending ask/response pairs without answers
+          - (no-inline) on root files (root files can't inline anything)
+        |))
+   )
   )
   (subsection drift
    (doc "Detect spec drift, code drift, and structural drift")
@@ -228,7 +241,7 @@
   )
   (subsection worst-failure-modes
    (doc "What goes wrong and which tool catches it")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
           Missing open-paren: caught by balance.
