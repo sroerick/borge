@@ -463,18 +463,17 @@
  (section future-work
   (doc "Planned improvements and architectural decisions")
   (status planned)
-  (subsection parser-rewrite
-   (doc "Replace hand-written recursive descent with sedlex+menhir")
-   (status planned)
-   (details
-    (doc (|
-          Current parser is hand-written character manipulation (C-style).
-          Replace with sedlex (Unicode lexer) + menhir (LR(1) parser
-          generator). Benefits: Unicode support, generated error messages,
-          grammar-as-spec. The .mly file becomes the canonical language
-          definition.
-        |))
-   )
+  (details
+   (doc (|
+        Parser rewrite: see sexp.borg (subsection sedlex-lexer) and
+        (subsection menhir-parser). Moved there because the parser
+        is a sexp library concern, not a borge top-level concern.
+
+        Other possible future work:
+        - Incremental parsing for editor integration
+        - .borg language server protocol
+        - Syntax highlighting definitions for common editors
+      |))
   )
  )
 )

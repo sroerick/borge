@@ -1,78 +1,205 @@
 (project borge-sexp
  (doc "The sexp parsing, printing, and balancing library")
- (status implemented)
+ (status in-progress)
  (section ast
   (doc "AST types for sexp, annotated comments, verbatim strings")
   (status implemented)
   (details
    (doc (|
-        Core types: Atom, String (Quoted/Verbatim), List.
+        Core types:
+          sexp = Atom of pos * symbol
+               | String of pos * string_value
+               | List of pos * sexp list
+
+          string_value = Quoted of quoted_string
+                       | Verbatim of verbatim_string
+
         Comments: plain (;) and annotated (* *).
-        Annotated comments carry authorship and type.
+        Annotated comments carry authorship (Single or Multiple)
+        and type (Untyped or Typed of symbol).
         Verbatim strings track nesting depth via v_content.
-        The closing delimiter is NOT included in v_content.
+        Characters | and ) written separately: the closing delimiter
+        is NOT included in v_content; it is a delimiter re-added
+        by print during output.
+
+        Positions: every sexp node carries a pos record with
+        { line: int; col: int; offset: int }. The file type
+        holds top_level_comments, top_level sexp_with_comments,
+        and trailing_comments for round-tripping.
       |))
   )
  )
- (section positions
-  (doc "Source position tracking on sexp nodes for diagnostics")
+ (section parser
+  (doc "Hand-written recursive descent parser — to be replaced by sedlex+menhir")
   (status implemented)
   (details
    (doc (|
-        Add start_pos and end_pos to every sexp node. Position type:
-        { line: int; col: int; offset: int }. This enables balance
-        to report which ( was closed early, nodes to show positions,
-        and editors to jump to definitions.
+        Current: parse.ml is a 311-line hand-written character-by-character
+        parser. It uses a mutable state record { input; pos; line; column }
+        and parses sexp forms by peek/advance. The Lexer module is limited
+        to is_symbol_char/is_whitespace helpers — parse.ml does its own
+        tokenization inline.
+
+        What it handles:
+        - Atom: bare symbols (a-z, A-Z, 0-9, -, _, ., ?, !)
+        - Quoted strings: "..." with \n, \t, \\, \" escapes
+        - Verbatim strings: open-pipe then close-pipe with nesting
+          depth tracking
+        - Plain comments: ; to end of line
+        - Annotated comments: hash-open then star-close, with
+          author [type] value format
+          authorship (single or multiple), comment_type, and value
+          (Quoted or Verbatim)
+        - Lists: ( ... ) with comments_before attachments
+
+        What it does NOT handle:
+        - Nested OCaml comments: (* (* inner *) outer *) — the
+          first *) closes the comment. This is the same limitation
+          that makes doc_coverage unreliable in stats.ml.
+        - Unicode: ASCII-only symbol characters
+        - Good error messages: "unexpected character" with no
+          grammar context. Menhir would say "expected RPAREN but
+          got SYMBOL at line X, col Y, in rule list_tail".
+        - Grammar-as-spec: the parser IS the spec, but it's
+          imperative code, not a declarative grammar.
       |))
   )
- )
- (section parse
-  (doc "Parse .borg files into AST. Handles comments, strings, symbols")
-  (status implemented)
-  (section print
-   (doc "Print AST back to .borg. Preserves comments, diffable output")
-   (status implemented)
+  (subsection sedlex-lexer
+   (doc "Replace char helpers with a proper Unicode-aware tokenizer")
+   (status planned)
    (details
     (doc (|
+          sedlex produces a lexer from .lex (or inline) rules.
+          Tokens are already defined in lexer.ml:
+            LPAREN, RPAREN, HASH_LPAREN, STAR_RPAREN,
+            VERB_OPEN, VERB_CLOSE, QUOTED of string,
+            SYMBOL of string, SEMICOLON of string, EOF
+
+          The new lexer will:
+          - Actually produce these tokens (currently they're unused)
+          - Handle Unicode identifiers via sedlex character classes
+          - Handle nested comments by tracking depth in lexer state
+          - Attach source positions to every token
+          - Replace the inline char scanning in parse.ml
+
+          Key: the nested-comment problem is a LEXER concern, not
+          a parser concern. sedlex tracks depth with a ref cell
+          and only emits STAR_RPAREN when depth hits 0.
+    |))
+   )
+  )
+  (subsection menhir-parser
+   (doc "Replace hand-written descent with LR(1) grammar")
+   (status planned)
+   (details
+    (doc (|
+          menhir produces a parser from .mly grammar rules.
+          The grammar is small — borge sexp has ~8 production rules:
+
+            file       ::= comment* (sexp comment*)*
+            sexp       ::= atom | string | list
+            list       ::= LPAREN sexp* RPAREN
+            string     ::= QUOTED | verbatim
+            verbatim   ::= VERB_OPEN content VERB_CLOSE
+            comment    ::= SEMICOLON text
+                          | HASH_LPAREN author type value STAR_RPAREN
+            author     ::= SYMBOL | LPAREN SYMBOL+ RPAREN
+            type       ::= /* empty */ | SYMBOL
+            value      ::= /* empty */ | string
+
+          The .mly becomes the canonical language definition —
+          the spec IS the grammar. This is recursive: borge.borg
+          describes the .borg format, and the .mly IS the .borg
+          format, formally specified.
+
+          Benefits:
+          - Grammar-as-spec: the .mly is the authoritative format def
+          - Generated error messages with position and expected tokens
+          - Incremental parsing possible (menhir --incremental)
+          - The grammar is diffable and reviewable, unlike 311 lines
+            of imperative state mutation
+
+          Migration plan:
+          1. Write parser.mly producing the same Ast types
+          2. Write sedlex lexer producing the existing token type
+          3. Replace Parse.parse_file with menhir entry point
+          4. Verify all tests pass (same AST, same behavior)
+          5. Remove hand-written parse.ml
+    |))
+   )
+  )
+ )
+ (section print
+  (doc "Print AST back to .borg. Preserves comments, diffable output")
+  (status implemented)
+  (details
+   (doc (|
         Canonical formatting rules: keyword forms get children on
         their own lines. Atom names stay inline. (doc ...) and
         (status ...) always inline. Verbatim strings preserve
         content verbatim - the closing delimiter is re-added
         during printing, never stored in v_content.
-      |))
-   )
-  )
-  (section balance
-   (doc "Fast paren balance check with lexical context tracking")
-   (status implemented)
-   (details
-    (doc (|
-        Character-level scanner that counts only structural parens,
-        skipping verbatim strings, quoted strings, and comments.
-        Reports: balanced with max nesting depth, or imbalanced
-        with line/col of mismatches.
 
-        Future: balance-verbose mode shows paren stack on error,
-        pairing each ( with its keyword and location.
+        Comments: plain as ;text, annotated as (* author type value *).
+        The file type (with top_level_comments, trailing_comments)
+        enables full round-tripping: parse -> print produces
+        diffable output.
       |))
-   )
-  )
-  (section error
-   (doc "Error types for parse and balance failures")
-   (status implemented)
   )
  )
- (section lexer
-  (doc "Character-level tokenization for .borg sexp parsing")
+ (section balance
+  (doc "Fast paren balance check with lexical context tracking")
   (status implemented)
   (details
    (doc (|
-        Token types: LPAREN, RPAREN, HASH_LPAREN, STAR_RPAREN,
-        VERB_OPEN, VERB_CLOSE, QUOTED, SYMBOL, SEMICOLON, EOF.
-        Position tracking via {line, column}. Helper predicates:
-        is_symbol_char, is_whitespace. No state machine — tokens
-        are emitted on demand by the parse stream.
-      |))
+        Character-level state machine that counts only structural
+        parens, skipping comments, verbatim strings, and quoted
+        strings via a state stack. States: Normal, Plain_comment,
+        Annotated_comment, Quoted_string, Verbatim(depth),
+        Inline_example(depth).
+
+        Reports: Balanced with max nesting depth, or Imbalanced
+        with structured error details (Unexpected_close with
+        position pairing, Unclosed_parens with paren stack,
+        Unclosed_context for un-closed lexical states).
+
+        This is NOT the parser — it's a fast pre-check. It does
+        not build an AST. It stays character-level even after
+        the menhir rewrite because speed matters for this tool.
+        The parser rewrite does not affect balance.ml.
+
+        Verbatim and inline-example nesting: both track depth
+        counters. Nested open-pipe close-pipe pairs are valid.
+        Nested angle-bracket example delimiters are also valid.
+        Balance counts the outer parens correctly.
+   |))
+  )
+ )
+ (section error
+  (doc "Error types for parse and balance failures")
+  (status implemented)
+  (details
+   (doc (|
+        parse_error: { message: string; line: int; column: int }
+        Raised as Parse_error exception from parse.ml.
+        After menhir: menhir produces its own error type.
+        The balance module has its own error_detail union:
+        Unexpected_close, Unclosed_parens, Unclosed_context.
+   |))
+  )
+ )
+ (section lexer
+  (doc "Token types and helper predicates for sexp scanning")
+  (status implemented)
+  (details
+   (doc (|
+        lexer.ml defines token types (LPAREN, RPAREN, HASH_LPAREN,
+        STAR_RPAREN, VERB_OPEN, VERB_CLOSE, QUOTED, SYMBOL,
+        SEMICOLON, EOF) and position tracking. Currently only
+        is_symbol_char and is_whitespace are used by parse.ml.
+        After sedlex rewrite, this module becomes the generated
+        lexer that actually produces these tokens.
+   |))
   )
  )
 )
