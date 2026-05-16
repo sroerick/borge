@@ -1,37 +1,87 @@
-let read_file path =
-  let ic = open_in path in
-  let n = in_channel_length ic in
-  let buf = Bytes.create n in
-  really_input ic buf 0 n;
-  close_in ic;
-  Bytes.to_string buf
+open Borge_lib
 
-let run infile outfile =
-  let input = read_file infile in
-  let file = Borge_sexp.Parse.parse input in
-  let txt = Borge_sexp.Print.print_file file in
-  (match outfile with
-   | Some dst ->
-       let oc = open_out dst in
-       output_string oc txt;
-       close_out oc;
-       Printf.printf "%s\n" (Filename.basename dst)
-   | None -> print_endline txt);
-  exit 0
-
-let () =
-  let args = Array.to_list Sys.argv in
-  let rec parse_args args outfile =
-    match args with
-    | "--" :: rest -> (match rest with
-                        | [f] -> (f, outfile)
-                        | _ -> (List.hd args, outfile))
-    | "-o" :: f :: rest -> parse_args rest (Some f)
-    | "--o" :: f :: rest -> parse_args rest (Some f)
-    | [] -> ("-stdin", outfile)
-    | [f] -> (f, outfile)
-    | _::_ -> ("-stdin", outfile)
+let show_diff original formatted =
+  let orig_lines = String.split_on_char '\n' original in
+  let fmt_lines = String.split_on_char '\n' formatted in
+  Printf.printf "--- original\n+++ formatted\n";
+  let rec show line_num = function
+    | [], [] -> ()
+    | o :: os, [] ->
+        Printf.printf "-%3d | %s\n" line_num o;
+        show (line_num + 1) (os, [])
+    | [], f :: fs ->
+        Printf.printf "+%3d | %s\n" line_num f;
+        show (line_num + 1) ([], fs)
+    | o :: os, f :: fs ->
+        if o = f then
+          Printf.printf " %3d | %s\n" line_num o
+        else begin
+          Printf.printf "-%3d | %s\n" line_num o;
+          Printf.printf "+%3d | %s\n" line_num f
+        end;
+        show (line_num + 1) (os, fs)
   in
-  let infile, outfile = parse_args (List.tl args) None in
-  let infile = if infile = "-stdin" then "/dev/stdin" else infile in
-  run infile outfile
+  show 1 (orig_lines, fmt_lines)
+
+let run path check diff output =
+  if check then
+    match Fmt.check_file path with
+    | Fmt.CheckClean ->
+        Printf.printf "%s: already formatted\n" (Filename.basename path);
+        exit 0
+    | Fmt.CheckDirty formatted ->
+        Printf.printf "%s: needs formatting\n" (Filename.basename path);
+        (match output with
+         | Some dst ->
+             let oc = open_out dst in
+             output_string oc formatted;
+             close_out oc
+         | None -> print_endline formatted);
+        exit 1
+    | Fmt.Formatted _ -> (* shouldn't happen in check mode *) exit 1
+  else if diff then begin
+    let original = File_utils.read_file path in
+    match Fmt.format_file path with
+    | Fmt.Formatted formatted ->
+        show_diff original formatted;
+        if Fmt.strip_trailing_newlines original = Fmt.strip_trailing_newlines formatted
+        then exit 0 else exit 1
+    | _ -> exit 1
+  end else
+    match Fmt.format_file path with
+    | Fmt.Formatted txt ->
+        (match output with
+         | Some dst ->
+             let oc = open_out dst in
+             output_string oc txt;
+             close_out oc;
+             Printf.printf "%s\n" (Filename.basename dst)
+         | None -> print_endline txt);
+        exit 0
+    | _ -> (* check results in format mode shouldn't happen *) exit 1
+
+open Cmdliner
+
+let path =
+  Arg.(required & pos 0 (some file) None & info [] ~docv:"FILE"
+    ~doc:"The .borg file to format")
+
+let output =
+  Arg.(value & opt (some file) None & info ["o"] ~docv:"FILE"
+    ~doc:"Write output to FILE (default: stdout)")
+
+let check =
+  Arg.(value & flag & info ["check"] ~doc:"Exit 1 if formatting would change the file")
+
+let diff =
+  Arg.(value & flag & info ["diff"] ~doc:"Show diff between current and formatted output")
+
+let cmd =
+  Cmd.v (Cmd.info "fmt" ~doc:"auto-format a .borg file to canonical indentation"
+    ~man:[`S "DESCRIPTION";
+          `P "Parses the .borg file and re-prints it with canonical indentation.";
+          `P "Use --check for CI (exit 1 if formatting would change). \
+              Use --diff to see what would change."])
+  Term.(const run $ path $ check $ diff $ output)
+
+let () = ignore (Cmd.eval cmd : int)

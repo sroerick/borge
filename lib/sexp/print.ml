@@ -25,19 +25,19 @@ and spaces n = String.make n ' '
 
 let rec print_sexp indent buf sexp =
   match sexp with
-  | Atom sym ->
+  | Atom (_, sym) ->
       Buffer.add_string buf sym
-  | String sv ->
+  | String (_, sv) ->
       Buffer.add_string buf (string_of_string_value sv)
-  | List [] ->
+  | List (_, []) ->
       Buffer.add_string buf "()"
-  | List children ->
+  | List (_, children) ->
       if children = [] then Buffer.add_string buf "()"
       else begin
         let keyword =
           match children with
-          | [Atom "doc" | Atom "status"; _] -> ""
-          | Atom k :: _ -> k
+          | [Atom (_, "doc") | Atom (_, "status"); _] -> ""
+          | Atom (_, k) :: _ -> k
           | _ -> ""
         in
         let has_keyword = keyword <> "" && keyword <> "doc" && keyword <> "status" in
@@ -49,10 +49,10 @@ let rec print_sexp indent buf sexp =
           (* Only keep Atom names inline; lists go on their own line *)
           let further = match rest with
             | [] -> []
-            | [Atom n] ->
+            | [Atom (_, n)] ->
                 Buffer.add_string buf " ";
                 Buffer.add_string buf n; []
-            | Atom n :: tl ->
+            | Atom (_, n) :: tl ->
                 Buffer.add_string buf " ";
                 Buffer.add_string buf n; tl
             | _ -> rest
@@ -67,11 +67,11 @@ let rec print_sexp indent buf sexp =
           Buffer.add_char buf ')'
         end else begin
           match children with
-          | [Atom "doc"; String v] ->
+          | [Atom (_, "doc"); String (_, v)] ->
               Buffer.add_string buf "(doc ";
               Buffer.add_string buf (string_of_string_value v);
               Buffer.add_char buf ')'
-          | [Atom "status"; Atom v] ->
+          | [Atom (_, "status"); Atom (_, v)] ->
               Buffer.add_string buf "(status ";
               Buffer.add_string buf v;
               Buffer.add_char buf ')'
@@ -120,7 +120,7 @@ let print_file f =
     Buffer.add_char buf '\n'
   ) f.top_level_comments;
 
-  List.iter (fun { comments_before; node } ->
+  List.iter (fun { comments_before; node; _ } ->
     List.iter (fun c ->
       Buffer.add_string buf (print_comment_attachment c);
       Buffer.add_char buf '\n'

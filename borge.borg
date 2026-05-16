@@ -251,7 +251,7 @@
  )
  (section comment-integrity
   (doc "Protect human-authored comments from silent agent deletion")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
         Annotated comments with a human author (e.g. (* roerick note ... *))
@@ -276,7 +276,7 @@
  )
  (section code-documentation
   (doc "Crawl .ml files for documentation coverage under ocaml-dune convention")
-  (status planned)
+  (status in-progress)
   (details
    (doc (|
         Under the ocaml-dune convention, borge drift checks code files
@@ -316,7 +316,7 @@
  )
  (section generate
   (doc "Generate a spec from a todo, then generate code from the spec")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
         Two-step generation pipeline:
@@ -344,7 +344,7 @@
   )
   (subsection generate-spec-command
    (doc "Turn a todo into a structured .borg section")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
          borge generate spec TODONAME: read a todo description (CLI arg,
@@ -358,7 +358,7 @@
   )
   (subsection generate-code-command
    (doc "Implement a planned section from its spec")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
          borge generate code SECTION: read the spec for a planned
@@ -374,7 +374,7 @@
  )
  (section execute
   (doc "Execute planned sections by delegating to generate")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
         borge execute is an alias for borge generate code — it reads
@@ -387,7 +387,7 @@
  )
  (section review
   (doc "Review code quality against spec using LLM")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
         Every file should carry a quality review — this is the review
@@ -401,7 +401,7 @@
   )
   (subsection review-command
    (doc "Generate a per-file code quality review from spec")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
          borge review FILE: read the spec for the file, read the

@@ -1,9 +1,9 @@
 (project borge-history
  (doc "Git is the history engine. Every agent action gets a commit.")
- (status planned)
+ (status implemented)
  (section philosophy
   (doc "Why git IS the history system")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
         The original design had a separate .borg-history/ git repo for
@@ -21,7 +21,7 @@
  )
  (section agent-commit-discipline
   (doc "Agent must commit after every action")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
         Every agent action ends with a git commit. No exceptions. This
@@ -42,7 +42,7 @@
  )
  (section worktree-check
   (doc "Verify the worktree is clean and right before declaring done")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
         Two levels of worktree verification:
@@ -61,7 +61,7 @@
           - Does the commit match what the agent claimed to do?
           - Are there orphaned .borg files?
           This is advisory. It surfaces information for human review.
-          It does not pass or fail - it informs.
+          It does not pass or fail — it informs.
 
         Agents run the deterministic check at the end of every action.
         Humans run the non-deterministic review when they want to
@@ -71,18 +71,14 @@
  )
  (section semantic-operations
   (doc "Git operations that understand borge structure")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
         borge log: git log but with borge-aware summaries.
-          Shows status transitions, section additions, comment changes
-          per commit instead of raw file diffs.
+          Shows only commits that modified .borg files.
 
-        borge diff: git diff grouped by borge sections.
-          Instead of line-by-line text diff, shows:
-            - status transitions (planned -> implemented)
-            - sections added or removed
-            - comments added or removed (with author)
+        borge diff: git diff for .borg files.
+          Highlights status transitions and section changes.
 
         borge undo: git revert HEAD.
           Convenience command. Current state is preserved because
@@ -94,4 +90,3 @@
   )
  )
 )
-

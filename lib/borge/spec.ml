@@ -29,7 +29,7 @@ let string_of_status = function
 let project_name (file : Borge_sexp.Ast.file) : string option =
   let rec find = function
     | [] -> None
-    | { node = List (Atom "project" :: Atom name :: _); _ } :: _ -> Some name
+    | { node = List (_, Atom (_, "project") :: Atom (_, name) :: _); _ } :: _ -> Some name
     | _ :: rest -> find rest
   in
   find file.top_level
@@ -37,9 +37,9 @@ let project_name (file : Borge_sexp.Ast.file) : string option =
 (** Count sections in the file *)
 let count_sections (file : Borge_sexp.Ast.file) : int =
   let rec count_in_sexp = function
-    | List (Atom kind :: _)
+    | List (_, Atom (_, kind) :: _)
       when List.mem kind ["section"; "subsection"; "subsubsection"] -> 1
-    | List sexps -> List.fold_left (fun acc s -> acc + count_in_sexp s) 0 sexps
+    | List (_, sexps) -> List.fold_left (fun acc s -> acc + count_in_sexp s) 0 sexps
     | _ -> 0
   in
   let rec count_in_node = function
@@ -51,11 +51,11 @@ let count_sections (file : Borge_sexp.Ast.file) : int =
 (** Extract all status values from the file *)
 let statuses (file : Borge_sexp.Ast.file) : status list =
   let rec extract = function
-    | List (Atom "status" :: Atom s :: _) ->
+    | List (_, Atom (_, "status") :: Atom (_, s) :: _) ->
       (match status_of_string s with
        | Some st -> [st]
        | None -> [])
-    | List sexps -> List.concat_map extract sexps
+    | List (_, sexps) -> List.concat_map extract sexps
     | _ -> []
   in
   let rec walk = function
@@ -65,6 +65,32 @@ let statuses (file : Borge_sexp.Ast.file) : status list =
   walk file.top_level
 
 let status_order = [Planned; In_progress; Partial; Implemented; Drifted; Blank]
+
+(** Extract inline target filenames from (inline filename.borg) forms *)
+let inline_targets (file : Borge_sexp.Ast.file) : string list =
+  let rec extract = function
+    | List (_, Atom (_, "inline") :: Atom (_, filename) :: _) -> [filename]
+    | List (_, sexps) -> List.concat_map extract sexps
+    | _ -> []
+  in
+  let rec walk = function
+    | [] -> []
+    | { node; _ } :: rest -> extract node @ walk rest
+  in
+  walk file.top_level
+
+(** Check if the file declares (no-inline) *)
+let has_no_inline (file : Borge_sexp.Ast.file) : bool =
+  let rec extract = function
+    | List (_, [Atom (_, "no-inline")]) -> true
+    | List (_, sexps) -> List.exists extract sexps
+    | _ -> false
+  in
+  let rec walk = function
+    | [] -> false
+    | { node; _ } :: rest -> extract node || walk rest
+  in
+  walk file.top_level
 
 let status_counts (file : Borge_sexp.Ast.file) : (status * int) list =
   let st_list = statuses file in

@@ -1,3 +1,9 @@
+type pos = {
+  line : int;
+  col : int;
+  offset : int;
+}
+
 type verbatim_string = {
   v_content : string;
   (* The raw text between (| and |), newlines preserved *)
@@ -15,9 +21,9 @@ type string_value =
 type symbol = string
 
 type sexp =
-  | Atom of symbol
-  | String of string_value
-  | List of sexp list
+  | Atom of pos * symbol
+  | String of pos * string_value
+  | List of pos * sexp list
 
 (** A plain (;) comment — not part of the AST structure,
     but preserved for round-tripping *)
@@ -51,6 +57,7 @@ type comment_attachment =
 type sexp_with_comments = {
   comments_before : comment_attachment list;
   node : sexp;
+  end_pos : pos;  (* position after the closing delimiter *)
 }
 
 type file = {

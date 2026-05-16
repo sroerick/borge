@@ -1,16 +1,16 @@
 (project borge-cli
  (doc "Thin CLI entrypoints that call lib functions")
- (status planned)
+ (status implemented)
  (section commands
   (doc "The individual CLI commands")
-  (status planned)
+  (status implemented)
   (subsection balance
    (doc "Fast paren balance check: run this FIRST before borge parse")
    (status implemented)
   )
   (subsection balance-verbose
    (doc "Show paren stack on error: which ( matches which ) and what keyword it opens")
-   (status planned)
+   (status implemented)
   )
   (subsection parse
    (doc "Parse a .borg file and validate its structure")
@@ -26,19 +26,19 @@
   )
   (subsection nodes
    (doc "Dump the parsed AST with types and positions for debugging")
-   (status planned)
+   (status implemented)
   )
   (subsection lint
    (doc "Semantic validation: invalid status, illegal placement, duplicate names")
-   (status planned)
+   (status implemented)
   )
   (subsection drift
    (doc "Detect spec drift, code drift, and structural drift")
-   (status planned)
+   (status implemented)
   )
   (subsection print
    (doc "Parse and re-print a .borg file")
-   (status planned)
+   (status implemented)
   )
   (subsection fmt
    (doc "Auto-format a .borg file to canonical indentation")
@@ -46,11 +46,11 @@
   )
   (subsection fmt-check
    (doc "Dry-run: exit 1 if formatting would change the file. For CI.")
-   (status planned)
+   (status implemented)
   )
   (subsection fmt-diff
    (doc "Show diff between current and formatted output")
-   (status planned)
+   (status implemented)
   )
   (subsection expand
    (doc "Expand a section by resolving ai-prompt directives")
@@ -58,23 +58,47 @@
   )
   (subsection version
    (doc "Print the current version")
-   (status planned)
+   (status implemented)
   )
   (subsection normalize
    (doc "Human-made-changes: fmt all files, accept comment deletions as intentional")
-   (status planned)
+   (status implemented)
+  )
+  (subsection inline
+   (doc "Show the inline tree: which .borg files inline which others")
+   (status implemented)
+  )
+  (subsection review
+   (doc "Non-deterministic advisory review: lint + drift")
+   (status implemented)
+  )
+ )
+ (section history-commands
+  (doc "Git operations that understand borge structure")
+  (status implemented)
+  (subsection log
+   (doc "git log filtered to .borg file changes")
+   (status implemented)
+  )
+  (subsection diff
+   (doc "git diff for .borg files with status annotations")
+   (status implemented)
+  )
+  (subsection undo
+   (doc "git revert HEAD — convenience command")
+   (status implemented)
   )
  )
  (section output-conventions
   (doc "How the CLIs produce output.")
-  (status planned)
+  (status implemented)
   (subsection exit-codes
    (doc "0 success, 1 issues found, 2 usage error")
-   (status planned)
+   (status implemented)
   )
   (subsection human-output
    (doc "Default. Formatted text for terminal consumption")
-   (status planned)
+   (status implemented)
   )
   (subsection json-output
    (doc "--json flag. Structured output for machine consumption")
@@ -86,4 +110,3 @@
   )
  )
 )
-

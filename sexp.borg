@@ -16,7 +16,7 @@
  )
  (section positions
   (doc "Source position tracking on sexp nodes for diagnostics")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
         Add start_pos and end_pos to every sexp node. Position type:
@@ -62,5 +62,17 @@
    (status implemented)
   )
  )
+ (section lexer
+  (doc "Character-level tokenization for .borg sexp parsing")
+  (status implemented)
+  (details
+   (doc (|
+        Token types: LPAREN, RPAREN, HASH_LPAREN, STAR_RPAREN,
+        VERB_OPEN, VERB_CLOSE, QUOTED, SYMBOL, SEMICOLON, EOF.
+        Position tracking via {line, column}. Helper predicates:
+        is_symbol_char, is_whitespace. No state machine — tokens
+        are emitted on demand by the parse stream.
+      |))
+  )
+ )
 )
-

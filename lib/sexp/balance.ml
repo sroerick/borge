@@ -5,9 +5,14 @@
 
 type pos = { line : int; col : int }
 
+type paren_frame = {
+  open_pos : pos;
+  keyword : string option;  (** e.g. "section", "doc", None for bare lists *)
+}
+
 type error_detail =
   | Unexpected_close of pos * pos option
-  | Unclosed_parens of pos * int
+  | Unclosed_parens of paren_frame list
   | Unclosed_context of pos * string
 
 type check_result =
@@ -20,12 +25,27 @@ let string_of_error = function
   | Unexpected_close (p, Some open_p) ->
       Printf.sprintf "Line %d, col %d: unexpected `)` — opened at line %d, col %d"
         p.line p.col open_p.line open_p.col
-  | Unclosed_parens (p, count) ->
+  | Unclosed_parens frames ->
+      let count = List.length frames in
+      let first = List.hd (List.rev frames) in
       Printf.sprintf "End of file: %d unclosed `(` — first opened at line %d, col %d"
-        count p.line p.col
+        count first.open_pos.line first.open_pos.col
   | Unclosed_context (p, ctx) ->
       Printf.sprintf "End of file: unclosed %s (opened at line %d, col %d)"
         ctx p.line p.col
+
+(** Render the paren stack for verbose output *)
+let string_of_paren_stack frames =
+  let buf = Buffer.create 128 in
+  Buffer.add_string buf "Paren stack (innermost first):\n";
+  List.iter (fun frame ->
+    match frame.keyword with
+    | Some kw ->
+        Printf.bprintf buf "  (%d:%d) %s\n" frame.open_pos.line frame.open_pos.col kw
+    | None ->
+        Printf.bprintf buf "  (%d:%d) (\n" frame.open_pos.line frame.open_pos.col
+  ) frames;
+  Buffer.contents buf
 
 module State = struct
   type t =
@@ -49,13 +69,38 @@ type frame = { state : State.t; pos : pos }
 
 let mk_pos line col = { line; col }
 
+(** Peek at the keyword following an open paren.
+    Scans forward from `start` looking for a symbol character.
+    Returns None if the next thing is a close-paren, quote, or another open-paren. *)
+let peek_keyword text start len =
+  let i = ref start in
+  (* Skip whitespace *)
+  while !i < len && (let ch = text.[!i] in ch = ' ' || ch = '\t' || ch = '\n' || ch = '\r') do
+    incr i
+  done;
+  if !i >= len then None
+  else begin
+    let ch = text.[!i] in
+    if ch = ')' || ch = '(' || ch = '"' then None
+    else begin
+      (* Read symbol characters *)
+      let buf = Buffer.create 32 in
+      while !i < len && Lexer.is_symbol_char text.[!i] do
+        Buffer.add_char buf text.[!i];
+        incr i
+      done;
+      let kw = Buffer.contents buf in
+      if kw = "" then None else Some kw
+    end
+  end
+
 (** Main check: returns structured result without printing *)
 let check text =
   let len = String.length text in
   let line = ref 1 in
   let col = ref 1 in
   let state_stack = ref [] in
-  let paren_stack = ref [] in
+  let paren_stack : paren_frame list ref = ref [] in
   let max_depth = ref 0 in
   let errors = ref [] in
 
@@ -99,7 +144,8 @@ let check text =
             push_state State.Quoted_string;
             incr i; incr col
           ) else if ch = '(' then (
-            paren_stack := here () :: !paren_stack;
+            let keyword = peek_keyword text (!i + 1) len in
+            paren_stack := { open_pos = here (); keyword } :: !paren_stack;
             max_depth := max !max_depth (List.length !paren_stack);
             incr i; incr col
           ) else if ch = ')' then (
@@ -172,8 +218,8 @@ let check text =
   let paren_error =
     match !paren_stack with
     | [] -> []
-    | open_pos :: _ ->
-        [ Unclosed_parens (open_pos, List.length !paren_stack) ]
+    | frames ->
+        [ Unclosed_parens (List.rev frames) ]
   in
 
   let all_errors = List.rev (!errors @ paren_error @ context_errors) in
@@ -196,7 +242,7 @@ let excerpt text start_line end_line =
   ) indexed
 
 (** Print detailed report for a file *)
-let report_file path =
+let report_file ?(verbose=false) path =
   let ic = open_in path in
   let n = in_channel_length ic in
   let buf = Bytes.create n in
@@ -217,8 +263,9 @@ let report_file path =
           match err with
           | Unexpected_close (p, _) ->
               excerpt text (p.line - 1) (p.line + 1)
-          | Unclosed_parens (p, _) ->
-              excerpt text (p.line - 1) (p.line + 1)
+          | Unclosed_parens frames ->
+              let first = List.hd frames in
+              excerpt text (first.open_pos.line - 1) (first.open_pos.line + 1)
           | Unclosed_context (p, _) ->
               excerpt text (p.line - 1) (p.line + 1)
         in
@@ -227,9 +274,11 @@ let report_file path =
         match err with
         | Unexpected_close (p, _) ->
             Printf.printf "      Suggestion: check for extra `)` near line %d\n" p.line
-        | Unclosed_parens (p, count) ->
-            Printf.printf "      Suggestion: add %d `)` after end of file (unclosed since line %d)\n"
-              count p.line
+        | Unclosed_parens frames ->
+            let count = List.length frames in
+            Printf.printf "      Suggestion: add %d `)` after end of file\n" count;
+            if verbose then
+              print_string (string_of_paren_stack frames)
         | Unclosed_context (p, ctx) ->
             Printf.printf "      Suggestion: close the %s that opened at line %d\n"
               ctx p.line

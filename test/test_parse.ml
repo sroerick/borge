@@ -38,6 +38,28 @@ let test_project_name () =
   let name = Borge_lib.Spec.project_name file in
   Alcotest.(check (option string)) __LOC__ (Some "my-project") name
 
+let test_inline_targets () =
+  let input = "(project test\n  (section foo\n   (doc \"Foo\")\n   (status planned)\n   (inline bar.borg)\n   (inline baz.borg)))" in
+  let file = Borge_sexp.Parse.parse input in
+  let targets = Borge_lib.Spec.inline_targets file in
+  Alcotest.(check (list string)) __LOC__ ["bar.borg"; "baz.borg"] targets
+
+let test_inline_targets_empty () =
+  let input = "(project test\n  (doc \"No inlines\")\n  (status planned))" in
+  let file = Borge_sexp.Parse.parse input in
+  let targets = Borge_lib.Spec.inline_targets file in
+  Alcotest.(check (list string)) __LOC__ [] targets
+
+let test_has_no_inline () =
+  let input = "(project test\n  (doc \"Standalone\")\n  (status planned)\n  (no-inline))" in
+  let file = Borge_sexp.Parse.parse input in
+  Alcotest.(check bool) __LOC__ true (Borge_lib.Spec.has_no_inline file)
+
+let test_has_no_inline_false () =
+  let input = "(project test\n  (doc \"Has parent\")\n  (status planned))" in
+  let file = Borge_sexp.Parse.parse input in
+  Alcotest.(check bool) __LOC__ false (Borge_lib.Spec.has_no_inline file)
+
 let () =
   Alcotest.run "borge parse tests" [
     "basic", [
@@ -49,5 +71,9 @@ let () =
       Alcotest.test_case "plain comments" `Quick test_plain_comments;
       Alcotest.test_case "bad paren" `Quick test_bad_unclosed_paren;
       Alcotest.test_case "project name" `Quick test_project_name;
+      Alcotest.test_case "inline targets" `Quick test_inline_targets;
+      Alcotest.test_case "inline targets empty" `Quick test_inline_targets_empty;
+      Alcotest.test_case "has no-inline" `Quick test_has_no_inline;
+      Alcotest.test_case "no-inline false" `Quick test_has_no_inline_false;
     ];
   ]

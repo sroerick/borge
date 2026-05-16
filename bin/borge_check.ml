@@ -1,79 +1,85 @@
-open Borge_sexp
+open Borge_lib
 
-(* Recursively find .borg files from a directory *)
-let rec find_borg_files dir =
-  try
-    let entries = Sys.readdir dir in
-    Array.fold_left (fun acc name ->
-      if name = "_build" || name = ".git" then acc
-      else
-        let path = Filename.concat dir name in
-        if Sys.is_directory path then find_borg_files path @ acc
-        else if Filename.check_suffix name ".borg" then path :: acc
-        else acc
-    ) [] entries
-  with Sys_error _ -> []
+let print_result (result : Check.result) =
+  List.iter (function
+    | Check.Ok { path; project_name; form_count } ->
+        Printf.printf "  ✓ %s: project '%s' (%d forms)\n" path project_name form_count
+    | Check.Error { path; message } ->
+        Printf.printf "  ✗ %s: %s\n" path message
+  ) result.files;
+  List.iter (function
+    | Check.Orphan path ->
+        Printf.printf "  ⚠ %s: orphaned .borg file (no parent, no no-inline)\n" path
+  ) result.warnings;
+  Printf.printf "\n%d files checked. %d passed. %d failed. %d warnings.\n"
+    (List.length result.files) result.passed result.failed (List.length result.warnings)
 
-(* Extract project name from parsed AST node *)
-let extract_string = function
-  | Ast.Atom s | Ast.String (Quoted {q_content = s}) | Ast.String (Verbatim {v_content = s}) -> Some s
-  | _ -> None
+let run_worktree dir =
+  let failures = ref [] in
+  (* 1. git diff is clean *)
+  let cmd = Printf.sprintf "git -C %s diff --quiet 2>/dev/null" (Filename.quote dir) in
+  if Sys.command cmd <> 0 then
+    failures := "git diff is not clean (uncommitted changes)" :: !failures;
+  (* 2. borge balance passes on all .borg files *)
+  let borg_files = File_utils.find_borg_files dir in
+  List.iter (fun path ->
+    let input = File_utils.read_file path in
+    match Borge_sexp.Balance.check input with
+    | Borge_sexp.Balance.Balanced _ -> ()
+    | Borge_sexp.Balance.Imbalanced _ ->
+        failures := Printf.sprintf "borge balance: %s is imbalanced" path :: !failures
+  ) borg_files;
+  (* 3. borge check passes *)
+  let check_result = Check.run dir in
+  if check_result.failed > 0 then
+    failures := "borge check: some files failed" :: !failures;
+  (* 4. dune build succeeds *)
+  let cmd = Printf.sprintf "cd %s && dune build 2>/dev/null" (Filename.quote dir) in
+  if Sys.command cmd <> 0 then
+    failures := "dune build failed" :: !failures;
+  (* 5. dune runtest passes *)
+  let cmd = Printf.sprintf "cd %s && dune runtest 2>/dev/null" (Filename.quote dir) in
+  if Sys.command cmd <> 0 then
+    failures := "dune runtest failed" :: !failures;
+  (* Report *)
+  if !failures = [] then begin
+    Printf.printf "✓ Worktree check passed — clean and ready.\n";
+    exit 0
+  end else begin
+    Printf.printf "✗ Worktree check failed:\n";
+    List.iter (fun f -> Printf.printf "  - %s\n" f) (List.rev !failures);
+    exit 1
+  end
 
-let project_name (form : Ast.sexp_with_comments) =
-  match form with
-  | { Ast.comments_before = _; node = Ast.List (Ast.Atom "project" :: name :: _) } ->
-      extract_string name
-  | _ -> None
-
-(* Summarize a single file *)
-let check_file path =
-  let input =
-    let ic = open_in path in
-    let n = in_channel_length ic in
-    let buf = Bytes.create n in
-    really_input ic buf 0 n;
-    close_in ic;
-    Bytes.to_string buf
-  in
-  try
-    let file = Parse.parse_file input in
-    let names = List.filter_map project_name file.Ast.top_level in
-    match names with
-    | [] ->
-        Printf.printf "  ✗ %s: no project node found\n" path;
-        false
-    | [name] ->
-        Printf.printf "  ✓ %s: project '%s' (%d forms)\n" path name (List.length file.Ast.top_level);
-        true
-    | names ->
-        Printf.printf "  ✗ %s: multiple project nodes: %s\n" path (String.concat ", " names);
-        false
-  with
-  | Error.Parse_error e ->
-      Printf.printf "  ✗ %s: parse error at %d:%d - %s\n" path e.Error.line e.Error.column e.Error.message;
-      false
-
-type result = { passed : int; failed : int }
-
-let run dir =
-  let files = find_borg_files dir in
-  let res = List.fold_left (fun ({ passed; failed } as acc) path ->
-    let ok = check_file path in
-    if ok then { acc with passed = passed + 1 }
-    else { acc with failed = failed + 1 }
-  ) { passed = 0; failed = 0 } files in
-  Printf.printf "\n%d files checked. %d passed. %d failed.\n" (List.length files) res.passed res.failed;
-  if res.failed > 0 then exit 1 else exit 0
-
-let () =
-  let dir = match Array.to_list Sys.argv with
-    | _ :: "check" :: d :: _ -> d
-    | _ :: d :: _ -> d
-    | _ -> "."
-  in
+let run dir worktree =
   if not (Sys.is_directory dir) then (
     Printf.eprintf "Error: '%s' is not a directory\n" dir;
     exit 2
   );
-  Printf.printf "Checking .borg files in '%s'...\n\n" dir;
-  run dir
+  if worktree then run_worktree dir
+  else begin
+    Printf.printf "Checking .borg files in '%s'...\n\n" dir;
+    let result = Check.run dir in
+    print_result result;
+    if result.failed > 0 then exit 1 else exit 0
+  end
+
+open Cmdliner
+
+let dir =
+  Arg.(value & pos 0 dir "." & info [] ~docv:"DIR"
+    ~doc:"Directory to scan for .borg files")
+
+let worktree =
+  Arg.(value & flag & info ["worktree"] ~doc:"Deterministic check: clean diff, balance, check, build, test")
+
+let cmd =
+  Cmd.v (Cmd.info "check" ~doc:"recursive health check across all .borg files"
+    ~man:[`S "DESCRIPTION";
+          `P "Finds all .borg files recursively and checks that each one \
+              parses correctly and has a project node.";
+          `P "With --worktree, runs a deterministic pass/fail check: \
+              git diff clean, balance passes, check passes, dune build, dune test."])
+  Term.(const run $ dir $ worktree)
+
+let () = ignore (Cmd.eval cmd : int)

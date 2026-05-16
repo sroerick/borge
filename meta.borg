@@ -355,7 +355,7 @@
  )
  (section metrics
   (doc "Static code intelligence stored in .borg.meta companion files")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
         Every .borg.meta file stores machine-extracted code intelligence
@@ -417,7 +417,7 @@
    )
   (subsection stats-command
    (doc "Print aggregate code intelligence dashboard")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
          borge stats: read all .borg.meta files, aggregate (metrics ...)
@@ -430,7 +430,7 @@
   )
   (subsection review-quality
    (doc "Per-file code quality assessment with LLM")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
          borge review FILE: read the spec for the file, read the file

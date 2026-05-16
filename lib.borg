@@ -1,6 +1,6 @@
 (project borge-lib
  (doc "Domain operations: checking, reporting, formatting, spec extraction")
- (status planned)
+ (status implemented)
  (section spec
   (doc "Borge-specific types and operations on top of the sexp AST")
   (status implemented)
@@ -8,19 +8,18 @@
    (doc (|
         Types: status (planned, in-progress, partial, implemented,
         drifted, blank). Functions: status_of_string, string_of_status,
-        project_name, count_sections, statuses, status_counts.
+        project_name, count_sections, statuses, status_counts,
+        inline_targets, has_no_inline.
       |))
   )
  )
  (section file-utils
   (doc "File discovery and reading shared by all commands")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
         find_borg_files: recursively discover .borg files, skipping
         _build and .git. read_file: read a file into a string.
-        Currently duplicated in bin/borge_check.ml and
-        bin/borge_report.ml and bin/borge_fmt.ml. Must be in lib.
       |))
   )
  )
@@ -31,8 +30,7 @@
    (doc (|
         Walks a directory, finds .borg files, parses each, reports
         project name and validity. Returns a typed result per file
-        with pass/fail status. Currently the check logic is in bin/
-        and reimplements project_name extraction - must move to lib.
+        with pass/fail status and warnings (orphan detection).
       |))
   )
  )
@@ -43,8 +41,8 @@
    (doc (|
         Aggregates status counts per file and globally. Returns typed
         data: per-file (name, impl, in-progress, planned) and totals.
-        Currently the report formatting is interleaved with data
-        extraction in bin/ - must separate data from presentation.
+        Uses inline tree to avoid double-counting sub-specs.
+        Reports orphaned files.
       |))
   )
  )
@@ -53,28 +51,110 @@
   (status implemented)
   (details
    (doc (|
-        Parses and re-prints. The formatting logic is in sexp/print.ml
-        (correct - it belongs there). The CLI wrapper in bin/ should
-        just call parse then print. Must add --check and --diff modes.
+        Parses and re-prints with canonical indentation. Supports
+        --check (exit 1 if formatting would change) and --diff
+        (show line-by-line diff).
+      |))
+  )
+ )
+ (section lint
+  (doc "Semantic validation of .borg files")
+  (status implemented)
+  (details
+   (doc (|
+        Checks: invalid status values, duplicate project names,
+        unknown comment types, missing comment values, deleted
+        human comments (against git HEAD), pending ask/response
+        slots, orphaned files.
       |))
   )
  )
  (section drift
   (doc "Detect spec drift, code drift, and structural drift")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
         Three drift layers:
         1. Spec drift: .borg describes something not in code
-        2. Code drift: code has something not in .borg
+        2. Code drift: dune-aware — modules from dune files not in .borg
         3. Structural drift: code organization does not match inline
-           architecture (e.g. domain logic in bin/ when lib owns it)
+           architecture
 
-        Structural drift is the most insidious because it compounds:
-        when logic is in the wrong layer, it gets duplicated, the
-        duplication diverges, and the codebase rots.
+        Generates .borg.meta files with findings, module surfaces,
+        and dune snapshots. Supports --agent flag for LLM-driven
+        semantic analysis.
+      |))
+  )
+ )
+ (section dune-parse
+  (doc "Parse dune files for structural drift detection")
+  (status implemented)
+  (details
+   (doc (|
+        Parses dune (sexp) files to extract library, executable,
+        and test stanzas. Returns typed records with name, modules,
+        public_name, and libraries. Used by drift for cross-referencing
+        dune structure against .borg spec sections.
+      |))
+  )
+ )
+ (section surface
+  (doc "Extract public module interface from .ml/.mli files")
+  (status implemented)
+  (details
+   (doc (|
+        For modules with .mli: .mli is the authoritative surface.
+        For modules without .mli: infer from top-level let bindings,
+        type definitions, exceptions, and module declarations.
+        Returns module_name, file path, and export list.
+      |))
+  )
+ )
+ (section meta
+  (doc "Types and writer for .borg.meta companion files")
+  (status implemented)
+  (details
+   (doc (|
+        .borg.meta files hold machine-generated observations:
+        analyzed-at timestamp, content hashes, module surfaces,
+        dune snapshots, and findings. The writer is idempotent
+        and deterministic. Findings are sorted for clean git diffs.
+        Agent findings merge (replace) on re-run; static findings
+        are preserved.
+      |))
+  )
+ )
+ (section agent
+  (doc "LLM-driven semantic drift analysis")
+  (status implemented)
+  (details
+   (doc (|
+        Assembles context (spec + code + existing findings) into a
+        prompt, invokes an LLM via BORGE_AGENT_CMD env var, parses
+        the sexp response into typed findings. Parse failures are
+        discarded — never corrupt .borg.meta. Agent findings merge
+        with static findings (static preserved, agent replaced).
+      |))
+  )
+ )
+ (section project
+  (doc "Inline tree building and orphan detection")
+  (status implemented)
+  (details
+   (doc (|
+        build_tree: recursively follow inline directives from a root
+        .borg file, producing a project_node tree. Each node carries
+        its path, project_name, children, and orphan status.
+
+        find_roots: find .borg files not inlined by any other file.
+        find_orphans: find files not in any tree, no (no-inline), and
+        don't inline any children themselves.
+
+        tree_status_counts: count statuses across the tree without
+        double-counting inlined sub-specs.
+
+        format_tree: indented text representation of the tree.
       |))
   )
  )
 )
-

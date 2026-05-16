@@ -33,6 +33,12 @@ let advance s =
 let advance_n s n =
   for _ = 1 to n do advance s done
 
+let current_pos s : pos = {
+  line = s.line;
+  col = s.column;
+  offset = s.pos;
+}
+
 let position s : Lexer.position = { line = s.line; column = s.column }
 
 let at_end s = s.pos >= String.length s.input
@@ -133,6 +139,7 @@ let rec parse_sexp s =
   if at_end s then
     error ~line:s.line ~column:s.column "Unexpected end of input";
 
+  let p = current_pos s in
   let ch = s.input.[s.pos] in
   if ch = ';' then
     error ~line:s.line ~column:s.column "Unexpected plain comment"
@@ -142,19 +149,19 @@ let rec parse_sexp s =
       if next = '*' then
         error ~line:s.line ~column:s.column "Unexpected annotated comment"
       else if next = '|' then
-        String (parse_verbatim_string s)
+        String (p, parse_verbatim_string s)
       else
-        parse_list s
+        parse_list s p
     end else
-      parse_list s
+      parse_list s p
   end else if ch = '"' then
-    String (parse_quoted_string s)
+    String (p, parse_quoted_string s)
   else if Lexer.is_symbol_char ch then
-    Atom (parse_symbol s)
+    Atom (p, parse_symbol s)
   else
     error ~line:s.line ~column:s.column "Unexpected character"
 
-and parse_list s =
+and parse_list s start_pos =
   advance s;
   skip_whitespace s;
   let elements = ref [] in
@@ -168,7 +175,7 @@ and parse_list s =
   if at_end s then
     error ~line:s.line ~column:s.column "Unterminated list";
   advance s;
-  List (List.rev !elements)
+  List (start_pos, List.rev !elements)
 
 and parse_sexp_or_comment s =
   skip_whitespace s;
@@ -274,6 +281,12 @@ let collect_comments s =
   done;
   List.rev !comments
 
+let rec end_pos_of_sexp = function
+  | Atom (p, _) -> p
+  | String (p, _) -> p
+  | List (p, []) -> p
+  | List (_, children) -> end_pos_of_sexp (List.hd (List.rev children))
+
 let parse_file input =
   let s = make_state input in
   let top_level_comments = collect_comments s in
@@ -287,7 +300,8 @@ let parse_file input =
       if at_end s then ()
       else begin
         let sexp = parse_sexp s in
-        top_level := { comments_before = comments; node = sexp } :: !top_level
+        let end_p = current_pos s in
+        top_level := { comments_before = comments; node = sexp; end_pos = end_p } :: !top_level
       end
     end
   done;
