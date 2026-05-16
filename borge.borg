@@ -314,60 +314,137 @@
       |))
   )
  )
- (section execute
-  (doc "Execute planned sections via LLM-driven generation")
+ (section generate
+  (doc "Generate a spec from a todo, then generate code from the spec")
   (status planned)
   (details
    (doc (|
-        When a section is marked (status planned), borge execute
-        generates the implementation by invoking pi -p with a
-        structured prompt built from the spec. After the code is
-        written, the section status flips to (status implemented).
+        Two-step generation pipeline:
+
+        1. borge generate spec NAME
+           Read a free-form todo (file, conversation, or CLI argument)
+           and produce a proper .borg section. The spec becomes the
+          first-class artifact that the rest of the pipeline reads.
+           Prompt construction: "Here is a task: <todo>. Produce a
+           .borg section describing the implementation with (status
+           planned), subsections for each logical unit, and a details
+           block with interface contracts."
+
+        2. borge generate code NAME
+           Read a planned section and implement it. This is NOT freeform
+           coding — every generated file, function, and type must trace
+           back to a spec subsection. Call pi -p with full context
+           (spec + existing code + convention rules), write files,
+           run build. Iterate via Ralph loop until build passes.
+
+        Relationship: generate spec creates the contract, generate code
+        fulfills it. Drift detection verifies alignment. Review verifies
+        quality.
       |))
   )
-  (subsection todos-module
-   (doc "Scan .borg AST for todo comments and resolve their parent section context")
+  (subsection generate-spec-command
+   (doc "Turn a todo into a structured .borg section")
    (status planned)
    (details
     (doc (|
-         Walk the AST to find all Annotated(Typed "todo") comments.
-         For each todo, walk ancestor nodes to determine what section
-         it belongs to. Return: (file, line, author, description,
-         parent_section_name, parent_section_status). This replaces
-         the need for free-floating todo comments inside spec sections
-         — the spec itself IS the todo list.
+         borge generate spec TODONAME: read a todo description (CLI arg,
+         prompt, or temp file), build a prompt asking pi to produce a
+       .borg section with proper structure, return the sexp text.
+         The section gets appended to the nearest parent section with
+         (status planned). Prompt includes: project name, convention,
+         existing adjacent sections (for consistency), and the todo text.
        |))
    )
   )
-  (subsection execute-spec-command
-   (doc "Generate spec updates from a planned section")
+  (subsection generate-code-command
+   (doc "Implement a planned section from its spec")
    (status planned)
    (details
     (doc (|
-         borge execute spec SECTION: read the spec for a planned section,
-         build a prompt describing what needs to change (status updates,
-         new subsections, details blocks), call pi -p to generate updated
-         spec text, apply to .borg file. Run borge fmt after changes.
-         The spec is the artifact — no separate todo comments float in
-         the file. Status changes from planned -> implemented after
-         generation.
+         borge generate code SECTION: read the spec for a planned
+         section, build prompt from section desc + convention rules +
+         existing module surfaces + known exports. Call pi -p with
+         iterative Ralph loop. Write files, run build. On success:
+         mark section (status implemented). On failure: report error
+         without changing status. The spec is always right — if build
+         fails, fix the spec to describe what actually works.
        |))
    )
   )
-  (subsection execute-code-command
-   (doc "Generate implementation code from a planned section spec")
+ )
+ (section execute
+  (doc "Execute planned sections by delegating to generate")
+  (status planned)
+  (details
+   (doc (|
+        borge execute is an alias for borge generate code — it reads
+        a planned section and generates the implementation. Exists
+        for symmetry with the "spec is the todo list" paradigm:
+        planned sections are unimplemented tasks, and "execute" means
+        "implement this task".
+      |))
+  )
+ )
+ (section review
+  (doc "Review code quality against spec using LLM")
+  (status planned)
+  (details
+   (doc (|
+        Every file should carry a quality review — this is the review
+        section in each .borg child spec. borge review generates a
+        code-quality assessment for files under each spec section.
+        The review answers: Does the code match the spec description?
+        Are exports documented? Are there dead functions? Is error
+        handling present? The review is stored as annotated comments
+        in the spec or as a separate .review file.
+      |))
+  )
+  (subsection review-command
+   (doc "Generate a per-file code quality review from spec")
    (status planned)
    (details
     (doc (|
-         borge execute code SECTION: read the spec for a planned section,
-         read (code files), build prompt from section desc + convention
-         rules + existing module surfaces + known exports. Call pi -p
-         to generate code, write files, run build (dune build / go test
-         / make). If build passes, flip section status from planned to
-         implemented. If build fails, report error without marking
-         implemented.
+         borge review FILE: read the spec for the file, read the
+         file source, build prompt asking pi to assess:
+         - Does every spec described feature exist in code?
+         - Are all exports documented? (check .mli, or docstrings)
+         - Are there dead functions (unused exports)?
+         - Is error handling missing where the spec says 'returns error'?
+         - Is the literate description accurate?
+         Output: findings as sexp, similar to drift findings.
+         These are stored as annotated comments under the file's
+         spec section, or in a per-file .review.borg file.
        |))
    )
+  )
+ )
+ (section literate-programming
+  (doc "The borge philosophy: spec is the primary artifact, code is derived")
+  (status implemented)
+  (details
+   (doc (|
+        In a borge project, the spec is not documentation — it is the
+        source of truth. Code is generated from and continuously
+        verified against the spec. Every .borg file is both a human-
+        readable design document and a machine-checkable contract.
+
+        The three pillars:
+
+        1. Spec first: write (status planned) sections before code.
+           Use borge generate spec to turn todos into structured specs.
+
+        2. Generate implementation: borge generate code reads planned
+           sections and produces files. This is NOT freeform coding —
+           every generated construct traces back to a spec subsection.
+
+        3. Verify continuously: borge balance, check, drift, and review
+           keep spec and code aligned. Drift means either the spec is
+           stale (fix spec) or the code is incomplete (generate more).
+
+        A completed project is one where every section is (status
+        implemented), every file has a code review, and borge drift
+        reports zero items.
+      |))
   )
  )
  (section future-work
