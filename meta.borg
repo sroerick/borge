@@ -1,0 +1,472 @@
+(project borge-meta
+ (doc "Companion metadata files for .borg specs — machine-generated observations about code reality")
+ (status in-progress)
+ (no-inline)
+ (section purpose
+  (doc (|
+    .borg files are the source of truth for intent — what the project
+    should be. .borg.meta files are the source of truth for reality —
+    what the project actually is.
+
+    A .borg.meta file sits next to its .borg sibling. It is sexp-formatted,
+    machine-writable, git-tracked, and never hand-edited. It holds
+    structured observations that borge commands produce: static analysis
+    results, agent findings, module surfaces, timestamps.
+
+    The two-file model keeps the spec clean. Humans and agents author
+    .borg files. Machines write .borg.meta files. You can look at either
+    file to understand one concern, or look at both to see the gap.
+  |))
+ )
+ (section file-layout
+  (doc "Sibling pairing — locality through proximity")
+  (status implemented)
+  (details
+   (doc (|
+     Every .borg file may have a .borg.meta sibling:
+
+       borge.borg          ← source of truth (intent)
+       borge.borg.meta     ← machine-generated (observations)
+       cli.borg
+       cli.borg.meta
+       sexp.borg
+       sexp.borg.meta
+
+     A .borg.meta file is created on first analysis and updated on
+     subsequent runs. If no analysis has been run, the file doesn't
+     exist — no empty stubs.
+
+     .borg.meta files are git-tracked. This means:
+     - You can diff findings between commits
+     - You can see when the agent's assessment changed
+     - CI can check if findings are stale (timestamp too old)
+
+     .borg.meta files are listed in .gitignore only if the project
+     opts out. By default they are tracked.
+   |))
+  )
+ )
+ (section format
+  (doc "Sexp structure of a .borg.meta file")
+  (status implemented)
+  (details
+   (doc (|
+     A .borg.meta file is a valid sexp file with its own top-level
+     forms. It is NOT a (project ...) form — it's a flat sequence
+     of observation blocks:
+
+     (meta borge
+       (analyzed-at 2026-05-15T14:32:00Z)
+       (module-surface
+         (Spec
+           (file lib/borge/spec.ml)
+           (exports status_of_string string_of_status project_name
+                    find count_sections statuses extract
+                    inline_targets has_no_inline status_counts))
+         (File_utils
+           (file lib/borge/file_utils.ml)
+           (exports read_file find_borg_files)))
+       (findings
+         (finding unspecified-module
+           (module Lexer)
+           (file lib/sexp/lexer.ml)
+           (detail "no .borg section describes this module")
+           (confidence high)
+           (source static)
+           (at 2026-05-15T14:32:00Z))
+         (finding partial-implementation
+           (section drift)
+           (detail "spec says drift checks undocumented bindings but code removed that check")
+           (confidence medium)
+           (source agent)
+           (at 2026-05-15T14:32:00Z)))
+       (dune-snapshot
+         (library borge_sexp
+           (modules ast balance error lexer parse print)
+           (public_name borge.sexp))
+         (library borge_lib
+           (modules spec file_utils check report fmt nodes project lint drift)
+           (public_name borge.lib)
+           (libraries borge.sexp unix))))
+
+     The (meta ...) form's first argument is the project name from
+     the sibling .borg file. This is for human readability — the
+     pairing is by filename convention, not by name matching.
+
+     Block types:
+     - (analyzed-at ...): ISO 8601 timestamp of last analysis
+     - (module-surface ...): per-module export lists
+     - (findings ...): structured observations with confidence
+     - (dune-snapshot ...): parsed dune file structure
+
+     Additional block types may be added in the future. The parser
+     should ignore unknown blocks for forward compatibility.
+   |))
+  )
+ )
+ (section module-surface
+  (doc "Extracted public interface of each source module")
+  (status implemented)
+  (details
+   (doc (|
+     The module surface is the set of names a module exports — its
+     public interface, as seen from outside.
+
+     For OCaml with .mli files: the .mli IS the surface. Parse it.
+
+     For OCaml without .mli files (like borge itself): every top-level
+     let binding, type definition, and exception is exported. Extract
+     these from the .ml source. This is a heuristic — the real surface
+     is what the compiler infers — but it's close enough for drift
+     detection.
+
+     For other conventions in the future: each convention defines how
+     to extract the module surface. Go uses exported names (capitalized).
+     C uses header files. The convention declaration in the root .borg
+     file determines the extraction method.
+
+     The module surface enables precise drift:
+     - "spec says this module exports format_file, but it's not in
+        the module surface" → spec drift
+     - "module exports check_structural_drift but no spec mentions it"
+       → code drift
+     - "spec lists 5 functions, module exports 12" → partial coverage
+   |))
+  )
+ )
+ (section dune-snapshot
+  (doc "Parsed dune file structure for structural drift detection")
+  (status implemented)
+  (details
+   (doc (|
+     For the ocaml-dune convention, dune files declare what exists:
+     - (library ...) with (modules ...) and (libraries ...)
+     - (executable ...) with name and dependencies
+
+     The dune snapshot captures this structure so borge can compare
+     the build system's view of the project against the spec's view.
+
+     Drift examples:
+     - dune says borge_lib has 9 modules, lib.borg has 7 sections
+     - dune says borge_cmd depends on borge_lib, but cli.borg
+       doesn't describe that dependency
+     - a module appears in dune (modules ...) but has no .borg section
+
+     The snapshot is re-extracted on each analysis run. It's not
+     authoritative — the dune file is — but having it in .borg.meta
+     means you can diff between commits to see when structure changed.
+   |))
+  )
+ )
+ (section findings
+  (doc "Structured observations — from static analysis and agent runs")
+  (status implemented)
+  (details
+   (doc (|
+     A finding is a single structured observation: something that
+     appears to be drift between spec and code.
+
+     Finding types (extensible — new types can be added):
+
+     unspecified-module: module exists in code, not in spec
+       fields: module, file
+
+     phantom-spec: spec section describes something not in code
+       fields: section
+
+     partial-implementation: spec says implemented, code is incomplete
+       fields: section, detail
+       source: agent only (can't detect statically without .mli diff)
+
+     status-mismatch: spec status contradicts code reality
+       fields: section, spec-status, actual-status
+       actual-status is inferred: "stub", "partial", "complete"
+
+     missing-export: spec describes an export that doesn't exist
+       fields: section, export, module
+
+     extra-export: module exports something the spec doesn't mention
+       fields: module, export
+
+     structural-drift: code organization violates convention
+       fields: detail
+
+     Each finding has:
+     - confidence: high | medium | low
+       high = machine-verified (file doesn't exist, module not in dune)
+       medium = heuristic (name matching, surface area comparison)
+       low = opinion (agent assessment)
+     - source: static | agent
+       static = produced by borge drift without LLM
+       agent = produced by borge drift --agent
+     - at: ISO 8601 timestamp of when the finding was produced
+     - detail: free-text explanation (required for agent, optional for static)
+
+     Findings are NOT ground truth. They are observations that may be
+     wrong. A human or agent should review before acting on them.
+   |))
+  )
+ )
+ (section drift-command-redesign
+  (doc "How borge drift changes with .borg.meta")
+  (status implemented)
+  (details
+   (doc (|
+     Current drift: heuristic name-matching against filenames.
+     Produces ad-hoc output to stdout. No persistence.
+
+     New drift writes .borg.meta files and produces structured output:
+
+     borge drift
+       1. Parse dune files → dune-snapshot
+       2. Extract module surfaces → module-surface
+       3. Cross-reference with .borg sections
+       4. Produce static findings
+       5. Write .borg.meta (one per .borg file that has findings)
+       6. Print human-readable summary to stdout
+
+     borge drift --agent (or borge drift agent)
+       1. Run all static drift steps first
+       2. For each .borg.meta with findings, assemble context:
+          - the .borg section text
+          - the corresponding module source
+          - the existing findings
+       3. Prompt the LLM per section:
+          "Here is a spec section and its code. Here are existing
+           findings. Review for: partial implementations, silent
+           scope changes, missing edge cases, status mismatches.
+           Return findings in this format: ..."
+       4. Merge agent findings into .borg.meta
+          - Keep existing static findings (they're machine-verified)
+          - Replace agent findings from previous run (they're opinions)
+          - Update analyzed-at timestamp
+       5. Print summary with source annotations
+
+     The --agent pass is additive. It doesn't redo static analysis.
+     It layers semantic observations on top of structural ones.
+   |))
+  )
+ )
+ (section agent-prompt-design
+  (doc "Structured output from LLM analysis")
+  (status implemented)
+  (details
+   (doc (|
+     The agent prompt must constrain the LLM to return structured
+     findings, not prose. This is critical: unstructured LLM output
+     can't be diffed, tracked, or acted on programmatically.
+
+     The prompt template (rough sketch):
+
+       You are analyzing a codebase against its specification.
+       For each section below, compare the spec description with
+       the source code and return findings.
+
+       Spec section: {section_name}
+       Status: {spec_status}
+       Description: {spec_doc}
+
+       Source file: {module_path}
+       Exports: {module_surface}
+
+       Return ONLY a sexp list of findings. Each finding is:
+       (finding TYPE
+         (section SECTION_NAME)
+         (detail EXPLANATION)
+         (confidence LEVEL))
+
+       Valid types: partial-implementation, status-mismatch,
+                    missing-export, extra-export, phantom-spec
+       Valid confidence levels: high, medium, low
+
+       If no findings, return: (findings)
+
+       Example:
+       (findings
+         (finding partial-implementation
+           (section drift)
+           (detail "spec mentions undocumented-bindings check but it was removed")
+           (confidence high)))
+
+     The agent output is parsed as sexp. Parse failures mean the
+     agent produced garbage and the finding is discarded with a
+     warning — it does NOT corrupt the .borg.meta file.
+
+     Multiple sections can be batched into one LLM call to reduce
+     round-trips, or run one-at-a-time for precision. This should
+     be configurable.
+   |))
+  )
+ )
+ (section staleness
+  (doc "Detecting when metadata is out of date")
+  (status implemented)
+  (details
+   (doc (|
+     .borg.meta files become stale when:
+     - The .borg source file changed since last analysis
+     - A source .ml file changed since last analysis
+     - A dune file changed since last analysis
+
+     Staleness detection:
+     - Store a content hash of the source files in the .borg.meta
+     - On drift run, compare current hashes against stored hashes
+     - If any hash differs, that block is stale
+     - Print staleness warning even if no other findings
+
+     Alternatively: use git. If the .borg file or its referenced
+     source files have commits after analyzed-at, the metadata
+     might be stale. This is cheaper than hashing but less precise
+     (a commit might not touch the relevant sections).
+
+     For the agent pass specifically: always re-run if metadata is
+     stale. Agent findings about old code are worse than no findings.
+   |))
+  )
+ )
+ (section writing
+  (doc "How .borg.meta files are written and preserved")
+  (status implemented)
+  (details
+   (doc (|
+     Machine-written, never hand-edited. But this needs enforcement:
+
+     1. A header comment at the top of every .borg.meta file:
+        (; DO NOT EDIT — generated by borge drift. Changes will be overwritten. ;)
+
+     2. borge fmt skips .borg.meta files — they're not specs.
+        borge check skips them. borge lint skips them.
+
+     3. The writer preserves formatting: consistent indentation,
+        alphabetical ordering where order doesn't matter, one
+        finding per line. This makes git diffs useful.
+
+     4. The writer is idempotent: running drift twice with no code
+        changes produces the same .borg.meta file. This means
+        findings must be sorted and deterministic.
+
+     5. Agent findings merge, not append. If the agent previously
+        reported (finding partial-implementation (section drift) ...)
+        and now reports the same finding, it's updated in place
+        with the new timestamp. If the agent no longer reports it,
+        it's removed. The .borg.meta is a snapshot, not a log.
+   |))
+  )
+ )
+ (section metrics
+  (doc "Static code intelligence stored in .borg.meta companion files")
+  (status planned)
+  (details
+   (doc (|
+        Every .borg.meta file stores machine-extracted code intelligence
+        about its sibling .borg's referenced source files. These metrics
+        are generated on analysis, not hand-authored, and enable:
+
+        - borge stats: print a project health dashboard
+        - borge review: surface files with declining quality
+        - borge generate: inform the LLM about code size and shape
+
+        Metric blocks in .borg.meta:
+
+        (complexity
+          (file lib/borge/meta.ml)
+          (lines 488)
+          (functions 27)
+          (average-length 18)
+          (max-nesting 4)
+          (sentiment-preservation "high"))
+
+        (module-metrics
+          (file lib/borge/nodes.ml)
+          (lines 112)
+          (functions 8)
+          (exports 12)
+          (mli-coverage 0.75)
+          (doc-coverage 0.33))
+
+        (project-summary
+          (files 24)
+          (total-lines 4100)
+          (total-functions 312)
+          (plans 13)
+          (implemented 19)
+          (in-progress 2))
+
+        Extraction methods are convention-specific. For ocaml-dune:
+        - lines: physical line count from .ml files
+        - functions: top-level let bindings (heuristic for exports)
+        - average-length: total lines / function count
+        - max-nesting: maximum indentation depth
+        - mli-coverage: exports with .mli documentation / total exports
+        - doc-coverage: functions with borge-style doc comments / total
+
+        The sentiment-preservation field is LLM-assessed: does the
+        spec's description of the code match the code's reality?
+        High means the spec is accurate. Low means the code has
+        drifted from what the spec claims.
+
+        These metrics enable a new command: borge stats. It reads
+        all .borg.meta files, aggregates, and prints:
+
+        Project: borge
+        Files: 24  Lines: 4100  Functions: 312
+        Coverage: mli 0.75  doc 0.33
+        Status: planned 13  implemented 19  in-progress 2
+        Quality drift: 1 file with declining coverage (lint.ml)
+      |))
+   )
+  (subsection stats-command
+   (doc "Print aggregate code intelligence dashboard")
+   (status planned)
+   (details
+    (doc (|
+         borge stats: read all .borg.meta files, aggregate (metrics ...)
+         blocks, and print a formatted summary. Show planned vs
+         implemented counts, total lines, average function length,
+         files with declining quality. This is the first thing a
+         developer or agent reads when entering a project.
+       |))
+   )
+  )
+  (subsection review-quality
+   (doc "Per-file code quality assessment with LLM")
+   (status planned)
+   (details
+    (doc (|
+         borge review FILE: read the spec for the file, read the file
+         source, and ask the LLM to assess: Does the implementation
+         match the spec description? Are exports documented? Are there
+         dead functions? Is error handling present? The review is stored
+         as annotated comments in the spec, or in a per-file .review.borg.
+         The sentiment-preservation field in .borg.meta is updated.
+       |))
+   )
+  )
+ )
+ (section future-blocks
+  (doc "Extensibility — additional block types")
+  (status planned)
+  (details
+   (doc (|
+     The .borg.meta format is designed to grow. Future block types:
+
+     (test-coverage TYPICAL: (module X) (tested-by test_x.ml) (cases 12/15))
+       — which modules have test coverage, how complete
+
+     (dependencies (module X) (depends-on Y Z))
+       — module dependency graph extracted from source
+
+     (complexity (module X) (lines 230) (functions 15) (max-nesting 4))
+       — static complexity metrics
+
+     (agent-session SESSION_ID (started-at ...) (findings ...))
+       — if we want to track which agent run produced which findings,
+         instead of just flattening into the current snapshot
+
+     Additional blocks must not break the parser. Unknown top-level
+     forms inside (meta ...) are preserved on write and ignored on
+     read unless the code explicitly handles them.
+   |))
+  )
+ )
+)
