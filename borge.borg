@@ -315,45 +315,60 @@
   )
  )
  (section execute
-  (doc "Execute todo comments as LLM-driven feature implementation")
+  (doc "Execute planned sections via LLM-driven generation")
   (status planned)
   (details
    (doc (|
-        Two-step workflow for todo-driven development:
-
-        1. borge execute spec
-           - Find all (* AUTHOR todo (|description|) *) in the project
-           - Build prompts from todo + parent section context
-           - Run pi -p to generate spec updates (mark sections implemented)
-           - Update .borg files with new status values
-
-        2. borge execute code
-           - Read the (now updated) spec
-           - Build prompts from section descriptions + module surfaces
-           - Run pi -p to generate implementation code
-           - Write files, run dune build/go build/etc.
-
-        The agent findings from drift become the input for execute.
-        A resolved finding means: the code exists but the spec is stale
-        → borge execute spec to update. A code drift item means:
-        the spec describes something missing → borge execute code
-        to generate.
+        When a section is marked (status planned), borge execute
+        generates the implementation by invoking pi -p with a
+        structured prompt built from the spec. After the code is
+        written, the section status flips to (status implemented).
       |))
   )
-(* roerick todo (|
-Implement borge execute: scan .borg files for annotated todo comments
-(already parsed by sexp/ast). For each todo, resolve its parent section
-to get context. Two subcommands:
-- borge execute spec TODONAME: build prompt from todo + parent section,
-  call pi -p to generate spec updates (status changes, new sections)
-- borge execute code SECTION: read spec for a section, build prompt
-  from section desc + convention rules + existing module surfaces,
-  call pi -p to generate code, write files
-Reuse agent.ml run_pi_print for LLM invocation. Add todo extraction
-module lib/borge/todos.ml that walks AST for Annotated(Typed "todo")
-comments and returns (file, line, author, description, parent_path).
-Reuse spec.ml for status manipulation. Add new bin/cmd/Execute.ml.
-|) *)
+  (subsection todos-module
+   (doc "Scan .borg AST for todo comments and resolve their parent section context")
+   (status planned)
+   (details
+    (doc (|
+         Walk the AST to find all Annotated(Typed "todo") comments.
+         For each todo, walk ancestor nodes to determine what section
+         it belongs to. Return: (file, line, author, description,
+         parent_section_name, parent_section_status). This replaces
+         the need for free-floating todo comments inside spec sections
+         — the spec itself IS the todo list.
+       |))
+   )
+  )
+  (subsection execute-spec-command
+   (doc "Generate spec updates from a planned section")
+   (status planned)
+   (details
+    (doc (|
+         borge execute spec SECTION: read the spec for a planned section,
+         build a prompt describing what needs to change (status updates,
+         new subsections, details blocks), call pi -p to generate updated
+         spec text, apply to .borg file. Run borge fmt after changes.
+         The spec is the artifact — no separate todo comments float in
+         the file. Status changes from planned -> implemented after
+         generation.
+       |))
+   )
+  )
+  (subsection execute-code-command
+   (doc "Generate implementation code from a planned section spec")
+   (status planned)
+   (details
+    (doc (|
+         borge execute code SECTION: read the spec for a planned section,
+         read (code files), build prompt from section desc + convention
+         rules + existing module surfaces + known exports. Call pi -p
+         to generate code, write files, run build (dune build / go test
+         / make). If build passes, flip section status from planned to
+         implemented. If build fails, report error without marking
+         implemented.
+       |))
+   )
+  )
  )
  (section future-work
   (doc "Planned improvements and architectural decisions")
