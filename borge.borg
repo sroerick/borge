@@ -12,7 +12,7 @@
  )
  (section program-architecture
   (doc "How borge is structured: one root spec, inlined sub-specs, no orphans")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
         The root borge.borg file is the architectural contract. It
@@ -43,9 +43,9 @@
       |))
   )
  )
- (section modules
+  (section modules
   (doc "The modules that make up borge, inlined by filename")
-  (status planned)
+  (status implemented)
   (subsection sexp
    (doc "The sexp parsing, printing, and balancing library")
    (status implemented)
@@ -54,30 +54,36 @@
   )
   (subsection lib
    (doc "Domain operations: checking, reporting, formatting, spec extraction")
-   (status planned)
+   (status implemented)
    (inline lib.borg
    )
   )
   (subsection cli
    (doc "CLI entrypoints: thin wrappers that call lib functions")
-   (status planned)
+   (status implemented)
    (inline cli.borg
    )
   )
   (subsection history
    (doc "Change tracking and provenance for .borg files")
-   (status planned)
+   (status implemented)
    (inline history.borg
    )
   )
   (subsection nvim
    (doc "Neovim plugin for inline .borg editing")
-   (status planned)
+   (status implemented)
    (inline nvim.borg
    )
   )
+  (subsection meta
+   (doc "Companion metadata files for structured analysis observations")
+   (status in-progress)
+   (inline meta.borg
+   )
+  )
  )
- (section format
+(section format
   (doc "The file format")
   (status planned)
   (details
@@ -119,7 +125,7 @@
   )
   (subsection balance-verbose
    (doc "Show paren stack on error: which ( matches which )")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
           When balance finds an unexpected close-paren, it should report the
@@ -151,7 +157,7 @@
   )
   (subsection nodes
    (doc "Dump the parsed AST with types and positions for debugging")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
           Walks the AST and prints each node with its type, keyword (if
@@ -170,7 +176,7 @@
   )
   (subsection drift
    (doc "Detect spec drift, code drift, and structural drift")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
           Three layers of drift detection:
@@ -206,7 +212,7 @@
   )
   (subsection fmt-check
    (doc "Dry-run: exit 1 if formatting would change the file")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
           borge fmt --check: parse the file, format it, compare to
@@ -293,7 +299,7 @@
  )
  (section ast-position-tracking
   (doc "Source position tracking on AST nodes for better diagnostics")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
         Currently only annotated comments have start_line/end_line. The
@@ -307,6 +313,47 @@
         support both human-readable and machine-consumable output.
       |))
   )
+ )
+ (section execute
+  (doc "Execute todo comments as LLM-driven feature implementation")
+  (status planned)
+  (details
+   (doc (|
+        Two-step workflow for todo-driven development:
+
+        1. borge execute spec
+           - Find all (* AUTHOR todo (|description|) *) in the project
+           - Build prompts from todo + parent section context
+           - Run pi -p to generate spec updates (mark sections implemented)
+           - Update .borg files with new status values
+
+        2. borge execute code
+           - Read the (now updated) spec
+           - Build prompts from section descriptions + module surfaces
+           - Run pi -p to generate implementation code
+           - Write files, run dune build/go build/etc.
+
+        The agent findings from drift become the input for execute.
+        A resolved finding means: the code exists but the spec is stale
+        → borge execute spec to update. A code drift item means:
+        the spec describes something missing → borge execute code
+        to generate.
+      |))
+  )
+(* roerick todo (|
+Implement borge execute: scan .borg files for annotated todo comments
+(already parsed by sexp/ast). For each todo, resolve its parent section
+to get context. Two subcommands:
+- borge execute spec TODONAME: build prompt from todo + parent section,
+  call pi -p to generate spec updates (status changes, new sections)
+- borge execute code SECTION: read spec for a section, build prompt
+  from section desc + convention rules + existing module surfaces,
+  call pi -p to generate code, write files
+Reuse agent.ml run_pi_print for LLM invocation. Add todo extraction
+module lib/borge/todos.ml that walks AST for Annotated(Typed "todo")
+comments and returns (file, line, author, description, parent_path).
+Reuse spec.ml for status manipulation. Add new bin/cmd/Execute.ml.
+|) *)
  )
  (section future-work
   (doc "Planned improvements and architectural decisions")
@@ -326,4 +373,3 @@
   )
  )
 )
-
