@@ -13,27 +13,25 @@
 - [x] `borge review --agent` — per-file code quality assessment via LLM
 - [x] Update borge.borg sections to `(status implemented)` as each feature lands
 - [x] Update meta.borg metrics section to `(status implemented)` when stats lands
-- [x] `borge balance` + `borge check` pass after all changes
-- [ ] `borge drift` passes with zero findings after all changes
-- [ ] `(section code-documentation)` — doc coverage heuristic needs proper nested-comment handling
-- [ ] `(section format / error-catalog / failure-modes)` — spec docs, no code to implement
-
-## Commands & Conventions
-- Build: `dune build` — Test: `dune runtest` — Clean: `dune clean`
-- Run: `dune exec borge <cmd>` or `dune exec borge -- <cmd> <args>`
-- Pi invocation: `pi -p --no-session --no-tools` (see agent.ml for pattern)
-- All new commands follow the bin/cmd/X.ml + bin/borge_X.ml pattern
-- Library code goes in lib/borge/
+- [x] `borge drift` passes with zero findings after all changes
+- [x] `borge balance` + `borge check` pass on all .borg files
+- [x] cli.borg: add stats, generate-spec, generate-code, execute subsections
+- [x] lib.borg: add stats, generate, review-quality sections
+- [ ] `(section code-documentation)` — doc_coverage needs proper nested-comment handling
+- [ ] `(section format / error-catalog / failure-modes)` — spec docs, not code features
+- [ ] nvim-borge: 23 planned ask-response features (separate project)
 
 ## Verification
 - `dune build` passes ✓
 - `dune runtest` all 22 tests pass ✓
-- `borge balance` + `borge check` pass on all .borg files ✓
+- `borge balance` + `borge check` all 7 .borg files pass ✓
+- `borge drift` 0 findings ✓
+- Completion: 72.7% (96/132)
 
 ## Notes
-- Implemented: stats, generate spec/code, execute, review --agent
-- Stats has doc_coverage field but count_documented is a stub (0) — nested OCaml
-  comments make simple *) scanning unreliable. Need proper lexer-based approach.
-- (section format), (section error-catalog), (section failure-modes) are spec
-  documentation sections — no code to implement, just spec text to write.
-- (section future-work / parser-rewrite) is a future project, not current work.
+- All borge-subcommand features implemented: stats, generate spec/code, execute, review --agent
+- Doc coverage is a stub (count_documented returns 0) — needs real lexer for nested comments
+- (section format), (section error-catalog), (section failure-modes) are spec documentation,
+  not implementable code features. Will remain planned until spec text is written.
+- nvim-borge's 23 planned sections are for the ask-response feature (separate repo)
+- (section future-work / parser-rewrite) is a future project

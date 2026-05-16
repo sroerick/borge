@@ -92,6 +92,22 @@
  (section output-conventions
   (doc "How the CLIs produce output.")
   (status implemented)
+  (subsection stats
+   (doc "Code intelligence metrics dashboard")
+   (status implemented)
+  )
+  (subsection generate-spec
+   (doc "Turn a todo description into a .borg section via LLM")
+   (status implemented)
+  )
+  (subsection generate-code
+   (doc "Implement a planned section from its spec via pi")
+   (status implemented)
+  )
+  (subsection execute
+   (doc "Alias for generate code (spec = todo list)")
+   (status implemented)
+  )
   (subsection exit-codes
    (doc "0 success, 1 issues found, 2 usage error")
    (status implemented)

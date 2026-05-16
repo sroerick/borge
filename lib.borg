@@ -137,6 +137,45 @@
       |))
   )
  )
+ (section stats
+  (doc "Code intelligence metrics: lines, functions, exports per file")
+  (status implemented)
+  (details
+   (doc (|
+        Scans all .ml files and reports: line count, function count,
+        average function length, export count, doc coverage, mli status.
+        Aggregates into project totals. Filters _build, .git, test dirs.
+        Doc coverage is a placeholder (0%) — proper nested-comment parsing
+        needs a real lexer.
+      |))
+  )
+ )
+ (section generate
+  (doc "Generate spec sections and code from specs via LLM")
+  (status implemented)
+  (details
+   (doc (|
+        Two subcommands: generate spec (todo -> .borg section) and
+        generate code (spec -> implementation). Both use pi -p via
+        Agent.run_pi_print. Generate spec takes free-form text and
+        produces a structured (status planned) section. Generate code
+        reads a planned section's spec text and module surfaces, then
+        invokes pi to write the implementation.
+      |))
+  )
+ )
+ (section review-quality
+  (doc "Per-file LLM code quality assessment against spec")
+  (status implemented)
+  (details
+   (doc (|
+        review_quality.ml: for each implemented section, find the
+        corresponding source file, build a prompt comparing spec vs
+        code, call pi -p, and return structured findings. Exposed
+        via borge review --agent.
+      |))
+  )
+ )
  (section project
   (doc "Inline tree building and orphan detection")
   (status implemented)
