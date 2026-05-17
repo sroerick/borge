@@ -15,5 +15,7 @@
            ; DOC COVERAGE
            doc_extract doc_detect doc_coverage
            ; MERGE QUEUE
-           worktree branch lockfile queue_types queue_storage conflict_detect merge_strategies rollback)
+           worktree branch lockfile queue_types queue_storage conflict_detect merge_strategies rollback agent_submit
+           ; FUTURE COMMAND
+           future depends format)
   (libraries borge.lang unix str yojson))
