@@ -4,5 +4,7 @@
   (name borge_lib)
   (public_name borge.lib)
   (modules spec file_utils project check report lint drift dune_parse
-           surface meta fmt nodes generate agent review_quality stats json)
+           surface meta fmt nodes generate agent review_quality stats json_out
+           ui_ast ui_parse ui_validate ui_json
+           db_ast db_parse db_validate db_json)
   (libraries borge.lang unix str yojson))

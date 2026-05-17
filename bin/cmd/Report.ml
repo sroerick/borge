@@ -7,7 +7,7 @@ let pad_right n s =
 let run dir json =
   let result = Report.run dir in
   if json then begin
-    Printf.printf "%s\n" (Yojson.Basic.to_string (Json.report result));
+    Printf.printf "%s\n" (Yojson.Basic.to_string (Json_out.report result));
     exit 0
   end;
   Printf.printf "Borge Report — %d .borg file(s) in '%s'\n\n" (List.length result.files) dir;

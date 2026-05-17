@@ -3,7 +3,7 @@ open Borge_lib
 let run dir json =
   let result = Lint.run dir in
   if json then begin
-    Printf.printf "%s\n" (Yojson.Basic.to_string (Json.lint result));
+    Printf.printf "%s\n" (Yojson.Basic.to_string (Json_out.lint result));
     exit (if result.error_count > 0 then 1 else 0)
   end;
   Printf.printf "Linting .borg files in '%s'...\n\n" dir;

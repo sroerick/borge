@@ -11,7 +11,7 @@ let run path verbose json =
   let text = Bytes.to_string buf in
   let result = check text in
   if json then begin
-    Printf.printf "%s\n" (Yojson.Basic.to_string (Json.balance path result));
+    Printf.printf "%s\n" (Yojson.Basic.to_string (Json_out.balance path result));
     exit (match result with Balanced _ -> 0 | Imbalanced _ -> 1)
   end;
   let ok = report_file ~verbose path in

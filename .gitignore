@@ -1,3 +1,4 @@
 _build/
 *~
 _build_test.ml
+*.cmi\n*.cmx\n*.o

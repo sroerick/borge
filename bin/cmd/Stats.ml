@@ -7,7 +7,7 @@ let pad_right n s =
 let run dir json =
   let result = Stats.run dir in
   if json then begin
-    Printf.printf "%s\n" (Yojson.Basic.to_string (Json.stats result));
+    Printf.printf "%s\n" (Yojson.Basic.to_string (Json_out.stats result));
     exit 0
   end;
   Printf.printf "Borge Stats — %d source file(s) in '%s'\n\n" (List.length result.files) dir;

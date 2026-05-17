@@ -22,7 +22,7 @@ let run dir agent json =
     let _meta = Drift.write_meta_files dir in
     let result = Drift.run dir in
     if json then begin
-      Printf.printf "%s\n" (Yojson.Basic.to_string (Json.drift result));
+      Printf.printf "%s\n" (Yojson.Basic.to_string (Json_out.drift result));
       let total = List.length result.spec_drift + List.length result.code_drift +
                   List.length result.structural_drift in
       exit (if total > 0 then 1 else 0)

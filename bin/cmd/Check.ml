@@ -60,7 +60,7 @@ let run dir worktree json =
   else begin
     let result = Check.run dir in
     if json then begin
-      Printf.printf "%s\n" (Yojson.Basic.to_string (Json.check result));
+      Printf.printf "%s\n" (Yojson.Basic.to_string (Json_out.check result));
       exit 0
     end;
     Printf.printf "Checking .borg files in '%s'...\n\n" dir;
