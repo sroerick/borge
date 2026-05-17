@@ -264,20 +264,26 @@
         Annotated comments with a human author (e.g. (* roerick note ... *))
         are first-class spec content. Agents must never delete them silently.
 
-        borge lint compares the working tree against git HEAD. If a
-        human-authored comment is present in HEAD but missing in the
-        working tree, lint emits a deletion warning. This is not an
-        error - the human may have intended the deletion - but it must
-        be surfaced so no comment disappears without acknowledgment.
+        For planning agents (borge plan): the agent edits .borg files in
+        .borge.lock/working/. At commit time, borge checks whether any
+        human-authored comments were deleted by comparing working/ with
+        original/. If deletions are found, the commit is blocked. The
+        user must either restore the deleted comments or run borge commit
+        --force to override. The diff original/..working/ is shown.
+
+        For implementing/fixing agents (borge make, borge drift --fix):
+        these agents cannot modify .borg files, so this check does not
+        apply. Code file comment integrity may be added in the future.
+
+        borge lint (legacy) compares the working tree against git HEAD.
+        If a human-authored comment is present in HEAD but missing in the
+        working tree, lint emits a deletion warning. This still works for
+        non-agent editing but is redundant when the agent workflow is used.
 
         borge normalize is the human saying "I made changes on purpose."
         It runs borge fmt, then accepts all comment deletions as
         intentional by recording the current state as the new baseline.
         After normalize, lint will not warn about those deletions again.
-
-        The workflow: agent edits files, lint catches any comment
-        deletions, human reviews and either reverts the deletion or
-        runs borge normalize to accept it.
       |))
   )
  )
@@ -401,70 +407,61 @@
   (status planned)
   (details
    (doc (|
-        borge execute opens an interactive pi session with a prompt
-        built from the full project spec. The agent's job: make the
-        code match the spec. Current planned sections are the backlog.
-        Current implemented sections are constraints (don't break them).
+        Agent-driven commands open pi interactively with a prompt
+        built from the full project spec. The agent's job depends on
+        mode: implementer, spec-writer, or observer. The entire spec
+        is always in context — no per-section or per-todo arguments.
 
-        The command has no per-section or per-todo argument. The
-        entire spec is always in context. The agent decides what to
-        work on based on the spec's status and its role.
+        The agent operates in a .borge.lock/ workspace (see lock-
+        mechanism). It edits .borg files in .borge.lock/working/ and
+        code files in the repo. Commit applies working/ back to repo
+        after integrity and balance checks.
 
-        Commands are modes, not operations on individual items:
+        Commands:
 
         borge make
           Role: implementer
-          CAN: write code, write tests, add journal entries
-          CANNOT: modify .borg files directly
+          CAN: write code, write tests, add journal entries (status
+               changes, notes)
+          CANNOT: modify .borg files (reads from working/, like all
+                  agents, but its writes go to code files and journal)
           CANNOT: delete human-authored comments
           INTENT: make code match the spec — planned sections are
                   the backlog, implemented sections are guardrails
 
-        borge drift --agent [--fix]
-          Role: observer (default) or fixer (--fix)
-          CAN (observer): create findings, add comments to spec,
-                          change section status to drifted
-          CANNOT (observer): write code files, modify .borg except
-                             status changes
-          CAN (fixer): all observer permissions + write code files to
-                       fix drift, write tests for fixed code
-          CANNOT (fixer): modify .borg files except status changes
-          INTENT: check alignment. --fix actually repairs drift.
-                  Observer accumulates findings; fixer applies them.
-
         borge plan
           Role: spec-writer
-          CAN: modify .borg files (that's the whole point)
+          CAN: modify .borg files in .borge.lock/working/
           CANNOT: write code files
-          INTENT: edit the spec interactively — add sections, refine
-                  descriptions, reorder priorities. Journal captures
-                  all changes for review before borge commit.
+          CANNOT: delete human-authored comments (integrity check
+                  blocks commit if violated --force to override)
+          INTENT: edit the spec — add sections, refine descriptions,
+                  update priorities, reorder
+
+        borge drift --agent [--fix]
+          Role: observer (default) or fixer (--fix)
+          CAN (observer): create findings as journal entries, add
+                          comments to spec, change section status to
+                          drifted
+          CANNOT (observer): write code files, modify .borg except
+                             via journal/status
+          CAN (fixer): all observer permissions + write code repairs
+                       and tests
+          CANNOT (fixer): modify .borg files except via journal/status
+          INTENT: check alignment. --fix repairs drift.
 
         borge commit
-          Apply journal entries from the current lock, run borge fmt
-          and borge balance, git commit with a descriptive message
-          derived from the journal. Removes the lock. This is called
-          automatically by borge make after a successful pi session
-          unless --no-commit is passed.
+          Apply .borge.lock/working/ back to repo, run fmt and
+          balance, git commit. Called automatically after make/plan
+          unless --no-commit. Blocked by human comment deletion
+          (unless --force).
 
         borge abort
-          Discard the current lock and restore all .borg files from
-          .borge.lock/original/. Code changes are NOT reverted — git
-          handles that. Use git reset if you want to undo everything.
+          Discard .borge.lock/. .borg files in repo are untouched.
+          Code files may have been modified — use git to undo.
 
-        Why no per-section arguments? Because the spec controls scope,
-        not the CLI. The agent reads the whole spec and works on what
-        makes sense. A planning agent adds sections. An implementing
-        agent builds the planned ones. A drift agent checks alignment.
-        The spec is the single source of truth for what to do.
-
-        Why auto-commit? Git is the audit trail. Each agent session
-        produces a commit. The commit message includes the journal
-        summary. If something goes wrong, git revert or git reset.
-        Manual review happens at the PR level, not the commit level.
-        The spec author reviews the agent's work by reading the diff
-        and checking whether spec and code are consistent — not by
-        approving each individual change.
+        Why auto-commit? Git is the audit trail. Each session produces
+        a commit. Revert if wrong. Review at PR level, not per-change.
       |))
   )
  )
@@ -473,56 +470,55 @@
   (status planned)
   (details
    (doc (|
-        Every agent-driven command (make, drift --agent, plan) creates
-        a .borge.lock/ directory. The lock provides:
-
-        1. Snapshot isolation. Relevant .borg files are copied to
-           .borge.lock/original/. The agent sees the snapshot copy,
-           not the working tree files. Code files are NOT copied —
-           the agent reads those directly from the working tree.
-
-        2. Role enforcement. .borge.lock/role declares the agent's
-           permissions included in the prompt. Rules are prompt-level,
-           not OS-level — the agent is expected to respect its role,
-           and borge validates (via git diff) that it did.
-
-        3. Journal. .borge.lock/journal records .borg changes proposed
-           during the session. Each entry:
-           (journal-entry
-             (type status-change | section-add | comment-update)
-             (file lib.borg)
-             (path section db (subsection db-sql))
-             (value (status implemented))
-             (reason "Module was generated and tests pass"))
-
-        4. Auto-commit (default). When pi exits 0:
-           - apply journal to original files
-           - borge fmt on changed files
-           - borge balance on changed files
-           - if balance passes: git add, git commit, remove lock
-           - commit message derived from journal (agent prompt + summary)
-           - if balance fails: lock stays, user reviews manually
-           - --no-commit to prevent auto-commit (keep lock for review)
-
-        5. Abort. When pi exits non-zero or --no-commit was used:
-           - lock stays
-           - borge abort: restore .borg files from original/
-           - borge commit: apply journal manually
+        Every agent-driven command (make, plan, drift --agent) creates
+        a .borge.lock/ directory. The lock is the agent's workspace.
+        The repo working tree is never modified by the agent directly.
 
         Lock directory layout:
           .borge.lock/
-            original/            # snapshot of all .borg files
+            original/            # snapshot of all .borg files at lock time
+            working/             # writable copy of .borg files for the agent
             role                 # role declaration (text + sexp)
             prompt.md            # prompt sent to pi
-            journal              # proposed .borg changes
+            journal              # agent's proposed .borg changes
             state                # running | completed | failed
-            manifest             # files the agent touched (from git diff)
 
-        Why no per-section locks? Because the spec is scope, not he
-        CLI. A planning agent edits many sections. An implementing agent
-        reads many sections. A drift agent checks all sections.
-        One lock per session. One journal per session. One commit per
-        session. The spec author reviews via git diff.
+        1. Snapshot isolation. On lock creation, all .borg files are
+           copied to .borge.lock/original/. The agent gets a writable
+           copy at .borge.lock/working/. The repo working tree is NOT
+           touched for .borg files during the session.
+
+        2. Work. The agent edits .borg files in working/ and code files
+           in the repo. The pi harness mounts working/ as the effective
+           .borg directory so all reads/writes go through the lock.
+
+        3. Commit. On clean exit:
+           a) Integrity check: compare original/ with working/. If any
+              human-authored annotated comments were deleted, block
+              commit. The diff is shown. User must either fix the
+              deletions or run borge commit --force to override.
+           b) Apply: copy working/ files back to repo working tree.
+           c) Validate: borge fmt on changed files, borge balance.
+           d) Git: git add changed files, git commit with journal summary.
+           e) Clean: remove .borge.lock/.
+
+        4. Integrity check details. A "human-authored annotated comment"
+           is any comment of the form:
+             (* <author> <type> (|...|) *)
+           where <author> is not "agent" or "bot". The check compares
+           each .borg file in original/ against working/ and reports
+           deletions. This check is cheap — it's a diff between two
+           snapshot directories, no git needed.
+
+        5. Code file integrity. For .ml, .go, .c files written directly
+           to the repo, integrity is checked via git: git diff --cached
+           and git diff HEAD against the agent session's original commit.
+           Comment deletion detection for code files is a future feature
+           (currently only .borg files are checked).
+
+        6. Abort. Discard working/ and journal. .borg files in the repo
+           are untouched (they were never modified). Code files may have
+           been modified — use git checkout or git reset to undo.
       |))
   )
  )
