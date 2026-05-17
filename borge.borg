@@ -383,13 +383,15 @@
    )
   )
   (subsection drift-agent-command
-   (doc "Check alignment between spec and code")
+   (doc "Check and optionally fix alignment between spec and code")
    (status planned)
    (details
     (doc (|
          borge drift --agent: open pi with the observer role. The
-         agent reads spec and code, reports findings. --fix allows
-         journal suggestions for structural fixes.
+         agent reads spec and code, reports findings, marks drifted
+         sections. No code changes. --fix adds the ability to
+         write code repairs and tests. Neither mode may modify
+         .borg files except section statuses.
        |))
    )
   )
@@ -420,12 +422,15 @@
 
         borge drift --agent [--fix]
           Role: observer (default) or fixer (--fix)
-          CAN (observer): create findings, add comments to spec
-          CAN (fixer): create journal entries suggesting structural
-                       fixes (e.g., "lib.borg is missing subsection X")
-          CANNOT: write code files
-          INTENT: check whether code matches spec. --fix adds the
-                  ability to suggest .borg changes via journal.
+          CAN (observer): create findings, add comments to spec,
+                          change section status to drifted
+          CANNOT (observer): write code files, modify .borg except
+                             status changes
+          CAN (fixer): all observer permissions + write code files to
+                       fix drift, write tests for fixed code
+          CANNOT (fixer): modify .borg files except status changes
+          INTENT: check alignment. --fix actually repairs drift.
+                  Observer accumulates findings; fixer applies them.
 
         borge plan
           Role: spec-writer
