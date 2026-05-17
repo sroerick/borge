@@ -89,6 +89,26 @@
    (status implemented)
   )
  )
+ (section agent-commands
+  (doc "Agent-driven commands that launch pi interactively")
+  (status implemented)
+  (subsection make
+   (doc "Implement planned sections interactively with pi")
+   (status implemented)
+  )
+  (subsection plan
+   (doc "Edit the spec interactively with pi")
+   (status implemented)
+  )
+  (subsection commit
+   (doc "Finalize the current agent session")
+   (status implemented)
+  )
+  (subsection abort
+   (doc "Abort session and restore .borg files from snapshot")
+   (status implemented)
+  )
+ )
  (section output-conventions
   (doc "How the CLIs produce output.")
   (status implemented)

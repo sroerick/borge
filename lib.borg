@@ -297,6 +297,46 @@
    )
   )
  )
+ (section lock
+  (doc "Transactional isolation for agent sessions. lib/lock/")
+  (status implemented)
+  (subsection lock-core
+   (doc "Lock directory creation, state management, commit/abort")
+   (status implemented)
+   (details
+    (doc (|
+         Lock.create: snapshot all .borg files to .borge.lock/original/
+         Lock.set_state/get_state: running | completed | failed
+         Lock.check_integrity: detect deleted human-authored comments
+         Lock.restore: abort — restore .borg files from snapshot
+         Lock.teardown: commit or abort with cleanup
+         Lock.remove: delete lock directory after commit/abort
+       |))
+   )
+  )
+  (subsection lock-prompt
+   (doc "Prompt builder for agent sessions")
+   (status implemented)
+   (details
+    (doc (|
+         Role definitions: Implementer, Spec_writer, Observer, Fixer.
+         Assembles prompts from spec files, module surfaces, and
+         role declarations. Does not depend on Borge_lib internals
+         to avoid cyclic deps.
+       |))
+   )
+  )
+  (subsection lock-pi-launch
+   (doc "Launch pi interactively with structured prompt")
+   (status implemented)
+   (details
+    (doc (|
+         Simple wrapper: pi @prompt_path. Direct invocation —
+         pi is interactive so backgrounding loses status.
+       |))
+   )
+  )
+ )
  (section db
   (doc "DB DSL types and parsing. lib/db/")
   (status implemented)

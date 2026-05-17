@@ -366,7 +366,7 @@
   )
   (subsection make-command
    (doc "Make code match spec — implement planned sections")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
          borge make: open pi with the implementer role. The agent
@@ -379,7 +379,7 @@
   )
   (subsection plan-command
    (doc "Edit the spec — add sections, refine descriptions")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
          borge plan: open pi with the spec-writer role. The agent
@@ -390,7 +390,7 @@
   )
   (subsection drift-agent-command
    (doc "Check and optionally fix alignment between spec and code")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
          borge drift --agent: open pi with the observer role. The
@@ -403,7 +403,7 @@
   )
   (subsection context-management
    (doc "Minimal context to respect token limits")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
          The prompt sent to pi is intentionally minimal to avoid
@@ -444,7 +444,7 @@
  )
  (section execute
   (doc "Make code match spec — interactive agent mode with role-gated behavior")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
         Agent-driven commands open pi interactively with a minimal
@@ -507,7 +507,7 @@
  )
  (section lock-mechanism
   (doc "Transactional isolation for agent sessions — metadata, not workspace")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
         Every agent-driven command (make, plan, drift --agent) creates
