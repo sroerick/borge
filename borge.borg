@@ -401,16 +401,56 @@
        |))
    )
   )
+  (subsection context-management
+   (doc "Minimal context to respect token limits")
+   (status planned)
+   (details
+    (doc (|
+         The prompt sent to pi is intentionally minimal to avoid
+         exhausting the agent's context window (~20K tokens consumed
+         in seconds with full spec).
+
+         Context structure by role:
+
+         borge make (implementer)
+           - Planned sections: name + one-line description (backlog)
+           - Implemented sections: names only as guardrails
+           - Existing module names: flat list
+           - Max ~500 tokens total
+
+         borge plan (spec-writer)
+           - All section names with statuses
+           - Section nesting structure
+           - No full doc bodies in prompt (agent explores files)
+           - Max ~800 tokens total
+
+         borge drift --agent (observer/fixer)
+           - Planned vs implemented diff
+           - Changed module names since last commit
+           - Optional: specific section under investigation
+           - Max ~600 tokens total
+
+         What is NOT loaded:
+         - Full .borg file contents (only summaries)
+         - Module export lists (just names)
+         - Convention rule details (just convention name)
+         - Historical commits or diffs
+
+         The agent uses `read` tool to explore files on demand
+         rather than having everything pre-loaded.
+       |))
+   )
+  )
  )
  (section execute
   (doc "Make code match spec — interactive agent mode with role-gated behavior")
   (status planned)
   (details
    (doc (|
-        Agent-driven commands open pi interactively with a prompt
-        built from the full project spec. The agent's job depends on
-        mode: implementer, spec-writer, or observer. The entire spec
-        is always in context — no per-section or per-todo arguments.
+        Agent-driven commands open pi interactively with a minimal
+        prompt built from summarized spec data. The agent's job depends
+        on mode: implementer, spec-writer, or observer. Context is
+        intentionally limited (see context-management subsection).
 
         The agent operates in a .borge.lock/ workspace (see lock-
         mechanism). It edits .borg files in .borge.lock/working/ and
