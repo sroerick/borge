@@ -13,3 +13,6 @@
 (test
   (name test_meta)
   (libraries borge.lib alcotest))
+(test
+  (name test_ui_db)
+  (libraries borge.lang borge.lib alcotest))
