@@ -380,15 +380,164 @@
   )
  )
  (section execute
-  (doc "Execute planned sections by delegating to generate")
+  (doc "Execute planned sections with transactional isolation and role-gated agent behavior")
   (status implemented)
   (details
    (doc (|
-        borge execute is an alias for borge generate code — it reads
-        a planned section and generates the implementation. Exists
-        for symmetry with the "spec is the todo list" paradigm:
-        planned sections are unimplemented tasks, and "execute" means
-        "implement this task".
+        borge execute SECTION opens an interactive pi session with
+        a structured prompt built from the spec, convention rules, and
+        existing code context. The section is locked during execution so
+        the agent cannot modify its own spec. Changes are auto-committed
+        when pi exits cleanly.
+
+        Workflow:
+          1. Lock: borge creates .borge.lock/SECTION with a snapshot of
+             relevant .borg files. The lock includes a role declaration:
+             what the agent CAN and CANNOT do.
+
+          2. Launch: borge builds a prompt, writes it to
+             .borge.lock/prompt.md, and opens pi. Terminal multiplexer
+             is auto-detected (tmux, ghostty). The prompt includes:
+             - the spec section text
+             - convention rules for the project's language/framework
+             - existing module surfaces for context
+             - the role declaration (below)
+
+          3. Work: the agent operates within its declared role. Spec
+             files outside its scope are read-only. Journal entries
+             capture status changes, new subsections, and notes.
+
+          4. Unlock: when pi exits with status 0:
+             - journal entries are applied to the original .borg files
+             - borge fmt is run on changed files
+             - borge balance is run to validate structure
+             - if balance passes, lock is removed and git shows the diff
+             - if balance fails, lock stays, user reviews manually
+             - on non-zero exit, lock stays for manual cleanup
+
+        Role system: each command declares what the agent may do.
+        Restrictions are enforced by file permissions and by prompt
+        instructions, not by trust alone. Roles are prompt-visible to
+        ensure the LLM respects them.
+
+        Roles by command:
+
+        borge execute SECTION --role implementer
+          CAN: write code files (.ml, .go, .c, etc.)
+          CAN: write test files
+          CAN: add journal entry to update section (status implemented)
+          CANNOT: modify any .borg file directly
+          CANNOT: modify sections outside the target scope
+          CANNOT: delete human-authored comments (*.borg.*, *.ml)
+          CANNOT: run git commands (commit, push)
+          CANNOT: run project-external commands
+          INTENT: implement one planned section end-to-end
+
+        borge generate spec TODO
+          CAN: append a new section to a .borg file
+          CANNOT: modify existing sections
+          CANNOT: write code files
+          INTENT: turn free-form requirements into structured spec
+
+        borge generate ui PAGE
+          CAN: generate frontend code per convention
+          CAN: add journal entry noting what target was produced
+          CANNOT: modify any .borg file directly
+          CANNOT: modify backend code
+          INTENT: one-way code generation from stable spec
+
+        borge generate db TABLE
+          CAN: generate SQL/db code per convention
+          CAN: add journal entry noting what migration was produced
+          CANNOT: modify any .borg file directly
+          CANNOT: modify application code
+          INTENT: schema migration from stable spec
+
+        borge drift --agent
+          CAN: create drift findings as journal entries
+          CAN: create comments on existing spec sections
+          CANNOT: write code files
+          CANNOT: modify .borg files except via journal
+          INTENT: observational only, never acting
+
+        borge review FILE
+          CAN: create review findings as journal entries
+          CAN: add comments to spec sections
+          CANNOT: write code files
+          CANNOT: modify .borg files except via journal
+          INTENT: quality assessment, never acting
+
+        The goal: finite context, fewer tokens, less drift. An agent
+        with a narrow role cannot "run amok" across the entire codebase.
+        Specs are source of truth precisely because they gate what agents
+        may do at each phase.
+      |))
+  )
+ )
+ (section lock-mechanism
+  (doc "Transactional isolation for agent sessions")
+  (status planned)
+  (details
+   (doc (|
+        Every agent-driven command (execute, drift --agent, review)
+        creates a .borge.lock/ directory. The lock provides:
+
+        1. Snapshot isolation. Relevant .borg files are copied to
+           .borge.lock/original/ before the agent runs. This ensures
+           the agent always sees a consistent view even if other
+           processes modify files concurrently.
+
+        2. Role enforcement. A .borge.lock/role file declares:
+           (role implementer
+             (can write-code) (can write-tests)
+             (can journal status-change)
+             (cannot modify-borg)
+             (cannot delete-comments)
+             (cannot run-git))
+           The role is included in the prompt. The pi harness reads
+           it to know which tools to expose.
+
+        3. Journal. A .borge.lock/journal file records all changes
+           the agent wants to make to .borg files. Each entry is:
+           (journal-entry
+             (type status-change | section-add | comment-update)
+             (file lib.borg)
+             (path section db (subsection db-sql))
+             (value (status implemented))
+             (reason "Module was generated and tests pass"))
+           Entries are NOT applied until `borge commit` or auto-
+           unlock. The agent never writes .borg files directly.
+
+        4. Auto-commit. When pi exits with status 0 and the role
+           allows commit-on-success:
+           - apply all journal entries to original files
+           - borge fmt on changed files
+           - borge balance on changed files
+           - if balance passes: clean lock dir, git diff shows changes
+           - if balance fails: lock stays, requires manual borge commit
+
+        5. Discard on failure. When pi exits non-zero:
+           - lock directory stays intact
+           - user can debug by reading .borge.lock/prompt.md
+           - user runs `borge abort SECTION` to restore from original/
+           - user runs `borge commit SECTION` to apply partial journal
+
+        Lock directory layout:
+          .borge.lock/
+            SECTION_NAME/          # one lock per active command
+              role                 # role declaration (text + sexp)
+              prompt.md            # the prompt sent to pi
+              journal              # agent's proposed .borg changes
+              original/            # snapshot of relevant .borg files
+              manifest             # list of files the agent may touch
+              state                # running | completed | failed
+
+        Why not separate borge commit? Because the agent session is
+        interactive. The human is watching pi work. When pi exits,
+        the human is right there. Auto-commit is simpler and reduces
+        the chance of the human forgetting to commit or abandoning a
+        lock. The transition from "pi done" to "changes applied" is
+        a single event that the human immediately verifies via git diff.
       |))
   )
  )
