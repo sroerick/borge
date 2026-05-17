@@ -15,5 +15,5 @@
            ; DOC COVERAGE
            doc_extract doc_detect doc_coverage
            ; MERGE QUEUE
-           worktree branch lockfile)
+           worktree branch lockfile queue_types queue_storage conflict_detect)
   (libraries borge.lang unix str yojson))
