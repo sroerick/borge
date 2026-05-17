@@ -13,7 +13,7 @@
     UI is a spec — it describes *what* the interface should look like,
     not *how* to render it.
 
-    The three core principles:
+    The five core principles:
 
     1. Describe intent, not pixels. Sizing defaults to fractional
        parts (flex portions), not absolute units. You say "sidebar
@@ -29,11 +29,76 @@
        write shared style once, then describe only what changes at
        different sizes.
 
+    4. Theme variables as the foundation. Colors, spacing, font sizes,
+       and corner radii are defined once as theme variables and
+       referenced everywhere. Change the theme, change the whole app.
+       No hardcoded values scattered across elements.
+
+    5. Components, layouts, and pages are separate concerns.
+       Components are small reusable pieces (buttons, cards, inputs).
+       Layouts are page-level compositions with slots (nav bar,
+       sidebar, content area). Pages fill layout slots with
+       specific content. You don't use a layout the same way you
+       use a component — they're different granularity.
+
     Interactivity is a capability declaration, not a handler binding.
     (interactive click) means "this element is clickable" — the
     target generator decides how to implement that. The spec does
     not couple to any host language's function naming or event system.
   |))
+ )
+
+ (section theme
+  (doc "Theme variables — shared values referenced by all UI elements")
+  (status planned)
+  (details
+   (doc (|
+     The (theme ...) form defines named variables for colors, spacing,
+     font sizes, and corner radii. Every UI element references these
+     variables instead of hardcoding values. Change the theme, change
+     the whole app.
+
+     (theme
+       (color bg-primary "#e0d7d2")
+       (color bg-surface "#f5f0eb")
+       (color text-primary "#1a1a1a")
+       (color text-muted "#666666")
+       (color accent "#a8421c")
+       (spacing xs 4)
+       (spacing sm 8)
+       (spacing md 16)
+       (spacing lg 24)
+       (spacing xl 32)
+       (font-size sm 12)
+       (font-size base 14)
+       (font-size lg 18)
+       (font-size xl 24)
+       (radius sm 4)
+       (radius md 8)
+       (radius lg 12))
+
+     Referencing theme variables in elements:
+
+       (bg (color bg-primary))
+       (padding (spacing md))
+       (text "Hello" (size (font-size lg)))
+       (corner (radius md))
+
+     The generator resolves variables to literal values per target.
+     CSS: var(--bg-primary) or inline. Clay: hex literal.
+     React: theme context or CSS variable.
+
+     A theme is optional. Elements can use literal values directly.
+     But for any app larger than a prototype, theme variables are
+     strongly recommended — they're the single source of truth
+     for visual identity.
+
+     Theme variables are flat: (color name value), (spacing name value),
+     (font-size name value), (radius name value). No nesting, no
+     grouping beyond the category prefix. This keeps the theme
+     simple to read and simple to generate from.
+   |))
+  )
  )
 
  (section ui-form
@@ -49,14 +114,14 @@
        (layout vertical)
        (width 1)
        (height grow)
-       (padding 16)
-       (gap 16)
-       (bg "#e0d7d2")
+       (padding (spacing md))
+       (gap (spacing sm))
+       (bg (color bg-primary))
        (children
          (ui header ...)))
 
      Name is optional for anonymous elements:
-       (ui (text "Status") (size 14))
+       (ui (text "Status") (size (font-size sm)))
 
      Properties can appear in any order. Children are declared
      explicitly with (children ...). This keeps the structure
@@ -76,9 +141,6 @@
 
      (layout horizontal)   — left to right
      (layout vertical)     — top to bottom
-
-     Short form: (layout horizontal) and (layout vertical) set
-     direction implicitly.
    |))
   )
 
@@ -138,7 +200,8 @@
 
       Padding and gap values accept the same unit types as sizing:
       bare numbers are px (since fractional padding is rare),
-      or use (rem 1), (pct 5), etc.
+      or use (rem 1), (pct 5), etc. Theme variable references
+      also work: (padding (spacing md)), (gap (spacing sm)).
     |))
    )
   )
@@ -156,9 +219,10 @@
      (corner N)            — uniform corner radius in px
      (corner (top-left N) (top-right N) (bottom-left N) (bottom-right N))
 
-     Colors: hex strings like "#a8421c" or named like "red",
-     "white", "transparent". The generator translates to the
-     target's color format.
+     Colors: hex strings like "#a8421c", named like "red"/"white"/
+     "transparent", or theme variable references like
+     (color bg-primary). The generator translates to the target's
+     color format.
 
      For opacity: "#a8421c99" (hex with alpha) or
      (bg "#a8421c" (alpha 0.6)).
@@ -178,7 +242,8 @@
      (placeholder STRING)    — placeholder text for inputs
 
      Text inherits color from parent unless overridden.
-     Font size in px by default, or (size (rem 1.5)).
+     Font size in px by default, or (size (rem 1.5)),
+     or (size (font-size base)) for theme variable.
      (bold) and (italic) are boolean flags.
 
      Text wrapping: (wrap words) is default — text wraps at
@@ -212,9 +277,10 @@
        (ui save-button
          (interactive click)
          (text "Save")
-         (bg "#a8421c")
-         (padding (top 8) (right 16) (bottom 8) (left 16))
-         (corner 6))
+         (bg (color accent))
+         (padding (top (spacing sm)) (right (spacing md))
+                  (bottom (spacing sm)) (left (spacing md)))
+         (corner (radius sm)))
    |))
   )
  )
@@ -227,19 +293,6 @@
      (scroll vertical)    — scroll content vertically
      (scroll horizontal)  — scroll content horizontally
      (scroll both)        — scroll in both directions
-
-     Scroll is a layout concern, not an interaction. The spec
-     declares that a container scrolls; the generator implements
-     clipping and scroll behavior per target.
-
-     Example:
-       (ui content
-         (layout vertical)
-         (width 3)
-         (height grow)
-         (scroll vertical)
-         (bg "#e0d7d2")
-         (children ...))
    |))
   )
  )
@@ -256,13 +309,6 @@
      Floating elements don't affect their parent's size or
      sibling positioning. They stack on top. Use for tooltips,
      modals, dropdowns.
-
-     Example:
-       (ui dropdown
-         (float (attach parent) (offset (top 4)))
-         (bg "#333")
-         (corner 6)
-         (children ...))
    |))
   )
  )
@@ -290,9 +336,9 @@
      the base properties — you only specify what changes.
 
      (ui sidebar
-       (padding 16)
-       (gap 16)
-       (bg "#e0d7d2")
+       (padding (spacing md))
+       (gap (spacing sm))
+       (bg (color bg-primary))
        (children ...)
 
        (variant wide
@@ -333,17 +379,17 @@
 
      (ui card
        (layout vertical)
-       (padding 16)
-       (bg "#ffffff")
-       (corner 12)
+       (padding (spacing md))
+       (bg (color bg-surface))
+       (corner (radius lg))
        (children
-         (text "Card Title" (size 18) (bold))
+         (text "Card Title" (size (font-size lg)) (bold))
          (text "Card body text goes here." (size 14))
          (ui action-row
            (layout horizontal)
-           (gap 8)
+           (gap (spacing sm))
            (children
-             (ui btn (interactive click) (text "OK") (bg "#4a9"))
+             (ui btn (interactive click) (text "OK") (bg (color accent)))
              (ui btn (interactive click) (text "Cancel") (bg "#999"))))))
 
      Children are ordered: the order in (children ...) is the
@@ -354,110 +400,427 @@
   )
  )
 
- (section full-example
-  (doc "A complete example: text editor page layout")
+ (section components
+  (doc "Reusable UI pieces — defined once, used anywhere")
   (status planned)
   (details
    (doc (|
-     (section text-editor-ui
-       (doc "Main page layout for the text editor")
-       (status planned)
-       (ui editor-page
+     A component is a reusable UI element defined with the
+     (component name ...) form. Components encapsulate structure
+     and style. They're the small pieces — buttons, cards,
+     form fields — that get composed into layouts and pages.
+
+     Components have slots: places where content goes when
+     the component is used.
+
+     Defining a component:
+
+       (component button
+         (interactive click)
+         (padding (top (spacing sm)) (right (spacing md))
+                  (bottom (spacing sm)) (left (spacing md)))
+         (corner (radius sm))
+         (align-x center)
+         (align-y center)
+         (variant primary
+           (bg (color accent)) (color "#ffffff"))
+         (variant secondary
+           (bg (color bg-surface)) (color (color text-primary))))
+
+       (component card
          (layout vertical)
-         (width full)
-         (height full)
-         (bg "#fafaff")
-         (padding 16)
-         (gap 16)
+         (padding (spacing md))
+         (bg (color bg-surface))
+         (corner (radius lg))
+         (gap (spacing sm))
+         (children ..content))
+         ;; ^^ default slot: children go here when used
+
+     Using a component with (use ...):
+
+       (ui save-btn (use button (variant primary)) (text "Save"))
+       (ui info-card (use card)
          (children
+           (text "Welcome" (size (font-size lg)))
+           (text "Details go here." (size 14))))
 
-           (ui header
-             (layout horizontal)
-             (width full)
-             (height auto)
-             (align-y center)
-             (gap 8)
-             (padding (top 4) (right 8) (bottom 4) (left 8))
-             (bg "#e0d7d2")
-             (corner 8)
-             (children
-               (ui btn (interactive click) (text "File") (padding 8) (corner 4))
-               (ui btn (interactive click) (text "Edit") (padding 8) (corner 4))
-               (ui spacer (width grow) (height 1))
-               (ui btn (interactive click) (text "Settings") (padding 8) (corner 4))))
+     The (use component-name) form instantiates a component.
+     Properties after (use ...) override component defaults.
+     (variant name) selects which variant to apply.
 
-           (ui lower
-             (layout horizontal)
-             (width full)
-             (height grow)
-             (gap 16)
+     Slots:
+       ..content  — the default slot. Children of the using
+                    element fill this slot.
+       (slot name) — named slot. Filled with (fill name ...).
 
-             (variant wide
-               (layout horizontal))
+     Named slots let a component define multiple insertion points.
+     For example, a card with a header slot and a body slot:
 
-             (variant narrow
-               (layout vertical))
+       (component card-with-header
+         (layout vertical)
+         (padding (spacing md))
+         (bg (color bg-surface))
+         (corner (radius lg))
+         (children
+           (slot header)
+           (ui divider (height 1) (bg "#ddd"))
+           ..content))
 
-             (children
+     Filling named slots when using the component:
 
-               (ui sidebar
-                 (layout vertical)
-                 (width 1)
-                 (height grow)
-                 (padding 16)
-                 (gap 8)
-                 (bg "#e0d7d2")
-                 (corner 8)
+       (ui my-card (use card-with-header)
+         (fill header
+           (text "Card Title" (size (font-size lg)) (bold)))
+         (children
+           (text "Body text goes here.")))
 
-                 (variant wide
+     Components are NOT layouts. A component is a small reusable
+     piece. A layout is a page-level composition. You don't drop
+     a layout into a card, and you don't slot a button into a
+     page shell. Different granularity, different intent.
+   |))
+  )
+ )
+
+ (section layouts
+  (doc "Page-level compositions with slots — structural templates for pages")
+  (status planned)
+  (details
+   (doc (|
+     A layout is a structural template that defines the shape of a
+     page. It uses slots where page-specific content goes. Layouts
+     are composed from components but are conceptually different:
+     they're structural, not decorative.
+
+     Defining a layout:
+
+       (layout app-shell
+         (ui root
+           (layout vertical)
+           (width full)
+           (height full)
+           (bg (color bg-primary))
+           (children
+             (ui nav-bar
+               (layout horizontal)
+               (width full)
+               (height auto)
+               (bg (color accent))
+               (padding (spacing sm))
+               (align-y center)
+               (gap (spacing md))
+               (children
+                 (text "App Name" (size (font-size lg)) (color "#ffffff"))
+                 (ui spacer (width grow) (height 1))
+                 (slot nav-content)))
+             (ui body
+               (layout horizontal)
+               (width full)
+               (height grow)
+               (children
+                 ..content)))))
+
+     (slot name) declares a named slot. (fill name ...) fills it.
+     ..content is the default slot — children of the using page
+     or filling element go here.
+
+     Layouts often use components inside them:
+
+       (layout sidebar-shell
+         (ui root
+           (layout vertical)
+           (width full)
+           (height full)
+           (children
+             (ui top-bar
+               (layout horizontal)
+               (width full)
+               (height auto)
+               (padding (spacing sm))
+               (bg (color accent))
+               (children ..nav))
+             (ui body
+               (layout horizontal)
+               (width full)
+               (height grow)
+               (gap (spacing md))
+               (children
+                 (ui sidebar
+                   (layout vertical)
                    (width 1)
-                   (height grow))
+                   (height grow)
+                   (bg (color bg-surface))
+                   (corner (radius md))
+                   (padding (spacing md))
+                   (children ..sidebar))
+                 (ui main
+                   (layout vertical)
+                   (width 3)
+                   (height grow)
+                   (scroll vertical)
+                   (children ..content)))))))
 
-                 (variant narrow
-                   (width full)
-                   (height auto))
+     Layouts are NOT components. A layout defines page structure.
+     A component defines a reusable piece. You compose layouts
+     from components, but you don't compose components from
+     layouts. They're separate because they serve different
+     purposes and are used at different scales.
+   |))
+  )
+ )
 
-                 (children
-                   (ui doc-title
-                     (interactive click)
-                     (text "Chapter 1")
-                     (padding 8) (corner 4)
-                     (bg "#c8a050"))
-                   (ui doc-title
-                     (interactive click)
-                     (text "Chapter 2")
-                     (padding 8) (corner 4))
-                   (ui doc-title
-                     (interactive click)
-                     (text "Chapter 3")
-                     (padding 8) (corner 4))))
+ (section pages
+  (doc "Concrete pages — fill layout slots with specific content")
+  (status planned)
+  (details
+   (doc (|
+     A page is a concrete screen in the application. It picks a
+     layout and fills its slots with specific content.
 
-               (ui content
-                 (layout vertical)
-                 (width 3)
-                 (height grow)
-                 (padding 16)
-                 (gap 12)
-                 (bg "#e0d7d2")
-                 (corner 8)
-                 (scroll vertical)
+     (page home
+       (use-layout app-shell)
+       (fill nav-content
+         (ui nav-link (interactive click) (text "Home"))
+         (ui nav-link (interactive click) (text "About")))
+       (fill content
+         (ui hero
+           (layout vertical)
+           (padding (spacing xl))
+           (align-x center)
+           (gap (spacing lg))
+           (children
+             (text "Welcome" (size (font-size xl)))
+             (text "Build something great." (size (font-size base)))))))
 
-                 (variant wide
-                   (width 3))
+     (page dashboard
+       (use-layout sidebar-shell)
+       (fill nav
+         (use button (variant secondary)) (text "Dashboard")
+         (use button (variant secondary)) (text "Settings"))
+       (fill sidebar
+         (use card) (children (text "Nav A"))
+         (use card) (children (text "Nav B")))
+       (fill content
+         (use card) (children (text "Widget 1"))
+         (use card) (children (text "Widget 2"))))
 
-                 (variant narrow
-                   (width full))
+     (use-layout name) selects which layout the page uses.
+     (fill slot-name ...) provides content for a named slot.
+     Unfilled slots are empty — the generator produces
+     an empty container in their place.
 
-                 (children
-                   (text "Chapter 1: The Beginning" (size 24) (bold))
-                   (text (|
-                     It was a dark and stormy night. The wind howled
-                     through the narrow streets, rattling shutters and
-                     sending stray papers spiraling into the gutter.
-                     Something was coming — you could feel it in the
-                     charge of the air, in the way the streetlights
-                     flickered and died one by one.
-                   |) (size 14)))))))))
+     Pages can also override layout properties for per-page
+     customization. For example, a page might change the
+     nav bar background:
+
+       (page special
+         (use-layout app-shell
+           (override nav-bar (bg "#333")))
+         ...)
+
+     But prefer keeping layout overrides minimal. If multiple
+     pages need the same override, make a new layout variant
+     instead.
+   |))
+  )
+ )
+
+ (section routes
+  (doc "URL-to-page mapping for multi-page applications")
+  (status planned)
+  (details
+   (doc (|
+     The (routes ...) form maps URLs to pages. The generator
+     uses this to produce the routing layer per target.
+
+     (routes
+       (route "/" home)
+       (route "/dashboard" dashboard)
+       (route "/settings" settings))
+
+     Target-specific generation:
+       - OCaml/Dream: route handler functions
+       - React: router config (React Router, Next.js)
+       - Clay: page switch function
+
+     Routes are flat: no nesting, no parameters (yet). Each route
+     maps a path string to a page name. The page must be defined
+     in the same spec.
+
+     Future: route parameters (/user/:id), nested routes,
+     route guards (auth), and redirects.
+   |))
+  )
+ )
+
+ (section app-structure
+  (doc "How a complete multi-page UI spec is organized")
+  (status planned)
+  (details
+   (doc (|
+     A complete application spec has one top-level (ui app-name ...)
+     form containing theme, components, layouts, pages, and routes:
+
+     (ui my-app
+       (theme
+         (color bg-primary "#e0d7d2")
+         (color bg-surface "#f5f0eb")
+         (color text-primary "#1a1a1a")
+         (color accent "#a8421c")
+         (spacing sm 8) (spacing md 16) (spacing lg 24)
+         (font-size sm 12) (font-size base 14) (font-size lg 18)
+         (radius sm 4) (radius md 8))
+
+       (component button
+         (interactive click)
+         (padding (top (spacing sm)) (right (spacing md))
+                  (bottom (spacing sm)) (left (spacing md)))
+         (corner (radius sm))
+         (variant primary (bg (color accent)) (color "#ffffff"))
+         (variant secondary (bg (color bg-surface)) (color (color text-primary))))
+
+       (component card
+         (layout vertical)
+         (padding (spacing md))
+         (bg (color bg-surface))
+         (corner (radius lg))
+         (gap (spacing sm))
+         (children ..content))
+
+       (layout app-shell
+         ...)
+
+       (layout sidebar-shell
+         ...)
+
+       (page home (use-layout app-shell) ...)
+       (page dashboard (use-layout sidebar-shell) ...)
+
+       (routes
+         (route "/" home)
+         (route "/dashboard" dashboard)))
+
+     The order matters: theme first (everything references it),
+     then components (layouts use them), then layouts (pages use
+     them), then pages (routes reference them), then routes.
+
+     This is the full stack. A small spec might only have
+     (ui name ...) with inline elements and no components or
+     layouts. A large app has all five layers. The DSL scales
+     from prototype to production.
+   |))
+  )
+ )
+
+ (section full-example
+  (doc "A complete example: multi-page text editor")
+  (status planned)
+  (details
+   (doc (|
+     (ui text-editor
+       (theme
+         (color bg-primary "#e0d7d2")
+         (color bg-surface "#f5f0eb")
+         (color bg-dark "#2a2520")
+         (color text-primary "#1a1a1a")
+         (color text-muted "#888888")
+         (color accent "#a8421c")
+         (spacing xs 4) (spacing sm 8) (spacing md 16)
+         (spacing lg 24) (spacing xl 32)
+         (font-size sm 12) (font-size base 14)
+         (font-size lg 18) (font-size xl 24)
+         (radius sm 4) (radius md 8) (radius lg 12))
+
+       (component btn
+         (interactive click)
+         (padding (top (spacing sm)) (right (spacing md))
+                  (bottom (spacing sm)) (left (spacing md)))
+         (corner (radius sm))
+         (bg (color bg-surface))
+         (color (color text-primary))
+         (children ..content))
+
+       (component doc-item
+         (interactive click)
+         (padding (spacing sm))
+         (corner (radius sm))
+         (children ..content)
+         (variant active
+           (bg (color accent))
+           (color "#ffffff"))
+         (variant inactive
+           (bg (color bg-surface))
+           (color (color text-muted))))
+
+       (layout editor-shell
+         (ui root
+           (layout vertical)
+           (width full)
+           (height full)
+           (bg (color bg-primary))
+           (children
+             (ui header
+               (layout horizontal)
+               (width full)
+               (height auto)
+               (padding (spacing sm))
+               (gap (spacing md))
+               (align-y center)
+               (bg (color bg-dark))
+               (children
+                 ..header-content))
+             (ui body
+               (layout horizontal)
+               (width full)
+               (height grow)
+               (gap (spacing md))
+               (padding (spacing md))
+               (variant narrow (layout vertical))
+               (children
+                 (ui sidebar
+                   (layout vertical)
+                   (width 1)
+                   (height grow)
+                   (bg (color bg-surface))
+                   (corner (radius md))
+                   (padding (spacing md))
+                   (gap (spacing sm))
+                   (variant narrow (width full) (height auto))
+                   (children ..sidebar))
+                 (ui content
+                   (layout vertical)
+                   (width 3)
+                   (height grow)
+                   (bg (color bg-surface))
+                   (corner (radius md))
+                   (padding (spacing md))
+                   (scroll vertical)
+                   (variant narrow (width full))
+                   (children ..content)))))))
+
+       (page editor
+         (use-layout editor-shell)
+         (fill header-content
+           (ui btn-group (layout horizontal) (gap (spacing sm))
+             (children
+               (ui file-btn (use btn) (text "File"))
+               (ui edit-btn (use btn) (text "Edit"))
+               (ui spacer (width grow) (height 1))
+               (ui settings-btn (use btn) (text "Settings")))))
+         (fill sidebar
+           (ui title (use doc-item (variant active)) (text "Chapter 1"))
+           (ui title (use doc-item (variant inactive)) (text "Chapter 2"))
+           (ui title (use doc-item (variant inactive)) (text "Chapter 3")))
+         (fill content
+           (text "Chapter 1: The Beginning" (size (font-size xl)) (bold))
+           (text (|
+             It was a dark and stormy night. The wind howled
+             through the narrow streets, rattling shutters and
+             sending stray papers spiraling into the gutter.
+           |) (size (font-size base)))))
+
+       (routes
+         (route "/" editor)))
    |))
   )
  )
@@ -473,9 +836,13 @@
      ocaml-dream target:
        (layout vertical)  → div with flex-direction: column
        (width 1)         → flex: 1
-       (bg "#e0d7d2")    → background-color: #e0d7d2
+       (bg (color bg-primary)) → background-color: var(--bg-primary)
        (interactive click) → htmx attribute or onclick
        (variant wide)    → @media (min-width: 768px) { ... }
+       (component ...)   → shared template include or sub-view
+       (layout ...)      → layout template that pages extend
+       (page ...)        → route handler that renders filled layout
+       (routes ...)      → Dream router registration
 
      clay-c target:
        (layout vertical)  → CLAY_TOP_TO_BOTTOM
@@ -483,12 +850,21 @@
        (bg "#e0d7d2")     → .backgroundColor = { 224, 215, 210, 255 }
        (interactive click) → Clay_OnHover callback
        (variant wide)     → conditional in layout loop
+       (component ...)    → C function returning Clay tree
+       (layout ...)       → C function wrapping page content
+       (page ...)         → C function with page-specific content
+       (routes ...)       → page switch function
 
      react target:
        (layout vertical)  → className with flex-col
        (width 1)          → style={{ flex: 1 }}
+       (bg (color bg-primary)) → style={{ backgroundColor: theme.bgPrimary }}
        (interactive click) → onClick prop
        (variant wide)     → useMediaQuery hook + conditional class
+       (component ...)   → React component
+       (layout ...)      → layout component with slot props
+       (page ...)        → page component
+       (routes ...)      → React Router config
 
      The convention also handles breakpoint selection: what screen
      width maps to "narrow" vs "wide", what the default layout is
@@ -528,14 +904,15 @@
   (status planned)
   (details
    (doc (|
-     - Component reuse: (component name (params ...) (ui ...))
-       for reusable UI patterns
-     - Theme variables: (theme (bg-primary "#e0d7d2"))
-       for consistent branding across elements
      - Animation/transition declarations
      - Grid layout beyond flexbox
      - Accessibility annotations: (aria label "...") or (role button)
      - Data binding: (text (bind model.field))
+     - Route parameters: /user/:id
+     - Nested routes and route guards (auth)
+     - Redirects between pages
+     - Form validation declarations
+     - Input types and constraints
    |))
   )
  )
