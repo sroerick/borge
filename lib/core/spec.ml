@@ -8,6 +8,9 @@ type status =
   | Drifted
   | Blank
 
+(* (fn status_of_string
+      (doc "Convert string to status type")
+      (since "v1.0")) *)
 let status_of_string = function
   | "planned" -> Some Planned
   | "in-progress" -> Some In_progress
@@ -16,6 +19,10 @@ let status_of_string = function
   | "drifted" -> Some Drifted
   | "blank" -> Some Blank
   | _ -> None
+
+(* (fn string_of_status
+      (doc "Convert status type back to string")
+      (since "v1.0")) *)
 
 let string_of_status = function
   | Planned -> "planned"
