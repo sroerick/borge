@@ -584,6 +584,42 @@
        |))
    )
   )
+  (subsection distributed-specs
+   (doc "Module-level .borg files with loose function-level coupling")
+   (status planned)
+   (details
+    (doc (|
+         Rather than one central borge.borg, each module folder has
+         its own .borg file describing that module's exports and
+         structure. Function-level detail lives in borg-comments
+         within the .ml files themselves.
+
+         This creates a hierarchy:
+         - repo/borge.borg: conventions, top-level goals
+         - lib/core/lib_core.borg: module exports, dependencies
+         - lib/core/spec.ml: functions with borg-comments
+
+         Borg-comment format (OCaml comment containing borg):
+         (* (fn extract_functions
+              (doc "Pulls functions from code")
+              (since "2025-05")) *)
+
+         Drift checking (static/non-agentic):
+         Only verifies referential integrity — does a function name
+         listed in the module's exports actually exist in the code?
+         Does a function in the code appear in the exports?
+         No semantic comparison between module spec and function docs.
+
+         Drift checking (agentic):
+         The agent reads module spec intent and function comments,
+         determines if there's semantic drift, and can file bugs
+         for mismatches it finds.
+
+         This keeps the non-agentic path fast and simple while
+         delegating semantic understanding to the LLM when needed.
+       |))
+   )
+  )
  )
  (section lock-mechanism
   (doc "Transactional isolation for agent sessions — metadata, not workspace")
