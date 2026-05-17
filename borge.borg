@@ -505,6 +505,47 @@
       |))
   )
  )
+ (section issue-tracker
+  (doc "Lightweight repo-stored bug and drift tracking")
+  (status planned)
+  (details
+   (doc (|
+        Borge includes a minimal issue tracker stored in the repo.
+        This keeps bugs and drift reports alongside code, tracked in
+        git, with no external dependencies.
+
+        Two forms:
+        - .borge-bug: standalone bug files for issues found during dev
+        - (drift-report ...) sections in .borg files for alignment issues
+
+        Bug lifecycle:
+        (status triage → open → in-progress → resolved → closed)
+
+        Commands:
+        - borge bug new "title" --open        # create bug
+        - borge bug list [--status open]      # list bugs
+        - borge bug show ID                   # show bug details
+        - borge bug close ID [--with-commit]  # close bug
+        - borge drift-report [ID]             # create/link drift findings to bug
+
+        Bug file format (.borge-bug):
+        (borge-bug id:"BORGE-42"
+          (title "Short description")
+          (status open)
+          (created 2025-05-16)
+          (filed-by roerick)
+          (doc "long description here")
+          (affects section:"lib.borg:lock-mechanism")
+          (relates-to bug:"BORGE-38")
+          (drift-report-id "DRIFT-2025-05-16-001")
+          (resolution (when 2025-05-17) (how fixed) (by agent:fixer))
+        )
+
+        Drift reports from borge drift --agent can create bugs
+        automatically or link to existing bugs.
+      |))
+  )
+ )
  (section lock-mechanism
   (doc "Transactional isolation for agent sessions — metadata, not workspace")
   (status implemented)
