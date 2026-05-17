@@ -8,9 +8,6 @@ type status =
   | Drifted
   | Blank
 
-(* (fn status_of_string
-      (doc "Convert string to status type, or None if invalid")
-      (since "v1.0")) *)
 let status_of_string = function
   | "planned" -> Some Planned
   | "in-progress" -> Some In_progress
@@ -20,9 +17,6 @@ let status_of_string = function
   | "blank" -> Some Blank
   | _ -> None
 
-(* (fn string_of_status
-      (doc "Convert status type back to string representation")
-      (since "v1.0")) *)
 let string_of_status = function
   | Planned -> "planned"
   | In_progress -> "in-progress"
@@ -31,73 +25,85 @@ let string_of_status = function
   | Drifted -> "drifted"
   | Blank -> "blank"
 
-(* (fn project_name
-      (doc "Extract project name from a borg file AST")
-      (since "v1.0")) *)
-let project_name (file : file) =
-  match file.top_level with
-  | [] -> None
-  | sexp_with_comments :: _ ->
-      match sexp_with_comments.node with
-      | List (_, Atom (_, "project") :: Atom (_, name) :: _) -> Some name
-      | _ -> None
-
-(* (fn count_sections
-      (doc "Count all sections in a borg file, recursively")
-      (since "v1.0")) *)
-let rec count_sections sexp =
-  match sexp with
-  | List (_, Atom (_, "section") :: _) -> 1
-  | List (_, items) -> List.fold_left (fun acc item -> acc + count_sections item) 0 items
-  | _ -> 0
-
-(* (fn statuses
-      (doc "Extract all status values from a borg file")
-      (since "v1.0")) *)
-let statuses (file : file) =
-  let rec collect sexp acc =
-    match sexp with
-    | List (_, Atom (_, "status") :: Atom (_, status) :: _) -> status :: acc
-    | List (_, items) -> List.fold_left (fun a i -> collect i.node a) acc items
-    | _ -> acc
+(** Extract the project name from a top-level (project name ...) form *)
+let project_name (file : Borge_lang.Ast.file) : string option =
+  let rec find = function
+    | [] -> None
+    | { node = List (_, Atom (_, "project") :: Atom (_, name) :: _); _ } :: _ -> Some name
+    | _ :: rest -> find rest
   in
-  List.fold_left (fun acc (sexp, _) -> collect sexp.node acc) [] file.top_level
+  find file.top_level
 
-(* (fn status_counts
-      (doc "Count occurrences of each status value")
-      (since "v1.0")) *)
-let status_counts (file : file) =
-  let stats = statuses file in
-  let counts = ["planned", 0; "in-progress", 0; "partial", 0; "implemented", 0; "drifted", 0; "blank", 0] in
-  List.map (fun (status, _) ->
-    (status, List.length (List.filter (fun s -> s = status) stats))
-  ) counts
+(** Count sections in the file *)
+let count_sections (file : Borge_lang.Ast.file) : int =
+  let rec count_in_sexp = function
+    | List (_, Atom (_, kind) :: _)
+      when List.mem kind ["section"; "subsection"; "subsubsection"] -> 1
+    | List (_, sexps) -> List.fold_left (fun acc s -> acc + count_in_sexp s) 0 sexps
+    | _ -> 0
+  in
+  let rec count_in_node = function
+    | [] -> 0
+    | { node; _ } :: rest -> count_in_sexp node + count_in_node rest
+  in
+  count_in_node file.top_level
 
-(* (fn has_no_inline
-      (doc "Check if file declares (no-inline)")
-      (since "v1.0")) *)
-let has_no_inline (file : file) =
-  let rec check sexp =
-    match sexp with
-    | List (_, Atom (_, "no-inline") :: _) -> true
-    | List (_, items) -> List.exists (fun item -> check item.node) items
+(** Extract all status values from the file *)
+let statuses (file : Borge_lang.Ast.file) : status list =
+  let rec extract = function
+    | List (_, Atom (_, "status") :: Atom (_, s) :: _) ->
+      (match status_of_string s with
+       | Some st -> [st]
+       | None -> [])
+    | List (_, sexps) -> List.concat_map extract sexps
+    | _ -> []
+  in
+  let rec walk = function
+    | [] -> []
+    | { node; _ } :: rest -> extract node @ walk rest
+  in
+  walk file.top_level
+
+let status_order = [Planned; In_progress; Partial; Implemented; Drifted; Blank]
+
+(** Extract inline target filenames from (inline filename.borg) forms *)
+let inline_targets (file : Borge_lang.Ast.file) : string list =
+  let rec extract = function
+    | List (_, Atom (_, "inline") :: Atom (_, filename) :: _) -> [filename]
+    | List (_, sexps) -> List.concat_map extract sexps
+    | _ -> []
+  in
+  let rec walk = function
+    | [] -> []
+    | { node; _ } :: rest -> extract node @ walk rest
+  in
+  walk file.top_level
+
+(** Check if the file declares (no-inline) *)
+let has_no_inline (file : Borge_lang.Ast.file) : bool =
+  let rec extract = function
+    | List (_, [Atom (_, "no-inline")]) -> true
+    | List (_, sexps) -> List.exists extract sexps
     | _ -> false
   in
-  List.exists (fun (sexp, _) -> check sexp.node) file.top_level
-
-(* (fn inline_targets
-      (doc "Extract all (inline ...) targets from a borg file")
-      (since "v1.0")) *)
-let inline_targets (file : file) =
-  let rec find sexp acc =
-    match sexp with
-    | List (_, Atom (_, "inline") :: items) ->
-        let names = List.filter_map (function
-          | Atom (_, name) -> Some name
-          | _ -> None
-        ) items in
-        names @ acc
-    | List (_, items) -> List.fold_left (fun a i -> find i.node a) acc items
-    | _ -> acc
+  let rec walk = function
+    | [] -> false
+    | { node; _ } :: rest -> extract node || walk rest
   in
-  List.fold_left (fun acc (sexp, _) -> find sexp.node acc) [] file.top_level
+  walk file.top_level
+
+let status_counts (file : Borge_lang.Ast.file) : (status * int) list =
+  let st_list = statuses file in
+  let init = List.map (fun s -> (s, 0)) status_order in
+  List.fold_left (fun acc st ->
+    let count =
+      try List.assoc st acc + 1
+      with Not_found -> 1
+    in
+    (st, count) :: List.remove_assoc st acc
+  ) init st_list
+  |> List.sort (fun (a, _) (b, _) ->
+    let idx_a = List.find_index (fun s -> s = a) status_order |> Option.get in
+    let idx_b = List.find_index (fun s -> s = b) status_order |> Option.get in
+    compare idx_a idx_b
+  )

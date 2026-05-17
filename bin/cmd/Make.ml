@@ -1,17 +1,25 @@
 (** borge make — implement code from spec
 
     Opens pi interactively with the implementer role.
-    Creates lock, builds prompt, launches pi.
-    Auto-commits on clean exit unless --no-commit. *)
+    Creates lock, builds MINIMAL prompt (summarized, not full spec),
+    launches pi. Auto-commits on clean exit unless --no-commit. *)
 
 open Borge_lib
 
-let gather_prompt_data () =
-  let spec_files =
+let gather_minimal_data () =
+  (* Summarize all .borg files instead of loading full contents *)
+  let summaries =
     File_utils.find_borg_files "."
-    |> List.map (fun path -> (path, File_utils.read_file path))
+    |> List.concat_map (fun path ->
+      try
+        let content = File_utils.read_file path in
+        Prompt_minimal.summarize_borg_file content
+      with _ -> []
+    )
   in
-  let module_surfaces =
+  let planned = List.filter (fun (s : Prompt_minimal.section_summary) -> s.Prompt_minimal.status = "planned") summaries in
+  let implemented = List.filter (fun (s : Prompt_minimal.section_summary) -> s.Prompt_minimal.status = "implemented") summaries in
+  let modules =
     try
       let dune_files = Dune_parse.parse_all "." in
       let lib_modules = List.concat_map (fun df ->
@@ -22,22 +30,14 @@ let gather_prompt_data () =
           | _ -> []
         ) df.Dune_parse.stanzas
       ) dune_files in
-      List.filter_map (fun (dir, mod_name) ->
-        let ml_path = Filename.concat dir (mod_name ^ ".ml") in
-        if Sys.file_exists ml_path then
-          try
-            let surface = Surface.extract_surface ml_path in
-            Some (mod_name, surface.Surface.exports)
-          with _ -> Some (mod_name, [])
-        else None
-      ) lib_modules
+      List.map snd lib_modules
     with _ -> []
   in
-  (spec_files, module_surfaces)
+  (planned, implemented, modules)
 
 let write_prompt role =
-  let spec_files, module_surfaces = gather_prompt_data () in
-  let prompt = Lock_prompt.make_prompt role ~convention:"ocaml-dune" ~spec_files ~module_surfaces in
+  let planned, implemented, modules = gather_minimal_data () in
+  let prompt = Prompt_minimal.make_prompt role ~planned ~implemented ~modules in
   let path = Lock.prompt_file () in
   let oc = open_out path in
   output_string oc prompt;
@@ -52,7 +52,7 @@ let run no_commit dir quiet =
      exit 1
    | Ok () -> ());
 
-  let prompt_path = write_prompt Lock_prompt.Implementer in
+  let prompt_path = write_prompt Prompt_minimal.Implementer in
   if not quiet then begin
     Printf.printf "Lock created at .borge.lock/\n";
     Printf.printf "Prompt written to %s\n" prompt_path;

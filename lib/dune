@@ -9,5 +9,5 @@
            db_ast db_parse db_validate db_json
            bug_ast bug_parse bug_write bug_registry
            semantic_review borg_comment module_spec
-           lock lock_prompt lock_pi_launch)
+           lock lock_prompt lock_pi_launch prompt_minimal)
   (libraries borge.lang unix str yojson))
