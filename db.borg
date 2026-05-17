@@ -1,0 +1,568 @@
+(project borge-db
+ (doc "Database schema DSL — an extension of the borge language.
+       Describes tables, columns, types, relations, CRUD operations,
+       and row-level security in sexp. Generates SQL migrations and
+       application-level query code via LLM. Postgres-first.
+       All existing borge commands work on db sections.")
+ (no-inline)
+ (status planned)
+
+ (section relationship-to-borge
+  (doc "DB is an extension of the borge language, not a separate language")
+  (status planned)
+  (details
+   (doc (|
+     Borge DB is NOT a new language. It is a set of new sexp forms
+     that live inside existing .borg files. Every borge command that
+     works today works on DB sections without changes:
+
+     - borge balance: paren-checks DB sections like any other
+     - borge parse: parses DB forms as sexp like anything else
+     - borge fmt: formats DB sections with canonical indentation
+     - borge check: validates DB section files exist and are well-formed
+     - borge lint: validates DB semantics (and gains DB-aware checks)
+     - borge report: counts DB section statuses like any other section
+     - borge drift: detects drift between DB spec and actual schema
+     - borge nodes: dumps DB AST like any other section
+     - borge generate db: NEW subcommand — generates SQL from DB spec
+
+     The principle: borge DB sections are first-class borge citizens.
+     They get the same tooling, the same workflow, and the same
+     spec-is-source-of-truth discipline as every other section.
+
+     What IS new:
+       1. New sexp forms: (db), (table), (column), (type),
+          (references), (operations), (crud), (query), (relation),
+          (join), (groups), (group), (can), (ownership)
+       2. New subcommand: borge generate db
+       3. Integration with borge-ui: pages can reference (data ...)
+          to declare what queries they need
+   |))
+  )
+ )
+
+ (section philosophy
+  (doc (|
+    Borge DB describes database intent, not SQL. SQL is the
+    implementation — it's the how. The spec is the what:
+    what tables exist, what columns they have, what operations
+    are available, who can access what.
+
+    Three core principles:
+
+    1. Schema is spec, SQL is derived. The .borg file describes
+       the schema. The generator produces SQL migrations from it.
+       If the generated SQL doesn't match reality, fix the spec
+       or regenerate. Same discipline as borge generate code.
+
+    2. Permissions live on the model, not on the page. Row-level
+       security is declared once on the table definition and
+       enforced everywhere by Postgres. Pages don't filter data
+       — the database does. Declare once, enforce everywhere.
+
+    3. Postgres-first. The DSL targets PostgreSQL specifically.
+       RLS policies, UUID defaults, timestamptz, and gen_random_uuid
+       are first-class concerns, not afterthoughts. Other databases
+       may work but Postgres is the primary target.
+
+    Why not just use SQL? For the same reason borge exists at all:
+    the spec is the source of truth. SQL is the generated output.
+    The spec is higher-level intent, diffable, reviewable, and
+    checkable by borge's existing tooling. SQL migrations are
+    derived artifacts.
+  |))
+ )
+
+ (section schema
+  (doc "Table and column definitions")
+  (status planned)
+  (details
+   (doc (|
+     Tables are declared inside a (db ...) form:
+
+     (db
+       (table users
+         (column id (type uuid) (primary-key) (default gen_random_uuid))
+         (column email (type text) (unique) (not-null))
+         (column name (type text) (not-null))
+         (column created-at (type timestamptz) (default now)))
+
+       (table posts
+         (column id (type uuid) (primary-key) (default gen_random_uuid))
+         (column author-id (type uuid) (references users.id))
+         (column title (type text) (not-null))
+         (column body (type text))
+         (column published (type boolean) (default false))
+         (column created-at (type timestamptz) (default now))))
+
+     Table names are symbols. Column definitions contain:
+       - (type NAME): the Postgres type — uuid, text, int, boolean,
+         timestamptz, jsonb, etc.
+       - (primary-key): this column is the primary key
+       - (unique): this column has a unique constraint
+       - (not-null): this column cannot be null
+       - (default EXPR): default value expression — gen_random_uuid,
+         now, false, true, or any SQL expression
+       - (references TABLE.COLUMN): foreign key constraint
+
+     Multiple columns can share a primary key:
+       (column org-id (type uuid) (primary-key))
+       (column user-id (type uuid) (primary-key))
+
+     The generator produces CREATE TABLE statements with all
+     constraints, defaults, and foreign keys.
+   |))
+  )
+
+  (subsection column-types
+   (doc "Supported PostgreSQL column types")
+   (status planned)
+   (details
+    (doc (|
+      The (type ...) form accepts PostgreSQL type names directly:
+
+      Common types:
+        uuid, text, varchar, int, bigint, boolean,
+        timestamptz, date, jsonb, bytea, decimal, float
+
+      Array types:
+        (type (array text))    — text[]
+        (type (array uuid))    — uuid[]
+
+      The DSL does not abstract over types — it uses Postgres
+      type names verbatim. This is opinionated but honest.
+      If you're targeting Postgres, use Postgres types.
+    |))
+   )
+  )
+
+  (subsection indexes
+   (doc "Index declarations for performance")
+   (status planned)
+   (details
+    (doc (|
+      Indexes are declared on tables:
+
+      (table users
+        (column id (type uuid) (primary-key))
+        (column email (type text) (unique) (not-null))
+        (column name (type text) (not-null))
+        (index email-idx (columns email))
+        (index name-idx (columns name) (method gin)))
+
+      (index name (columns col1 col2) (method name) (unique))
+        - name: symbol identifying the index
+        - columns: one or more columns to index
+        - method: btree (default), gin, gist, hash, spgist, brin
+        - unique: whether the index has a uniqueness constraint
+
+      The generator produces CREATE INDEX statements.
+    |))
+   )
+  )
+ )
+
+ (section operations
+  (doc "What you can do with the data — CRUD and queries")
+  (status planned)
+  (details
+   (doc (|
+     Operations declare what actions are available on a table:
+
+     (operations users
+       (crud)                         ;; full CRUD: create, read, update, delete
+       (query by-email)               ;; lookup by email
+       (query recent (limit 10)))     ;; recent users
+
+     (operations posts
+       (crud (except delete))          ;; everything except delete
+       (query by-author)               ;; posts by a specific author
+       (query published-recent (limit 20))) ;; recent published posts
+
+     (crud) declares standard operations:
+       - (crud): create, read, update, delete — all five
+       - (crud (except delete)): all except delete
+       - (crud (except create delete)): only read and update
+       - (crud (only read)): read-only
+
+     (query name) declares a named query:
+       - name: symbol identifying the query
+       - (limit N): optional result limit
+       - The query details (WHERE clause, JOINs, etc.) are
+         determined by the generator from context and naming
+         conventions.
+
+     Operations are separate from the table schema because:
+       - Not every table needs CRUD (e.g., join tables)
+       - Not every table allows delete
+       - Queries are application-specific, not schema-level
+       - The generator produces route handlers from operations
+   |))
+  )
+ )
+
+ (section relations
+  (doc "Joins and cross-table queries")
+  (status planned)
+  (details
+   (doc (|
+     Relations describe queries that span multiple tables:
+
+     (relation user-posts
+       (from users)
+       (join posts (on posts.author-id = users.id))
+       (select users.name posts.title posts.published)
+       (query recent-posts-with-author))
+
+     (relation published-with-author
+       (from posts)
+       (join users (on users.id = posts.author-id))
+       (where (posts.published = true))
+       (select users.name posts.title posts.created-at)
+       (query feed (limit 20)))
+
+     Parts:
+       - (from TABLE): the primary table
+       - (join TABLE (on CONDITION)): inner join
+       - (left-join TABLE (on CONDITION)): left join
+       - (where CONDITION): filter condition
+       - (select COL1 COL2 ...): columns to return
+       - (query NAME (limit N)): named query from this relation
+
+     The generator produces SQL views or application-level queries
+     from relations. For simple cases, a view; for complex cases,
+     a parameterized query function.
+
+     Relations integrate with the UI: a page can declare
+     (data (relation-name query-name)) to indicate it uses
+     a specific relation's query.
+   |))
+  )
+ )
+
+ (section ownership
+  (doc "Row-level ownership — who owns a row")
+  (status planned)
+  (details
+   (doc (|
+     (ownership column-name) declares which column determines
+     who owns a row. This is the most common RLS pattern:
+
+     (table posts
+       (column id (type uuid) (primary-key))
+       (column author-id (type uuid) (references users.id))
+       (column title (type text) (not-null))
+       (column body (type text))
+       (column published (type boolean) (default false))
+       (ownership author-id))
+
+     (ownership author-id) means:
+       - Users own rows where author-id matches their identity
+       - The generator produces RLS policies:
+         - SELECT: users can read their own rows (and published ones,
+           if a group rule says so)
+         - INSERT: users can insert rows with their own author-id
+         - UPDATE: users can update their own rows
+         - DELETE: users can delete their own rows
+
+     Ownership is a shorthand. Under the hood, it's equivalent
+     to declaring a group with (can posts (all) (where author-id
+     = current-user)). The shorthand exists because "author owns
+     their own rows" is by far the most common pattern.
+
+     For more complex ownership models, use the groups system
+     directly and skip (ownership ...).
+   |))
+  )
+ )
+
+ (section groups
+  (doc "Access control groups and their capabilities")
+  (status planned)
+  (details
+   (doc (|
+     Groups define who can do what, at the row level. The generator
+     produces Postgres RLS policies from group declarations.
+
+     (groups
+       (group admin
+         (can-all))                        ;; admins can do everything
+       (group author
+         (can posts (create read update) (where author-id = current-user))
+         (can users (read (where id = current-user))))
+       (group reader
+         (can posts (read (where published = true)))
+         (can users (read))))
+
+     (group name ...) declares a named group:
+       - name: symbol identifying the group
+       - Body: one or more (can ...) declarations
+
+     (can-all): shorthand for all operations on all tables.
+     Equivalent to bypasses RLS. Used for admin/superuser roles.
+
+     (can TABLE OPERATIONS (where CONDITION)):
+       - TABLE: which table this rule applies to
+       - OPERATIONS: create, read, update, delete, or combinations
+         - (read): can only read
+         - (create read): can create and read
+         - (create read update delete): full CRUD
+       - (where CONDITION): row-level filter
+         - (where author-id = current-user): column matches current user
+         - (where published = true): column matches a value
+         - (where id = current-user): specific row match
+
+     The generator translates groups into RLS policies:
+
+       (group admin (can-all))
+         → ALTER TABLE ... ENABLE ROW LEVEL SECURITY;
+           CREATE POLICY admin_all ON ... FOR ALL TO admin
+             USING (true) WITH CHECK (true);
+
+       (group author (can posts (create read update) (where author-id = current-user)))
+         → CREATE POLICY author_posts ON posts FOR SELECT TO author
+             USING (author_id = current_user_id);
+           CREATE POLICY author_posts_insert ON posts FOR INSERT TO author
+             WITH CHECK (author_id = current_user_id);
+           ...
+
+       (group reader (can posts (read (where published = true))))
+         → CREATE POLICY reader_posts ON posts FOR SELECT TO reader
+             USING (published = true);
+
+     The (current-user) expression in (where ...) is resolved
+     by the generator based on the convention. For Dream/wyo.auth,
+     it becomes the session user ID. The mapping is convention-specific.
+   |))
+  )
+
+  (subsection group-resolution
+   (doc "How group membership is determined at runtime")
+   (status planned)
+   (details
+    (doc (|
+      The spec declares groups declaratively. How a user is assigned
+      to a group at runtime is convention-specific:
+
+      - wyo.auth convention: group is stored as a column on the
+        users table, resolved via the Dream session
+      - JWT convention: group is a claim in the token
+      - Application convention: group is resolved by a lookup
+        query at request time
+
+      The generator produces the right resolution code based on
+      the convention. The spec just says "these groups exist and
+      these are their capabilities." The convention says "here's
+      how you know which group a request belongs to."
+
+      A common pattern: the users table has a (column role (type text))
+      that stores the group name. The generator produces a session
+      middleware that sets the Postgres role per request.
+    |))
+   )
+  )
+ )
+
+ (section data-integration
+  (doc "How pages reference database queries")
+  (status planned)
+  (details
+   (doc (|
+     Pages in borge-ui can declare what data they need using
+     the (data ...) form:
+
+     (page dashboard
+       (data (posts published-recent))
+       (use-layout sidebar-shell)
+       (fill content
+         ...))
+
+     (page profile
+       (data (users by-id))
+       (data (posts by-author))
+       (use-layout app-shell)
+       ...)
+
+     (data (TABLE QUERY)) means: this page loads the named query
+     on the specified table. The generator produces:
+       - A query function or ORM call in the page handler
+       - The data is available to the page template
+       - RLS automatically filters results based on the user's group
+
+     The page doesn't declare permissions — the schema and groups
+     handle that. The page just says "I need this data." Postgres
+     RLS ensures the user only sees what they're allowed to see.
+
+     For relations:
+
+       (page feed
+         (data (published-with-author feed))
+         (use-layout app-shell)
+         ...)
+
+     This loads the "feed" query from the "published-with-author"
+     relation.
+   |))
+  )
+ )
+
+ (section full-example
+  (doc "A complete example: blog application database")
+  (status planned)
+  (details
+   (doc (|
+     (db blog
+       (table users
+         (column id (type uuid) (primary-key) (default gen_random_uuid))
+         (column email (type text) (unique) (not-null))
+         (column name (type text) (not-null))
+         (column role (type text) (not-null) (default "reader"))
+         (column created-at (type timestamptz) (default now))
+         (index email-idx (columns email)))
+
+       (table posts
+         (column id (type uuid) (primary-key) (default gen_random_uuid))
+         (column author-id (type uuid) (references users.id) (not-null))
+         (column title (type text) (not-null))
+         (column body (type text))
+         (column published (type boolean) (default false))
+         (column created-at (type timestamptz) (default now))
+         (column updated-at (type timestamptz))
+         (ownership author-id)
+         (index author-idx (columns author-id))
+         (index published-idx (columns published created-at)))
+
+       (table comments
+         (column id (type uuid) (primary-key) (default gen_random_uuid))
+         (column post-id (type uuid) (references posts.id) (not-null))
+         (column author-id (type uuid) (references users.id) (not-null))
+         (column body (type text) (not-null))
+         (column created-at (type timestamptz) (default now))
+         (ownership author-id)
+         (index post-idx (columns post-id)))
+
+       (operations users
+         (crud (except delete))
+         (query by-email)
+         (query by-id))
+
+       (operations posts
+         (crud (except delete))
+         (query by-author)
+         (query published-recent (limit 20))
+         (query by-id))
+
+       (operations comments
+         (crud (except delete))
+         (query by-post))
+
+       (relation post-with-author
+         (from posts)
+         (join users (on users.id = posts.author-id))
+         (select users.name posts.title posts.body posts.published posts.created-at)
+         (query detail))
+
+       (relation feed-with-authors
+         (from posts)
+         (join users (on users.id = posts.author-id))
+         (where (posts.published = true))
+         (select users.name posts.title posts.created-at)
+         (query feed (limit 20)))
+
+       (groups
+         (group admin
+           (can-all))
+         (group author
+           (can posts (create read update) (where author-id = current-user))
+           (can comments (create read update) (where author-id = current-user))
+           (can users (read (where id = current-user))))
+         (group reader
+           (can posts (read (where published = true)))
+           (can comments (read))
+           (can users (read)))))
+   |))
+  )
+ )
+
+ (section convention-targets
+  (doc "How the DSL maps to different targets")
+  (status planned)
+  (details
+   (doc (|
+     The generator reads the (db ...) spec and a target convention,
+     then produces code. Each convention knows how to translate:
+
+     postgres-sql target:
+       (table ...)  → CREATE TABLE with constraints, defaults, indexes
+       (crud)       → no code (RLS handles it)
+       (query ...)  → named SQL function or view
+       (relation ...) → CREATE VIEW or SQL function
+       (ownership ...) → RLS policy using column = current_user_id
+       (groups ...) → RLS policies per group
+
+     ocaml-dream target:
+       (table ...)  → SQL migration file in migrations/
+       (crud)       → route handlers: GET/POST/PUT/DELETE
+       (query ...)  → Dream route handler with parameterized query
+       (relation ...) → Dream route handler with join query
+       (ownership ...) → RLS migration + session role setting
+       (groups ...) → RLS migration + role middleware
+
+     The convention handles:
+       - How current-user is resolved (session, JWT, etc.)
+       - Migration file naming (sequential, timestamped)
+       - SQL dialect specifics (Postgres version, extensions)
+       - Connection pool and transaction management
+   |))
+  )
+ )
+
+ (section generation-workflow
+  (doc "How borge generate produces database code from specs")
+  (status planned)
+  (details
+   (doc (|
+     borge generate db SECTION-NAME
+
+     1. Read the (db ...) spec from the section
+     2. Read the project convention to determine the target
+     3. Assemble prompt: spec text + convention rules + existing
+        migrations
+     4. Call the LLM to generate SQL migrations and/or application code
+     5. Write generated files
+     6. Mark section (status implemented)
+
+     Migration files are versioned. The generator produces a new
+     migration for each schema change. Existing migrations are
+     never modified — only new ones are added.
+
+     Like borge generate code, the spec is always right. If the
+     generated SQL doesn't match, fix the spec or regenerate.
+
+     Drift detection: borge drift can check whether the actual
+     database schema matches the spec by comparing against the
+     migration history or by introspecting the live database.
+   |))
+ )
+ )
+
+ (section future-work
+  (doc "Possible extensibility for the DB DSL")
+  (status planned)
+  (details
+   (doc (|
+     - Enums: (enum status (draft published archived))
+     - Triggers: (trigger update-timestamp (on update) (set updated-at = now))
+     - Checks: (check positive-price (column price > 0))
+     - Composite types and domains
+     - Many-to-many join tables: (join-table user-roles users roles)
+     - Soft delete: (soft-delete) instead of physical delete
+     - Audit logging: (audit) tracks changes on a table
+     - Database functions and stored procedures
+     - Schema namespacing (multiple schemas in one Postgres database)
+     - Partial indexes with WHERE conditions
+     - Database-level constraints (exclusion constraints)
+   |))
+  )
+ )
+)
