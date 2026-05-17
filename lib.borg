@@ -239,7 +239,109 @@
     (doc (|
          Yojson-based serializers for Report, Check, Lint, Drift, Stats,
          and Balance result types. Each command's --json flag calls the
-         corresponding Json.to_json function and prints the result.
+         corresponding Json_out.to_json function and prints the result.
+       |))
+   )
+  )
+ )
+ (section ui
+  (doc "UI DSL types and parsing. lib/ui/")
+  (status in-progress)
+  (subsection ui-ast
+   (doc "Typed AST for borge UI specs")
+   (status implemented)
+   (details
+    (doc (|
+         ui_ast.ml defines typed representations: ui_element, component,
+         layout_def, page, route, theme, variant, and all value types
+         (sizing, color_value, spacing_value, etc.). The UI types are
+         consumers of the generic sexp AST — they do NOT modify the parser.
+       |))
+   )
+  )
+  (subsection ui-parse
+   (doc "Sexp to typed UI AST extraction")
+   (status implemented)
+   (details
+    (doc (|
+         ui_parse.ml walks the generic Ast.sexp tree and extracts
+         typed UI nodes. Functions like parse_ui_element, parse_theme,
+         parse_component, parse_layout_def, parse_page, parse_routes,
+         parse_ui_app. The parser stays generic; this module
+         interprets the semantic structure of UI-specific forms.
+       |))
+   )
+  )
+  (subsection ui-validate
+   (doc "Semantic validation for UI specs")
+   (status planned)
+   (details
+    (doc (|
+         Will check: (use component-name) refers to a defined component,
+         (fill slot-name) refers to an existing slot, variant names are
+         unique per element, theme variable references are defined.
+         Currently a stub returning empty issues.
+       |))
+   )
+  )
+  (subsection ui-json
+   (doc "JSON serialization for UI AST")
+   (status implemented)
+   (details
+    (doc (|
+         ui_json.ml serializes the typed UI AST to yojson for --json
+         output. Covers all types: sizing, color, spacing, elements,
+         components, pages, routes, themes.
+       |))
+   )
+  )
+ )
+ (section db
+  (doc "DB DSL types and parsing. lib/db/")
+  (status in-progress)
+  (subsection db-ast
+   (doc "Typed AST for borge DB specs")
+   (status implemented)
+   (details
+    (doc (|
+         db_ast.ml defines typed representations: table_def, column,
+         operations_def, relation_def, group_def, capability, and all
+         value types (column_constraint, crud_spec, join_type, etc.).
+         The DB types are consumers of the generic sexp AST.
+       |))
+   )
+  )
+  (subsection db-parse
+   (doc "Sexp to typed DB AST extraction")
+   (status implemented)
+   (details
+    (doc (|
+         db_parse.ml walks the generic Ast.sexp tree and extracts
+         typed DB nodes. Functions like parse_table, parse_column,
+         parse_operations, parse_relation, parse_group, parse_db_app.
+       |))
+   )
+  )
+  (subsection db-validate
+   (doc "Semantic validation for DB specs")
+   (status planned)
+   (details
+    (doc (|
+         Will check: (references table.column) refers to an existing
+         table, (ownership column) refers to an existing column,
+         group capability tables exist, operations reference existing
+         tables. Currently a stub returning empty issues.
+       |))
+   )
+  )
+  (subsection db-json
+   (doc "JSON serialization for DB AST")
+   (status implemented)
+   (details
+    (doc (|
+         db_json.ml serializes the typed DB AST to yojson for --json
+         output. Covers all types: tables, columns, operations,
+         relations, groups, capabilities.
        |))
    )
   )
