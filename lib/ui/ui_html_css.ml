@@ -107,7 +107,7 @@ let property_css = function
   | P_interactive _ -> []  (* no direct CSS for interactivity *)
   | P_float _ -> []  (* complex — skip for now *)
 
-(** Recursively generate CSS for an element *)
+(** Recursively generate CSS for an element, including variant selectors *)
 let rec element_css (indent : int) (el : ui_element) : string list =
   let prefix = String.make indent ' ' in
   let sel = match el.name with
@@ -120,22 +120,56 @@ let rec element_css (indent : int) (el : ui_element) : string list =
     if flex_base @ props = [] then []
     else [sel ^ " {\n  " ^ String.concat "\n  " (flex_base @ props) ^ "\n" ^ prefix ^ "}"]
   in
+  (* Variant selectors: .button.primary, .button.secondary *)
+  let variant_css = List.concat_map (fun (v : variant) ->
+    let v_sel = match el.name with
+      | Some n -> prefix ^ class_selector n ^ "." ^ class_name v.name
+      | None -> prefix ^ "div." ^ class_name v.name
+    in
+    let v_props = List.concat_map property_css v.properties in
+    if v_props = [] then []
+    else [v_sel ^ " {\n  " ^ String.concat "\n  " v_props ^ "\n" ^ prefix ^ "}"]
+  ) el.variants in
   let children_css = List.concat_map (element_css indent) el.children in
-  own_css @ children_css
+  own_css @ variant_css @ children_css
 
-(** Generate HTML for a component instance.
-    Uses the component definition to render the component's children. *)
-let rec component_html (indent : int) (comp : component) : string =
+(** Find a layout by name *)
+let find_layout (app : ui_app) (name : string) : layout_def option =
+  List.find_opt (fun (ly : layout_def) -> ly.name = name) app.layouts
+
+(** Find a component by name *)
+let find_component (app : ui_app) (name : string) : component option =
+  List.find_opt (fun (c : component) -> c.name = name) app.components
+
+(** Generate HTML for an element, using component definitions when name matches *)
+let rec element_html_with_components (indent : int) (comps : (string, component) Hashtbl.t) (el : ui_element) : string =
   let prefix = String.make indent ' ' in
-  let cls = class_name comp.name in
-  if comp.children = [] then
-    Printf.sprintf "%s<div class=\"%s\"></div>" prefix cls
+  (* Check if this element is a component instantiation *)
+  let comp_children = match el.name with
+    | Some n ->
+      (match Hashtbl.find_opt comps n with
+      | Some comp -> Some comp.children
+      | None -> None)
+    | None -> None
+  in
+  let cls = match el.name with
+    | Some n -> Printf.sprintf " class=\"%s\"" (class_name n)
+    | None -> ""
+  in
+  let children = match comp_children with
+    | Some comp_ch ->
+      (* Render component's children as the element's content *)
+      List.map (element_html_with_components (indent + 2) comps) comp_ch
+    | None ->
+      List.map (element_html_with_components (indent + 2) comps) el.children
+  in
+  if children = [] then
+    Printf.sprintf "%s<div%s></div>" prefix cls
   else
-    let children = List.map (element_html (indent + 2)) comp.children in
-    Printf.sprintf "%s<div class=\"%s\">\n%s\n%s</div>"
+    Printf.sprintf "%s<div%s>\n%s\n%s</div>"
       prefix cls (String.concat "\n" children) prefix
 
-(** Generate HTML for an element *)
+(** Generate HTML for an element (basic, no component lookup) *)
 and element_html (indent : int) (el : ui_element) : string =
   let prefix = String.make indent ' ' in
   let cls = match el.name with
@@ -149,16 +183,8 @@ and element_html (indent : int) (el : ui_element) : string =
     Printf.sprintf "%s<div%s>\n%s\n%s</div>"
       prefix cls (String.concat "\n" children) prefix
 
-(** Find a layout by name *)
-let find_layout (app : ui_app) (name : string) : layout_def option =
-  List.find_opt (fun (ly : layout_def) -> ly.name = name) app.layouts
-
-(** Find a component by name *)
-let find_component (app : ui_app) (name : string) : component option =
-  List.find_opt (fun (c : component) -> c.name = name) app.components
-
 (** Render a layout's root element, replacing slot markers with content *)
-let rec render_layout_html (indent : int) (el : ui_element) (fills : slot_fill list) : string =
+let rec render_layout_html (indent : int) (comps : (string, component) Hashtbl.t) (el : ui_element) (fills : slot_fill list) : string =
   let prefix = String.make indent ' ' in
   let cls = match el.name with
     | Some n -> Printf.sprintf " class=\"%s\"" (class_name n)
@@ -172,27 +198,29 @@ let rec render_layout_html (indent : int) (el : ui_element) (fills : slot_fill l
   if is_slot then begin
     (* Replace with the fill content *)
     let fill = List.find (fun (f : slot_fill) -> f.slot_name = Option.get el.name) fills in
-    let content = List.map (element_html (indent + 2)) fill.content in
+    let content = List.map (element_html_with_components (indent + 2) comps) fill.content in
     Printf.sprintf "%s<div%s>\n%s\n%s</div>"
       prefix cls (String.concat "\n" content) prefix
   end else if el.children = [] then
     Printf.sprintf "%s<div%s></div>" prefix cls
   else
     let children = List.map (fun child ->
-      render_layout_html (indent + 2) child fills
+      render_layout_html (indent + 2) comps child fills
     ) el.children in
     Printf.sprintf "%s<div%s>\n%s\n%s</div>"
       prefix cls (String.concat "\n" children) prefix
 
 (** Generate the full HTML page for a ui_app *)
 let generate_html (app : ui_app) : string =
+  let comps = Hashtbl.create 8 in
+  List.iter (fun (c : component) -> Hashtbl.add comps c.name c) app.components;
   match app.pages with
   | [] -> "<!-- No pages defined -->\n"
   | page :: _ ->
     let body =
       match find_layout app page.layout_name with
       | Some ly ->
-        render_layout_html 4 ly.root page.fills
+        render_layout_html 4 comps ly.root page.fills
       | None ->
         "<!-- Layout not found: " ^ page.layout_name ^ " -->"
     in

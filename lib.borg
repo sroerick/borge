@@ -246,7 +246,7 @@
  )
  (section ui
   (doc "UI DSL types and parsing. lib/ui/")
-  (status in-progress)
+  (status implemented)
   (subsection ui-ast
    (doc "Typed AST for borge UI specs")
    (status implemented)
@@ -298,7 +298,7 @@
  )
  (section db
   (doc "DB DSL types and parsing. lib/db/")
-  (status in-progress)
+  (status implemented)
   (subsection db-ast
    (doc "Typed AST for borge DB specs")
    (status implemented)
