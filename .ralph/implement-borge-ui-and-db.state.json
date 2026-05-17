@@ -1,7 +1,7 @@
 {
   "name": "implement-borge-ui-and-db",
   "taskFile": ".ralph/implement-borge-ui-and-db.md",
-  "iteration": 1,
+  "iteration": 2,
   "maxIterations": 20,
   "itemsPerIteration": 3,
   "reflectEvery": 5,

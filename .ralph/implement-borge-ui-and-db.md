@@ -6,83 +6,44 @@ Implement the borge UI DSL and borge DB DSL as extensions to the borge language.
 ## repo
 `/home/roerick/dev/wyo.tech/borge/` on branch `master`
 
-## Current state
-- Parser (menhir/sedlex) produces a generic `Ast.sexp` tree: Atom, String, List
-- `Spec.ml` walks the sexp tree to extract status, project_name, section counts, etc.
-- All 29 tests pass, all commands work
-- `ui.borg` (24 planned sections) and `db.borg` (15 planned sections) define the DSL specs
+## Progress
 
-## Implementation plan — TWO TRACKS
+### Done ✅
+- [x] Create `lib/ui/` directory with `ui_ast.ml`, `ui_parse.ml`, `ui_validate.ml`, `ui_json.ml`
+- [x] Implement `lib/ui/ui_ast.ml` — type definitions for all UI nodes (ui_element, component, layout_def, page, route, theme, variant, sizing, color_value, spacing_value, etc.)
+- [x] Implement `lib/ui/ui_parse.ml` — sexp→UI AST extraction (parse_ui_element, parse_theme, parse_component, parse_layout_def, parse_page, parse_routes, parse_ui_app, parse_file)
+- [x] Implement `lib/ui/ui_validate.ml` — semantic validation (currently stub, returns empty issues)
+- [x] Implement `lib/ui/ui_json.ml` — JSON serialization for all UI AST types
+- [x] Create `lib/db/` directory with `db_ast.ml`, `db_parse.ml`, `db_validate.ml`, `db_json.ml`
+- [x] Implement `lib/db/db_ast.ml` — type definitions for all DB nodes (table_def, column, operations_def, relation_def, group_def, capability, crud_spec, etc.)
+- [x] Implement `lib/db/db_parse.ml` — sexp→DB AST extraction (parse_table, parse_column, parse_operations, parse_relation, parse_group, parse_db_app, parse_file)
+- [x] Implement `lib/db/db_validate.ml` — semantic validation (currently stub)
+- [x] Implement `lib/db/db_json.ml` — JSON serialization for all DB AST types
+- [x] Update `lib/dune` to include new modules (with include_subdirs unqualified)
+- [x] Rename `lib/output/json.ml` → `json_out.ml` to avoid module name collision
+- [x] Add UI/DB parse tests (2 tests, both passing)
+- [x] Add `borge generate ui` subcommand
+- [x] Add `borge generate db` subcommand
+- [x] Update `lib.borg` spec with ui/ and db/ sections
 
-### Track 1: Borge UI (lib/ui/)
+### Remaining
+- [ ] Implement semantic validation for UI (check use/fill references, variant uniqueness, theme var references)
+- [ ] Implement semantic validation for DB (check references, ownership columns, group capabilities)
+- [ ] Wire --json output for UI/DB sections in relevant commands
+- [ ] More comprehensive tests for edge cases in UI/DB parsing
 
-**New modules in `lib/ui/`:**
-
-1. **`lib/ui/ast.ml`** — Typed UI AST. Walks the generic sexp tree and extracts typed UI nodes:
-   - `ui_element`: name, layout, width, height, padding, gap, bg, color, border, corner, scroll, float, interactive, children, variants
-   - `component_def`: name, properties, slots, variants
-   - `layout_def`: name, root element, slots
-   - `page_def`: name, layout reference, slot fills
-   - `theme_def`: palette entries, spacing entries, font-size entries, radius entries
-   - `route_def`: path, page name
-
-2. **`lib/ui/parse.ml`** — Sexp→UI AST extraction. Functions like `parse_ui_element : sexp -> ui_element option`, `parse_theme : sexp -> theme_def option`, etc. Walks the generic AST and produces typed UI nodes.
-
-3. **`lib/ui/validate.ml`** — Semantic validation. Checks that `(use button)` refers to a defined component, `(fill header-content)` refers to an existing slot, variant names are unique per element, etc.
-
-4. **`lib/ui/json.ml`** — JSON serialization of UI AST for `--json` flag
-
-### Track 2: Borge DB (lib/db/)
-
-**New modules in `lib/db/`:**
-
-1. **`lib/db/ast.ml`** — Typed DB AST. Walks the generic sexp tree and extracts typed DB nodes:
-   - `table_def`: name, columns list
-   - `column_def`: name, type, constraints (primary_key, unique, not_null, default, references)
-   - `operations_def`: table name, crud spec, queries
-   - `relation_def`: name, from table, joins, where, select, queries
-   - `ownership_def`: column name
-   - `group_def`: name, capabilities list
-   - `capability`: table, operations, where condition
-
-2. **`lib/db/parse.ml`** — Sexp→DB AST extraction. Functions like `parse_table : sexp -> table_def option`, `parse_column : sexp -> column_def option`, etc.
-
-3. **`lib/db/validate.ml`** — Semantic validation. Checks that `(references users.id)` refers to an existing table, `(ownership author-id)` refers to an existing column on the same table, group capability tables exist, etc.
-
-4. **`lib/db/json.ml`** — JSON serialization of DB AST for `--json` flag
-
-### Shared changes:
-- Update `lib/dune` to include new modules from `lib/ui/` and `lib/db/`
-- Add `borge generate ui` and `borge generate db` subcommands (in `bin/cmd/`)
-- Update `lib.borg` spec to reflect new subdirectories
-
-## Design principles
-- UI and DB modules are **consumers** of the existing generic sexp AST — they do NOT modify the parser
-- The parser stays generic. UI/DB parsing is sexp → typed extraction
-- All modules use `open Borge_lang.Ast` to work with the sexp tree
-- Follow existing patterns: look at how `spec.ml`, `report.ml`, `check.ml` walk the sexp tree
-- `include_subdirs unqualified` means new subdirs are flat modules in `borge_lib`
+### Key Decisions
+- Module naming: `ui_ast`, `ui_parse`, `ui_json`, `ui_validate` and `db_ast`, `db_parse`, `db_json`, `db_validate` — avoids conflicts with `json.ml` (now `json_out.ml`)
+- `parse_property`, `parse_variant`, `parse_padding`, `parse_ui_element` are mutually recursive (`let rec ... and ...`)
+- `parse_component`, `parse_layout_def`, `parse_page` are also `and` definitions in the recursive group
+- Record field disambiguation in OCaml requires explicit type annotations when multiple record types share field names (`name`, `columns`, etc.)
+- `db_ast.ml` uses `idx_method` instead of `method` (reserved keyword in OCaml objects)
 
 ## Validation
-- `dune build` passes
-- `dune runtest` passes (all 29 existing tests + any new tests)
-- `dune exec borge -- report` works
-- New `borge generate ui` and `borge generate db` commands exist (even if initially stub)
-- UI and DB ASTs can parse examples from ui.borg and db.borg full-example sections
-
-## Checklist (in order)
-- [ ] Create `lib/ui/` directory with `ast.ml`, `parse.ml`, `validate.ml`, `json.ml`
-- [ ] Implement `lib/ui/ast.ml` — type definitions for all UI nodes
-- [ ] Implement `lib/ui/parse.ml` — sexp→UI AST extraction
-- [ ] Implement `lib/ui/validate.ml` — semantic validation
-- [ ] Implement `lib/ui/json.ml` — JSON output
-- [ ] Create `lib/db/` directory with `ast.ml`, `parse.ml`, `validate.ml`, `json.ml`
-- [ ] Implement `lib/db/ast.ml` — type definitions for all DB nodes
-- [ ] Implement `lib/db/parse.ml` — sexp→DB AST extraction
-- [ ] Implement `lib/db/validate.ml` — semantic validation
-- [ ] Implement `lib/db/json.ml` — JSON output
-- [ ] Update `lib/dune` to include new modules
-- [ ] Add `borge generate ui` command
-- [ ] Add `borge generate db` command
-- [ ] Update `lib.borg` spec
-- [ ] Verify all tests pass and commands work
+- `dune build` passes ✅
+- `dune runtest` passes — 31 tests (29 original + 2 UI/DB) ✅
+- `dune exec borge -- report` works ✅
+- `dune exec borge -- generate ui --help` works ✅
+- `dune exec borge -- generate db --help` works ✅
+- `dune exec borge -- check .` passes ✅
+- `dune exec borge -- lint .` clean ✅
