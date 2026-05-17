@@ -4,21 +4,25 @@ open Borge_cmd
 open Cmdliner
 
 let cmds = [
+  Abort.cmd;
   Balance.cmd;
   Check.cmd;
   Diff.cmd;
   Drift.cmd;
+  Execute.cmd;
   Fmt.cmd;
+  Generate.cmd;
   Inline.cmd;
   Lint.cmd;
   Log.cmd;
+  Make.cmd;
   Nodes.cmd;
   Normalize.cmd;
   Parse.cmd;
+  Plan.cmd;
   Print.cmd;
   Report.cmd;
   Review.cmd;
-  Generate.cmd;
   Stats.cmd;
   Undo.cmd;
   Version.cmd;
