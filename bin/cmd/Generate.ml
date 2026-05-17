@@ -17,7 +17,7 @@ let run_code section dir =
     Printf.eprintf "Failed to generate code for section '%s'.\n" section;
     exit 1
 
-let run_ui section dir json target =
+let run_ui section dir json =
   let borg_files = File_utils.find_borg_files dir in
   let matching_borg = List.filter (fun p ->
     try
@@ -44,11 +44,6 @@ let run_ui section dir json target =
       if json then begin
         let json_val = Ui_json.ui_app_to_json app in
         Printf.printf "%s\n" (Yojson.Basic.pretty_to_string json_val)
-      end else if target = Some "html" then begin
-        Printf.printf "%s" (Ui_html_css.generate_html app);
-        Printf.printf "%s" (Ui_html_css.generate_css app)
-      end else if target = Some "css" then begin
-        Printf.printf "%s" (Ui_html_css.generate_css app)
       end else begin
         Printf.printf "UI spec found in %s\n" borg_path;
         (match app.Ui_ast.theme with
@@ -83,7 +78,7 @@ let run_ui section dir json target =
       Printf.eprintf "Failed to parse UI spec from %s\n" borg_path;
       exit 1)
 
-let run_db section dir json target =
+let run_db section dir json =
   let borg_files = File_utils.find_borg_files dir in
   let matching_borg = List.filter (fun p ->
     try
@@ -108,8 +103,6 @@ let run_db section dir json target =
       if json then begin
         let json_val = Db_json.db_app_to_json app in
         Printf.printf "%s\n" (Yojson.Basic.pretty_to_string json_val)
-      end else if target = Some "sql" then begin
-        Printf.printf "%s" (Db_sql.generate app)
       end else begin
         Printf.printf "DB spec found in %s\n" borg_path;
         Printf.printf "  tables: %d\n" (List.length app.Db_ast.tables);
@@ -192,16 +185,12 @@ let ui_cmd : unit Cmd.t =
   let json =
     Arg.(value & flag & info ["json"] ~doc:"Output as JSON")
   in
-  let target =
-    Arg.(value & opt (some string) None & info ["target"; "t"] ~docv:"TARGET"
-      ~doc:"Output target: html, css")
-  in
   Cmd.v (Cmd.info "ui" ~doc:"generate code from a UI spec section"
     ~man:[`S "DESCRIPTION";
           `P "Reads a (ui ...) spec from a .borg file and generates \
-              target code. Use --target html to generate HTML+CSS, \
-              --target css for CSS only, or --json for structured JSON."])
-  Term.(const run_ui $ section $ dir $ json $ target)
+              target code. The convention determines the output format \
+              (HTML+CSS, React, Clay, etc.)."])
+  Term.(const run_ui $ section $ dir $ json)
 
 let db_cmd : unit Cmd.t =
   let section =
@@ -215,16 +204,12 @@ let db_cmd : unit Cmd.t =
   let json =
     Arg.(value & flag & info ["json"] ~doc:"Output as JSON")
   in
-  let target =
-    Arg.(value & opt (some string) None & info ["target"; "t"] ~docv:"TARGET"
-      ~doc:"Output target: sql")
-  in
   Cmd.v (Cmd.info "db" ~doc:"generate code from a DB spec section"
     ~man:[`S "DESCRIPTION";
           `P "Reads a (db ...) spec from a .borg file and generates \
-              SQL migrations and/or application code. Use --target sql \
-              for PostgreSQL DDL, or --json for structured JSON."])
-  Term.(const run_db $ section $ dir $ json $ target)
+              SQL migrations and/or application code. The convention \
+              determines the output format."])
+  Term.(const run_db $ section $ dir $ json)
 
 let cmd : unit Cmd.t =
   let info = Cmd.info "generate" ~doc:"generate spec sections or code from specs"

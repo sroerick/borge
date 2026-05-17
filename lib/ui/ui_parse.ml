@@ -236,6 +236,9 @@ and parse_ui_element = function
     in
     let variants = List.filter_map parse_variant variant_forms in
     Some { name; properties; children; variants }
+  | List (_, [Atom (_, "use"); Atom (_, comp_name)]) ->
+    (* (use component-name) — creates a component reference element *)
+    Some { name = Some comp_name; properties = []; children = []; variants = [] }
   | _ -> None
 
 (** Parse a (theme ...) form *)

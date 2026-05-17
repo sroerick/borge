@@ -274,13 +274,14 @@
   )
   (subsection ui-validate
    (doc "Semantic validation for UI specs")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
-         Will check: (use component-name) refers to a defined component,
-         (fill slot-name) refers to an existing slot, variant names are
-         unique per element, theme variable references are defined.
-         Currently a stub returning empty issues.
+         Checks: variant names are unique per element, theme variable
+         references (palette, spacing, font-size, radius) are defined,
+         component and layout names are unique, page layout references
+         point to defined layouts. Returns structured issues with
+         severity (error/warning).
        |))
    )
   )
@@ -324,13 +325,15 @@
   )
   (subsection db-validate
    (doc "Semantic validation for DB specs")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
-         Will check: (references table.column) refers to an existing
-         table, (ownership column) refers to an existing column,
-         group capability tables exist, operations reference existing
-         tables. Currently a stub returning empty issues.
+         Checks: table and column names are unique, (references
+         table.column) refers to an existing table, (ownership column)
+         refers to an existing column on the same table, operations
+         reference existing tables, relation from-tables and join tables
+         exist, group capability tables exist. Returns structured issues
+         with severity (error/warning).
        |))
    )
   )

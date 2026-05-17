@@ -454,6 +454,58 @@
       |))
   )
  )
+ (section agent-discipline
+  (doc "Rules for AI agents working in borge — operationalizing spec-first development")
+  (status implemented)
+  (details
+   (doc (|
+        The literate-programming section declares the philosophy. This
+        section declares the operational rules that follow from it.
+        These rules apply to AI agents (like pi) and humans alike,
+        but AI agents are the primary audience because they are the
+        ones most likely to violate them through scope creep.
+
+        Rule 1: No unspec'd code. Every .ml file, every module, every
+        significant function must have a corresponding .borg section
+        before it is written. If you want to add db_sql.ml, first add
+        a (subsection db-sql) to lib.borg with (status planned) and a
+        doc block describing what it does. Then implement. This is not
+        bureaucracy — it is how borge prevents drift. Code without a
+        spec is code without an owner.
+
+        Rule 2: Read the spec before building. Before implementing
+        any feature, read the relevant .borg sections — especially
+        their (details ...) blocks and (status ...). A (status planned)
+        section with detailed doc is a design document: follow it. A
+        section marked (status planned) with no details is a blank
+        check: ask the human before filling it in. A feature not in
+        any .borg file is out of scope — do not build it without
+        explicit instruction.
+
+        Rule 3: Follow existing patterns. When the codebase has an
+        established pattern (like generate.ml using Agent.run_pi_print
+        for LLM-mediated generation), and the spec describes the same
+        pattern (like ui.borg's generation-workflow section saying
+        "assemble prompt, call the LLM"), follow that pattern. Do not
+        invent alternative approaches (like template rendering) unless
+        the spec explicitly calls for them.
+
+        Rule 4: Update spec status after implementation. When you
+        implement something that was (status planned) in a .borg file,
+        update it to (status implemented). When you add a new module,
+        add a corresponding subsection. Stale statuses are a form of
+        drift — they make borge report inaccurate and mislead the
+        next agent about what is done vs. what is pending.
+
+        Rule 5: Check against spec during loops. In iterative
+        workflows (Ralph loops, multi-step tasks), periodically
+        verify: does my task list match what the .borg files say?
+        Am I building something the spec describes, or am I building
+        something I invented? If a task item has no corresponding
+        .borg section, stop and ask before proceeding.
+      |))
+  )
+ )
  (section future-work
   (doc "Planned improvements and architectural decisions")
   (status planned)
