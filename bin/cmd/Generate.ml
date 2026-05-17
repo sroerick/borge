@@ -17,7 +17,7 @@ let run_code section dir =
     Printf.eprintf "Failed to generate code for section '%s'.\n" section;
     exit 1
 
-let run_ui section dir =
+let run_ui section dir json =
   let borg_files = File_utils.find_borg_files dir in
   let matching_borg = List.filter (fun p ->
     try
@@ -41,15 +41,44 @@ let run_ui section dir =
     let file = Borge_lang.Parse.parse_file input in
     (match Ui_parse.parse_file file with
     | Some app ->
-      let json = Ui_json.ui_app_to_json app in
-      Printf.printf "UI section '%s' found in %s\n" section borg_path;
-      Printf.printf "%s\n" (Yojson.Basic.pretty_to_string json);
+      if json then begin
+        let json_val = Ui_json.ui_app_to_json app in
+        Printf.printf "%s\n" (Yojson.Basic.pretty_to_string json_val)
+      end else begin
+        Printf.printf "UI spec found in %s\n" borg_path;
+        (match app.Ui_ast.theme with
+        | Some t ->
+          let palette_count = List.filter_map (function Ui_ast.Palette_entry _ -> Some () | _ -> None) t.Ui_ast.entries in
+          Printf.printf "  theme: %d palette entries, %d spacing, %d font-size, %d radius\n"
+            (List.length palette_count)
+            (List.filter_map (function Ui_ast.Spacing_entry _ -> Some () | _ -> None) t.Ui_ast.entries |> List.length)
+            (List.filter_map (function Ui_ast.Font_size_entry _ -> Some () | _ -> None) t.Ui_ast.entries |> List.length)
+            (List.filter_map (function Ui_ast.Radius_entry _ -> Some () | _ -> None) t.Ui_ast.entries |> List.length)
+        | None -> ());
+        Printf.printf "  components: %d\n" (List.length app.Ui_ast.components);
+        List.iter (fun (c : Ui_ast.component) -> Printf.printf "    - %s\n" c.Ui_ast.name) app.Ui_ast.components;
+        Printf.printf "  layouts: %d\n" (List.length app.Ui_ast.layouts);
+        List.iter (fun (ly : Ui_ast.layout_def) -> Printf.printf "    - %s\n" ly.Ui_ast.name) app.Ui_ast.layouts;
+        Printf.printf "  pages: %d\n" (List.length app.Ui_ast.pages);
+        List.iter (fun (p : Ui_ast.page) -> Printf.printf "    - %s (layout: %s)\n" p.Ui_ast.name p.Ui_ast.layout_name) app.Ui_ast.pages;
+        Printf.printf "  routes: %d\n" (List.length app.Ui_ast.routes);
+        List.iter (fun (r : Ui_ast.route) -> Printf.printf "    - %s -> %s\n" r.Ui_ast.path r.Ui_ast.page_name) app.Ui_ast.routes;
+        let issues = Ui_validate.validate app in
+        if issues <> [] then begin
+          Printf.printf "  validation issues: %d\n" (List.length issues);
+          List.iter (fun (i : Ui_validate.issue) ->
+            Printf.printf "    [%s] %s\n"
+              (match i.severity with `Error -> "ERROR" | `Warning -> "WARN")
+              i.message
+          ) issues
+        end
+      end;
       exit 0
     | None ->
       Printf.eprintf "Failed to parse UI spec from %s\n" borg_path;
       exit 1)
 
-let run_db section dir =
+let run_db section dir json =
   let borg_files = File_utils.find_borg_files dir in
   let matching_borg = List.filter (fun p ->
     try
@@ -71,9 +100,41 @@ let run_db section dir =
     let file = Borge_lang.Parse.parse_file input in
     (match Db_parse.parse_file file with
     | Some app ->
-      let json = Db_json.db_app_to_json app in
-      Printf.printf "DB table '%s' found in %s\n" section borg_path;
-      Printf.printf "%s\n" (Yojson.Basic.pretty_to_string json);
+      if json then begin
+        let json_val = Db_json.db_app_to_json app in
+        Printf.printf "%s\n" (Yojson.Basic.pretty_to_string json_val)
+      end else begin
+        Printf.printf "DB spec found in %s\n" borg_path;
+        Printf.printf "  tables: %d\n" (List.length app.Db_ast.tables);
+        List.iter (fun (t : Borge_lib.Db_ast.table_def) ->
+          Printf.printf "    - %s (%d columns" t.Db_ast.name (List.length t.Db_ast.columns);
+          (match t.Db_ast.ownership with Some o -> Printf.printf ", ownership: %s" o | None -> ());
+          Printf.printf ")\n"
+        ) app.Db_ast.tables;
+        Printf.printf "  operations: %d\n" (List.length app.Db_ast.operations);
+        List.iter (fun (o : Borge_lib.Db_ast.operations_def) ->
+          Printf.printf "    - %s" o.Db_ast.table_name;
+          (match o.Db_ast.crud with Some _ -> Printf.printf " (CRUD)" | None -> ());
+          Printf.printf "\n"
+        ) app.Db_ast.operations;
+        Printf.printf "  relations: %d\n" (List.length app.Db_ast.relations);
+        List.iter (fun (r : Borge_lib.Db_ast.relation_def) ->
+          Printf.printf "    - %s (from %s, %d joins)\n" r.Db_ast.name r.Db_ast.from_table (List.length r.Db_ast.joins)
+        ) app.Db_ast.relations;
+        Printf.printf "  groups: %d\n" (List.length app.Db_ast.groups);
+        List.iter (fun (g : Borge_lib.Db_ast.group_def) ->
+          Printf.printf "    - %s%s\n" g.Db_ast.name (if g.Db_ast.can_all then " (can-all)" else "")
+        ) app.Db_ast.groups;
+        let issues = Db_validate.validate app in
+        if issues <> [] then begin
+          Printf.printf "  validation issues: %d\n" (List.length issues);
+          List.iter (fun (i : Db_validate.issue) ->
+            Printf.printf "    [%s] %s\n"
+              (match i.severity with `Error -> "ERROR" | `Warning -> "WARN")
+              i.message
+          ) issues
+        end
+      end;
       exit 0
     | None ->
       Printf.eprintf "Failed to parse DB spec from %s\n" borg_path;
@@ -121,12 +182,15 @@ let ui_cmd : unit Cmd.t =
     Arg.(value & opt dir "." & info ["dir"; "d"] ~docv:"DIR"
       ~doc:"Project directory")
   in
+  let json =
+    Arg.(value & flag & info ["json"] ~doc:"Output as JSON")
+  in
   Cmd.v (Cmd.info "ui" ~doc:"generate code from a UI spec section"
     ~man:[`S "DESCRIPTION";
           `P "Reads a (ui ...) spec from a .borg file and generates \
               target code. The convention determines the output format \
               (HTML+CSS, React, Clay, etc.)."])
-  Term.(const run_ui $ section $ dir)
+  Term.(const run_ui $ section $ dir $ json)
 
 let db_cmd : unit Cmd.t =
   let section =
@@ -137,12 +201,15 @@ let db_cmd : unit Cmd.t =
     Arg.(value & opt dir "." & info ["dir"; "d"] ~docv:"DIR"
       ~doc:"Project directory")
   in
+  let json =
+    Arg.(value & flag & info ["json"] ~doc:"Output as JSON")
+  in
   Cmd.v (Cmd.info "db" ~doc:"generate code from a DB spec section"
     ~man:[`S "DESCRIPTION";
           `P "Reads a (db ...) spec from a .borg file and generates \
               SQL migrations and/or application code. The convention \
               determines the output format."])
-  Term.(const run_db $ section $ dir)
+  Term.(const run_db $ section $ dir $ json)
 
 let cmd : unit Cmd.t =
   let info = Cmd.info "generate" ~doc:"generate spec sections or code from specs"
