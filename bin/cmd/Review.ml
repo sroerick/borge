@@ -10,6 +10,27 @@ let now () =
     (tm.Unix.tm_year + 1900) (tm.Unix.tm_mon + 1) tm.Unix.tm_mday
     tm.Unix.tm_hour tm.Unix.tm_min tm.Unix.tm_sec
 
+let call_pi prompt =
+  (* Write prompt to temp file *)
+  let tmp_file = Filename.temp_file "review" ".txt" in
+  let oc = open_out tmp_file in
+  output_string oc prompt;
+  close_out oc;
+  
+  (* Call pi and capture response *)
+  let cmd = Printf.sprintf "pi --file %s --no-interactive 2>/dev/null || echo 'Doc present: unknown\nAccuracy: unknown\nIssues: LLM unavailable\nConfidence: low'" tmp_file in
+  let ic = Unix.open_process_in cmd in
+  let response = ref "" in
+  (try
+    while true do
+      let line = input_line ic in
+      response := !response ^ line ^ "\n"
+    done
+  with End_of_file -> ());
+  ignore (Unix.close_process_in ic);
+  Sys.remove tmp_file;
+  !response
+
 let review_file path ~dry_run =
   if dry_run then Printf.printf "[DRY-RUN] Would review: %s\n" path;
   
@@ -32,10 +53,15 @@ let review_file path ~dry_run =
       Printf.printf "\n";
       (info, Semantic_review.empty_result)
     end else begin
-      let _prompt = Semantic_review.build_prompt info in
-      (* TODO: Call LLM with prompt *)
-      Printf.printf "Function: %s (line %d) - LLM call pending\n" info.name info.line;
-      (info, Semantic_review.empty_result)
+      let prompt = Semantic_review.build_prompt info in
+      Printf.printf "Function: %s (line %d) - calling LLM...\n" info.name info.line;
+      let response = call_pi prompt in
+      let result = Semantic_review.parse_response response in
+      Printf.printf "  Doc present: %b, Accuracy: %s\n" 
+        result.Semantic_review.doc_present
+        (match result.Semantic_review.doc_accuracy with
+         | `High -> "high" | `Medium -> "medium" | `Low -> "low" | `Unknown -> "unknown");
+      (info, result)
     end
   ) functions in
   
