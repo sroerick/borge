@@ -9,7 +9,7 @@ let parse_file path =
 let run path json diagnostics =
   let input = parse_file path in
   try
-    let file = Borge_sexp.Parse.parse input in
+    let file = Borge_lang.Parse.parse input in
     if json then
       Printf.printf "JSON output not yet implemented\n"
     else if diagnostics then
@@ -32,7 +32,7 @@ let run path json diagnostics =
       ) by_status
     end
   with
-  | Borge_sexp.Error.Parse_error e ->
+  | Borge_lang.Error.Parse_error e ->
     Printf.eprintf "Parse error at line %d, column %d: %s\n" e.line e.column e.message;
     exit 1
 

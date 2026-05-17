@@ -2,8 +2,8 @@ open Borge_lib
 
 let run path =
   let input = File_utils.read_file path in
-  let file = Borge_sexp.Parse.parse_file input in
-  let output = Borge_sexp.Print.print_file file in
+  let file = Borge_lang.Parse.parse_file input in
+  let output = Borge_lang.Print.print_file file in
   print_string output;
   exit 0
 

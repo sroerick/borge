@@ -1,6 +1,8 @@
+(include_subdirs no)
+
 (library
-  (name borge_sexp)
-  (public_name borge.sexp)
+  (name borge_lang)
+  (public_name borge.lang)
   (modules ast balance error lexer parse print parser)
   (libraries sedlex))
 

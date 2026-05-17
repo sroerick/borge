@@ -1,0 +1,8 @@
+(include_subdirs unqualified)
+
+(library
+  (name borge_lib)
+  (public_name borge.lib)
+  (modules spec file_utils project check report lint drift dune_parse
+           surface meta fmt nodes generate agent review_quality stats json)
+  (libraries borge.lang unix str yojson))

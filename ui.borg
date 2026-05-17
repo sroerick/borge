@@ -1,0 +1,542 @@
+(project borge-ui
+ (doc "Declarative UI DSL for borge — inspired by Clay's 80/20 layout model.
+       Describes UI structure and style in sexp; generates code via LLM.
+       Renderer-agnostic: can target HTML/CSS, React, Clay, or any frontend.")
+ (no-inline)
+ (status planned)
+
+ (section philosophy
+  (doc (|
+    Borge UI is a declarative language for describing user interfaces.
+    It borrows Clay's insight: UI layout is just nested boxes with
+    flexbox-like rules. But where Clay is a C layout library, borge
+    UI is a spec — it describes *what* the interface should look like,
+    not *how* to render it.
+
+    The three core principles:
+
+    1. Describe intent, not pixels. Sizing defaults to fractional
+       parts (flex portions), not absolute units. You say "sidebar
+       gets 1 part, content gets 3 parts" and the generator handles
+       the rest.
+
+    2. Renderer-agnostic. The same spec can generate HTML+CSS for
+       a Dream web app, React components, Clay C code, or any other
+       target. The convention system determines the output format.
+
+    3. Shared base, named variants. Responsive design is handled
+       through named variants that overlay the base properties. You
+       write shared style once, then describe only what changes at
+       different sizes.
+
+    Interactivity is a capability declaration, not a handler binding.
+    (interactive click) means "this element is clickable" — the
+    target generator decides how to implement that. The spec does
+    not couple to any host language's function naming or event system.
+  |))
+ )
+
+ (section ui-form
+  (doc "The (ui ...) form — the core building block")
+  (status planned)
+  (details
+   (doc (|
+     A ui element is declared with the (ui name ...) form. Name is
+     a symbol identifying the element. The body contains property
+     declarations and children.
+
+     (ui sidebar
+       (layout vertical)
+       (width 1)
+       (height grow)
+       (padding 16)
+       (gap 16)
+       (bg "#e0d7d2")
+       (children
+         (ui header ...)))
+
+     Name is optional for anonymous elements:
+       (ui (text "Status") (size 14))
+
+     Properties can appear in any order. Children are declared
+     explicitly with (children ...). This keeps the structure
+     unambiguous — properties and children are never mixed.
+   |))
+  )
+ )
+
+ (section layout-properties
+  (doc "How elements are arranged inside their parent")
+  (status planned)
+  (details
+   (doc (|
+     (layout direction)
+       Direction: horizontal (default) or vertical.
+       Children are laid out along the chosen axis.
+
+     (layout horizontal)   — left to right
+     (layout vertical)     — top to bottom
+
+     Short form: (layout horizontal) and (layout vertical) set
+     direction implicitly.
+   |))
+  )
+
+  (subsection sizing
+   (doc "How elements size themselves within their parent")
+   (status planned)
+   (details
+    (doc (|
+      (width N)        — N fractional parts of parent (flex: N)
+      (height N)       — same, for height
+
+      (width grow)     — fill remaining space after siblings are sized
+      (height grow)    — same, for height
+
+      (width full)    — 100% of parent
+      (height full)   — same, for height
+
+      (width auto)     — size to content
+      (height auto)   — size to content
+
+      Explicit units when needed:
+      (width (px 300))   — 300 pixels
+      (width (rem 2))    — 2rem
+      (width (pct 25))   — 25%
+      (height (vh 80))   — 80% of viewport height
+
+      Fractional parts are the default and preferred. A sidebar
+      getting (width 1) and content getting (width 3) produces
+      a 25/75 split without any pixel math. The generator
+      translates "1 part" to whatever the target supports
+      (flex-grow in CSS, SIZING_GROW in Clay, etc.).
+
+      The minimum: two numbers. If sidebar is 1 and content is 3,
+      that's a 1:3 ratio. You don't need to think about pixels
+      unless you specifically need them.
+    |))
+   )
+  )
+
+  (subsection spacing
+   (doc "Padding, gaps, and alignment between children")
+   (status planned)
+   (details
+    (doc (|
+      (padding N)          — equal padding on all sides
+      (padding (top N) (right N) (bottom N) (left N))  — per-side
+
+      (gap N)              — space between child elements
+
+      (align-x left)      — horizontal alignment of children
+      (align-x center)
+      (align-x right)
+
+      (align-y top)       — vertical alignment of children
+      (align-y center)
+      (align-y bottom)
+
+      Padding and gap values accept the same unit types as sizing:
+      bare numbers are px (since fractional padding is rare),
+      or use (rem 1), (pct 5), etc.
+    |))
+   )
+  )
+ )
+
+ (section style-properties
+  (doc "Visual appearance — colors, borders, corners")
+  (status planned)
+  (details
+   (doc (|
+     (bg COLOR)            — background color
+     (color COLOR)         — text color (inherits to children)
+     (border (width N) (color COLOR))  — border on all sides
+     (border (bottom (width N) (color COLOR)))  — specific side
+     (corner N)            — uniform corner radius in px
+     (corner (top-left N) (top-right N) (bottom-left N) (bottom-right N))
+
+     Colors: hex strings like "#a8421c" or named like "red",
+     "white", "transparent". The generator translates to the
+     target's color format.
+
+     For opacity: "#a8421c99" (hex with alpha) or
+     (bg "#a8421c" (alpha 0.6)).
+   |))
+  )
+ )
+
+ (section text
+  (doc "Text elements")
+  (status planned)
+  (details
+   (doc (|
+     (text STRING)           — text content
+     (text STRING (size N))  — with font size
+     (text STRING (size N) (color COLOR))
+     (text STRING (bold))
+     (placeholder STRING)    — placeholder text for inputs
+
+     Text inherits color from parent unless overridden.
+     Font size in px by default, or (size (rem 1.5)).
+     (bold) and (italic) are boolean flags.
+
+     Text wrapping: (wrap words) is default — text wraps at
+     word boundaries. (wrap none) disables wrapping.
+     (wrap newlines) wraps only on newline characters.
+   |))
+  )
+ )
+
+ (section interactive
+  (doc "Capability declarations — what the user can do to an element")
+  (status planned)
+  (details
+   (doc (|
+     (interactive click)   — this element responds to clicks/taps
+     (interactive type)    — this element accepts text input
+     (interactive hover)   — this element responds to hover/focus
+
+     Interactive is optional. Omit it for non-interactive elements
+     (labels, spacers, containers). When present, it tells the
+     generator: "make this element respond to this kind of input."
+
+     The spec does NOT describe handler implementation — no
+     function names, no callback wiring. That's code, not spec.
+     The generator adds the right event bindings for the target:
+       - HTML: an onclick attribute, event listener, or htmx trigger
+       - React: an onClick prop
+       - Clay: an OnHover callback
+
+     Example:
+       (ui save-button
+         (interactive click)
+         (text "Save")
+         (bg "#a8421c")
+         (padding (top 8) (right 16) (bottom 8) (left 16))
+         (corner 6))
+   |))
+  )
+ )
+
+ (section scroll
+  (doc "Scrollable containers")
+  (status planned)
+  (details
+   (doc (|
+     (scroll vertical)    — scroll content vertically
+     (scroll horizontal)  — scroll content horizontally
+     (scroll both)        — scroll in both directions
+
+     Scroll is a layout concern, not an interaction. The spec
+     declares that a container scrolls; the generator implements
+     clipping and scroll behavior per target.
+
+     Example:
+       (ui content
+         (layout vertical)
+         (width 3)
+         (height grow)
+         (scroll vertical)
+         (bg "#e0d7d2")
+         (children ...))
+   |))
+  )
+ )
+
+ (section floating
+  (doc "Elements that float above the normal layout flow")
+  (status planned)
+  (details
+   (doc (|
+     (float)               — float above siblings, absolute positioned
+     (float (attach parent)) — position relative to parent
+     (float (offset (top 8))) — offset from attachment point
+
+     Floating elements don't affect their parent's size or
+     sibling positioning. They stack on top. Use for tooltips,
+     modals, dropdowns.
+
+     Example:
+       (ui dropdown
+         (float (attach parent) (offset (top 4)))
+         (bg "#333")
+         (corner 6)
+         (children ...))
+   |))
+  )
+ )
+
+ (section image
+  (doc "Image elements")
+  (status planned)
+  (details
+   (doc (|
+     (image NAME)          — display an image by name/reference
+     (image NAME (width N) (height N))  — with explicit size
+
+     The image name is a logical reference. The generator maps
+     it to the target's asset system (file path, URL, etc.).
+   |))
+  )
+ )
+
+ (section variants
+  (doc "Named variants for responsive design")
+  (status planned)
+  (details
+   (doc (|
+     An element can have named variants. Each variant overlays
+     the base properties — you only specify what changes.
+
+     (ui sidebar
+       (padding 16)
+       (gap 16)
+       (bg "#e0d7d2")
+       (children ...)
+
+       (variant wide
+         (layout vertical)
+         (width 1)
+         (height grow))
+
+       (variant narrow
+         (layout horizontal)
+         (width full)
+         (height auto)))
+
+     Shared properties (padding, gap, bg, children) are written
+     once. Each variant only contains the properties that differ
+     from the base.
+
+     Variant names are semantic: wide, narrow, compact, expanded,
+     etc. The generator decides what breakpoints or conditions
+     map to each variant. The spec says "there are two shapes";
+     the convention says "wide = >768px, narrow = <=768px".
+
+     Properties in a variant override the base. Properties not
+     listed in a variant are inherited from the base unchanged.
+
+     Children declared in a variant replace the base children.
+     If children don't change between variants, declare them
+     in the base and omit from variants.
+   |))
+  )
+ )
+
+ (section children
+  (doc "Declaring child elements")
+  (status planned)
+  (details
+   (doc (|
+     Children are declared explicitly with (children ...):
+
+     (ui card
+       (layout vertical)
+       (padding 16)
+       (bg "#ffffff")
+       (corner 12)
+       (children
+         (text "Card Title" (size 18) (bold))
+         (text "Card body text goes here." (size 14))
+         (ui action-row
+           (layout horizontal)
+           (gap 8)
+           (children
+             (ui btn (interactive click) (text "OK") (bg "#4a9"))
+             (ui btn (interactive click) (text "Cancel") (bg "#999"))))))
+
+     Children are ordered: the order in (children ...) is the
+     order on screen, following the layout direction.
+
+     An element with no (children ...) has no children.
+   |))
+  )
+ )
+
+ (section full-example
+  (doc "A complete example: text editor page layout")
+  (status planned)
+  (details
+   (doc (|
+     (section text-editor-ui
+       (doc "Main page layout for the text editor")
+       (status planned)
+       (ui editor-page
+         (layout vertical)
+         (width full)
+         (height full)
+         (bg "#fafaff")
+         (padding 16)
+         (gap 16)
+         (children
+
+           (ui header
+             (layout horizontal)
+             (width full)
+             (height auto)
+             (align-y center)
+             (gap 8)
+             (padding (top 4) (right 8) (bottom 4) (left 8))
+             (bg "#e0d7d2")
+             (corner 8)
+             (children
+               (ui btn (interactive click) (text "File") (padding 8) (corner 4))
+               (ui btn (interactive click) (text "Edit") (padding 8) (corner 4))
+               (ui spacer (width grow) (height 1))
+               (ui btn (interactive click) (text "Settings") (padding 8) (corner 4))))
+
+           (ui lower
+             (layout horizontal)
+             (width full)
+             (height grow)
+             (gap 16)
+
+             (variant wide
+               (layout horizontal))
+
+             (variant narrow
+               (layout vertical))
+
+             (children
+
+               (ui sidebar
+                 (layout vertical)
+                 (width 1)
+                 (height grow)
+                 (padding 16)
+                 (gap 8)
+                 (bg "#e0d7d2")
+                 (corner 8)
+
+                 (variant wide
+                   (width 1)
+                   (height grow))
+
+                 (variant narrow
+                   (width full)
+                   (height auto))
+
+                 (children
+                   (ui doc-title
+                     (interactive click)
+                     (text "Chapter 1")
+                     (padding 8) (corner 4)
+                     (bg "#c8a050"))
+                   (ui doc-title
+                     (interactive click)
+                     (text "Chapter 2")
+                     (padding 8) (corner 4))
+                   (ui doc-title
+                     (interactive click)
+                     (text "Chapter 3")
+                     (padding 8) (corner 4))))
+
+               (ui content
+                 (layout vertical)
+                 (width 3)
+                 (height grow)
+                 (padding 16)
+                 (gap 12)
+                 (bg "#e0d7d2")
+                 (corner 8)
+                 (scroll vertical)
+
+                 (variant wide
+                   (width 3))
+
+                 (variant narrow
+                   (width full))
+
+                 (children
+                   (text "Chapter 1: The Beginning" (size 24) (bold))
+                   (text (|
+                     It was a dark and stormy night. The wind howled
+                     through the narrow streets, rattling shutters and
+                     sending stray papers spiraling into the gutter.
+                     Something was coming — you could feel it in the
+                     charge of the air, in the way the streetlights
+                     flickered and died one by one.
+                   |) (size 14)))))))))
+   |))
+  )
+ )
+
+ (section convention-targets
+  (doc "How the DSL maps to different rendering targets")
+  (status planned)
+  (details
+   (doc (|
+     The generator reads the (ui ...) spec and a target convention,
+     then produces code. Each convention knows how to translate:
+
+     ocaml-dream target:
+       (layout vertical)  → div with flex-direction: column
+       (width 1)         → flex: 1
+       (bg "#e0d7d2")    → background-color: #e0d7d2
+       (interactive click) → htmx attribute or onclick
+       (variant wide)    → @media (min-width: 768px) { ... }
+
+     clay-c target:
+       (layout vertical)  → CLAY_TOP_TO_BOTTOM
+       (width 1)          → CLAY_SIZING_GROW(0)
+       (bg "#e0d7d2")     → .backgroundColor = { 224, 215, 210, 255 }
+       (interactive click) → Clay_OnHover callback
+       (variant wide)     → conditional in layout loop
+
+     react target:
+       (layout vertical)  → className with flex-col
+       (width 1)          → style={{ flex: 1 }}
+       (interactive click) → onClick prop
+       (variant wide)     → useMediaQuery hook + conditional class
+
+     The convention also handles breakpoint selection: what screen
+     width maps to "narrow" vs "wide", what the default layout is
+     when no variant matches, etc.
+   |))
+  )
+ )
+
+ (section generation-workflow
+  (doc "How borge generate produces UI code from specs")
+  (status planned)
+  (details
+   (doc (|
+     borge generate ui SECTION-NAME
+
+     1. Read the (ui ...) spec from the section
+     2. Read the project convention to determine the target
+     3. Assemble prompt: spec text + convention rules + existing
+        code context
+     4. Call the LLM to generate target code
+     5. Write generated files
+     6. Mark section (status implemented)
+
+     Like borge generate code, the spec is always right. If the
+     generated code doesn't match, fix the spec or regenerate.
+
+     Drift detection works the same way: borge drift can check
+     whether the generated code matches the UI spec structure.
+     A section marked (status implemented) whose generated files
+     are missing or structurally different is code drift.
+   |))
+  )
+ )
+
+ (section future-work
+  (doc "Possible extensibility for the UI DSL")
+  (status planned)
+  (details
+   (doc (|
+     - Component reuse: (component name (params ...) (ui ...))
+       for reusable UI patterns
+     - Theme variables: (theme (bg-primary "#e0d7d2"))
+       for consistent branding across elements
+     - Animation/transition declarations
+     - Grid layout beyond flexbox
+     - Accessibility annotations: (aria label "...") or (role button)
+     - Data binding: (text (bind model.field))
+   |))
+  )
+ )
+)

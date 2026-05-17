@@ -5,9 +5,9 @@
 
 let test_dune_library () =
   let input = "(library\n  (name my_lib)\n  (public_name my.lib)\n  (modules foo bar baz)\n  (libraries unix str))" in
-  let file = Borge_sexp.Parse.parse_file input in
-  let stanza = match file.Borge_sexp.Ast.top_level with
-    | { Borge_sexp.Ast.node = Borge_sexp.Ast.List (_, Borge_sexp.Ast.Atom (_, "library") :: children); _ } :: _ ->
+  let file = Borge_lang.Parse.parse_file input in
+  let stanza = match file.Borge_lang.Ast.top_level with
+    | { Borge_lang.Ast.node = Borge_lang.Ast.List (_, Borge_lang.Ast.Atom (_, "library") :: children); _ } :: _ ->
         Borge_lib.Dune_parse.parse_library children
     | _ -> Alcotest.fail "no library stanza"
   in
@@ -19,9 +19,9 @@ let test_dune_library () =
 
 let test_dune_executables () =
   let input = "(executables\n  (names my_app my_tool)\n  (libraries my_lib cmdliner))" in
-  let file = Borge_sexp.Parse.parse_file input in
-  let stanza = match file.Borge_sexp.Ast.top_level with
-    | { Borge_sexp.Ast.node = Borge_sexp.Ast.List (_, Borge_sexp.Ast.Atom (_, "executables") :: children); _ } :: _ ->
+  let file = Borge_lang.Parse.parse_file input in
+  let stanza = match file.Borge_lang.Ast.top_level with
+    | { Borge_lang.Ast.node = Borge_lang.Ast.List (_, Borge_lang.Ast.Atom (_, "executables") :: children); _ } :: _ ->
         Borge_lib.Dune_parse.parse_executables children
     | _ -> Alcotest.fail "no executables stanza"
   in
@@ -31,9 +31,9 @@ let test_dune_executables () =
 
 let test_dune_test_stanza () =
   let input = "(test\n  (name test_foo)\n  (libraries my_lib alcotest))" in
-  let file = Borge_sexp.Parse.parse_file input in
-  let stanza = match file.Borge_sexp.Ast.top_level with
-    | { Borge_sexp.Ast.node = Borge_sexp.Ast.List (_, Borge_sexp.Ast.Atom (_, "test") :: children); _ } :: _ ->
+  let file = Borge_lang.Parse.parse_file input in
+  let stanza = match file.Borge_lang.Ast.top_level with
+    | { Borge_lang.Ast.node = Borge_lang.Ast.List (_, Borge_lang.Ast.Atom (_, "test") :: children); _ } :: _ ->
         Borge_lib.Dune_parse.parse_test children
     | _ -> Alcotest.fail "no test stanza"
   in

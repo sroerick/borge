@@ -21,8 +21,8 @@ let run dir =
   let unchanged = ref 0 in
   List.iter (fun path ->
     let input = File_utils.read_file path in
-    let file = Borge_sexp.Parse.parse_file input in
-    let output = Borge_sexp.Print.print_file file in
+    let file = Borge_lang.Parse.parse_file input in
+    let output = Borge_lang.Print.print_file file in
     if Fmt.strip_trailing_newlines input <> Fmt.strip_trailing_newlines output then begin
       let oc = open_out path in
       output_string oc output;

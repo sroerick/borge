@@ -1,4 +1,4 @@
-open Borge_sexp.Ast
+open Borge_lang.Ast
 
 type node_info = {
   pos : pos;
@@ -47,7 +47,7 @@ type result = {
 
 let run path =
   let input = File_utils.read_file path in
-  let file = Borge_sexp.Parse.parse_file input in
+  let file = Borge_lang.Parse.parse_file input in
   let nodes = List.concat_map (fun { node; _ } ->
     collect_nodes 0 node
   ) file.top_level in

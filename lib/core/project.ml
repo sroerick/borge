@@ -21,7 +21,7 @@ let rec build_tree ?(visited=[]) path =
   else
     try
       let input = File_utils.read_file path in
-      let file = Borge_sexp.Parse.parse_file input in
+      let file = Borge_lang.Parse.parse_file input in
       let name = Spec.project_name file in
       let targets = Spec.inline_targets file in
       let dir = Filename.dirname path in
@@ -43,7 +43,7 @@ let rec build_tree ?(visited=[]) path =
       | None ->
           let children = List.filter_map (function Ok n -> Some n | _ -> None) children_with_errors in
           Ok { path; project_name = name; children; is_orphan = false }
-    with Borge_sexp.Error.Parse_error e ->
+    with Borge_lang.Error.Parse_error e ->
       Error (Parse_error (path, Printf.sprintf "parse error at %d:%d - %s" e.line e.column e.message))
 
 (** Find all .borg files that are NOT inlined by any other file.
@@ -54,7 +54,7 @@ let find_root_candidates dir =
     List.concat_map (fun path ->
       try
         let input = File_utils.read_file path in
-        let file = Borge_sexp.Parse.parse_file input in
+        let file = Borge_lang.Parse.parse_file input in
         let dir = Filename.dirname path in
         List.map (fun filename ->
           if Filename.is_relative filename then
@@ -80,7 +80,7 @@ let find_orphans dir =
   List.filter (fun path ->
     try
       let input = File_utils.read_file path in
-      let file = Borge_sexp.Parse.parse_file input in
+      let file = Borge_lang.Parse.parse_file input in
       let has_inlines = Spec.inline_targets file <> [] in
       let declares_no_inline = Spec.has_no_inline file in
       not has_inlines && not declares_no_inline
@@ -109,7 +109,7 @@ let tree_status_counts node =
   List.iter (fun path ->
     try
       let input = File_utils.read_file path in
-      let file = Borge_sexp.Parse.parse_file input in
+      let file = Borge_lang.Parse.parse_file input in
       let counts = Spec.status_counts file in
       impl := !impl + (try List.assoc Spec.Implemented counts with Not_found -> 0);
       prog := !prog + (try List.assoc Spec.In_progress counts with Not_found -> 0);

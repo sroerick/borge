@@ -185,33 +185,33 @@ let stats (r : Stats.project_metrics) =
 
 (* ── Balance ───────────────────────────────────────────────────── *)
 
-let balance_pos (p : Borge_sexp.Balance.pos) =
+let balance_pos (p : Borge_lang.Balance.pos) =
   `Assoc [ "line", `Int p.line; "col", `Int p.col ]
 
-let balance_paren_frame (f : Borge_sexp.Balance.paren_frame) =
+let balance_paren_frame (f : Borge_lang.Balance.paren_frame) =
   `Assoc [
     "open_pos", balance_pos f.open_pos;
     "keyword", (match f.keyword with Some k -> `String k | None -> `Null);
   ]
 
 let balance_error_detail = function
-  | Borge_sexp.Balance.Unexpected_close (p, None) ->
+  | Borge_lang.Balance.Unexpected_close (p, None) ->
     `Assoc [
       "type", `String "unexpected_close";
       "pos", balance_pos p;
     ]
-  | Borge_sexp.Balance.Unexpected_close (p, Some open_p) ->
+  | Borge_lang.Balance.Unexpected_close (p, Some open_p) ->
     `Assoc [
       "type", `String "unexpected_close";
       "pos", balance_pos p;
       "matching_open", balance_pos open_p;
     ]
-  | Borge_sexp.Balance.Unclosed_parens frames ->
+  | Borge_lang.Balance.Unclosed_parens frames ->
     `Assoc [
       "type", `String "unclosed_parens";
       "frames", `List (List.map balance_paren_frame (List.rev frames));
     ]
-  | Borge_sexp.Balance.Unclosed_context (p, ctx) ->
+  | Borge_lang.Balance.Unclosed_context (p, ctx) ->
     `Assoc [
       "type", `String "unclosed_context";
       "pos", balance_pos p;
@@ -219,13 +219,13 @@ let balance_error_detail = function
     ]
 
 let balance path = function
-  | Borge_sexp.Balance.Balanced { max_depth } ->
+  | Borge_lang.Balance.Balanced { max_depth } ->
     `Assoc [
       "path", `String path;
       "status", `String "balanced";
       "max_depth", `Int max_depth;
     ]
-  | Borge_sexp.Balance.Imbalanced details ->
+  | Borge_lang.Balance.Imbalanced details ->
     `Assoc [
       "path", `String path;
       "status", `String "imbalanced";

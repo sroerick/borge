@@ -24,9 +24,9 @@ let run_worktree dir =
   let borg_files = File_utils.find_borg_files dir in
   List.iter (fun path ->
     let input = File_utils.read_file path in
-    match Borge_sexp.Balance.check input with
-    | Borge_sexp.Balance.Balanced _ -> ()
-    | Borge_sexp.Balance.Imbalanced _ ->
+    match Borge_lang.Balance.check input with
+    | Borge_lang.Balance.Balanced _ -> ()
+    | Borge_lang.Balance.Imbalanced _ ->
         failures := Printf.sprintf "borge balance: %s is imbalanced" path :: !failures
   ) borg_files;
   (* 3. borge check passes *)

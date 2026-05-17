@@ -6,7 +6,7 @@
 
     Both use pi -p (single-shot) via Agent.run_pi_print. *)
 
-open Borge_sexp
+open Borge_lang
 
 (** {1 Generate spec: todo → .borg section} *)
 

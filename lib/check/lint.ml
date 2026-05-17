@@ -1,4 +1,4 @@
-open Borge_sexp
+open Borge_lang
 
 type lint_issue =
   | Invalid_status of { path : string; value : string; line : int; col : int }

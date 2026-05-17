@@ -1,4 +1,4 @@
-open Borge_sexp.Balance
+open Borge_lang.Balance
 open Cmdliner
 
 let run path verbose =

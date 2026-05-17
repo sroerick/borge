@@ -1,14 +1,14 @@
 (test
   (name test_parse)
-  (libraries borge.sexp borge.lib alcotest))
+  (libraries borge.lang borge.lib alcotest))
 
 (test
   (name test_balance)
-  (libraries borge.sexp alcotest))
+  (libraries borge.lang alcotest))
 
 (test
   (name test_dune)
-  (libraries borge.sexp borge.lib alcotest))
+  (libraries borge.lang borge.lib alcotest))
 
 (test
   (name test_meta)

@@ -1,4 +1,4 @@
-open Borge_sexp.Ast
+open Borge_lang.Ast
 
 type status =
   | Planned
@@ -26,7 +26,7 @@ let string_of_status = function
   | Blank -> "blank"
 
 (** Extract the project name from a top-level (project name ...) form *)
-let project_name (file : Borge_sexp.Ast.file) : string option =
+let project_name (file : Borge_lang.Ast.file) : string option =
   let rec find = function
     | [] -> None
     | { node = List (_, Atom (_, "project") :: Atom (_, name) :: _); _ } :: _ -> Some name
@@ -35,7 +35,7 @@ let project_name (file : Borge_sexp.Ast.file) : string option =
   find file.top_level
 
 (** Count sections in the file *)
-let count_sections (file : Borge_sexp.Ast.file) : int =
+let count_sections (file : Borge_lang.Ast.file) : int =
   let rec count_in_sexp = function
     | List (_, Atom (_, kind) :: _)
       when List.mem kind ["section"; "subsection"; "subsubsection"] -> 1
@@ -49,7 +49,7 @@ let count_sections (file : Borge_sexp.Ast.file) : int =
   count_in_node file.top_level
 
 (** Extract all status values from the file *)
-let statuses (file : Borge_sexp.Ast.file) : status list =
+let statuses (file : Borge_lang.Ast.file) : status list =
   let rec extract = function
     | List (_, Atom (_, "status") :: Atom (_, s) :: _) ->
       (match status_of_string s with
@@ -67,7 +67,7 @@ let statuses (file : Borge_sexp.Ast.file) : status list =
 let status_order = [Planned; In_progress; Partial; Implemented; Drifted; Blank]
 
 (** Extract inline target filenames from (inline filename.borg) forms *)
-let inline_targets (file : Borge_sexp.Ast.file) : string list =
+let inline_targets (file : Borge_lang.Ast.file) : string list =
   let rec extract = function
     | List (_, Atom (_, "inline") :: Atom (_, filename) :: _) -> [filename]
     | List (_, sexps) -> List.concat_map extract sexps
@@ -80,7 +80,7 @@ let inline_targets (file : Borge_sexp.Ast.file) : string list =
   walk file.top_level
 
 (** Check if the file declares (no-inline) *)
-let has_no_inline (file : Borge_sexp.Ast.file) : bool =
+let has_no_inline (file : Borge_lang.Ast.file) : bool =
   let rec extract = function
     | List (_, [Atom (_, "no-inline")]) -> true
     | List (_, sexps) -> List.exists extract sexps
@@ -92,7 +92,7 @@ let has_no_inline (file : Borge_sexp.Ast.file) : bool =
   in
   walk file.top_level
 
-let status_counts (file : Borge_sexp.Ast.file) : (status * int) list =
+let status_counts (file : Borge_lang.Ast.file) : (status * int) list =
   let st_list = statuses file in
   let init = List.map (fun s -> (s, 0)) status_order in
   List.fold_left (fun acc st ->

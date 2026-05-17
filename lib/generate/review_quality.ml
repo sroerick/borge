@@ -4,7 +4,7 @@
     does the implementation match, are exports documented, are there
     dead functions, is error handling present? *)
 
-open Borge_sexp
+open Borge_lang
 
 type review_finding = {
   section : string;

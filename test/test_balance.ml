@@ -1,4 +1,4 @@
-open Borge_sexp.Balance
+open Borge_lang.Balance
 
 let assert_balanced s =
   match check s with

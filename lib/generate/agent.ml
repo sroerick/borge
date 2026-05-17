@@ -7,7 +7,7 @@
 
     Fallback: BORGE_AGENT_CMD env var for custom LLM invocation. *)
 
-open Borge_sexp
+open Borge_lang
 
 (** {1 Prompt assembly} *)
 

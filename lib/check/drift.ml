@@ -1,4 +1,4 @@
-open Borge_sexp
+open Borge_lang
 
 (** {1 Types} *)
 

@@ -1,8 +1,8 @@
 let parse_ok input =
   try
-    let _ = Borge_sexp.Parse.parse input in
+    let _ = Borge_lang.Parse.parse input in
     true
-  with Borge_sexp.Error.Parse_error _ -> false
+  with Borge_lang.Error.Parse_error _ -> false
 
 let test_simple_project () =
   let input = "(project hello\n  (doc \"A project\")\n  (status planned))" in
@@ -34,30 +34,30 @@ let test_bad_unclosed_paren () =
 
 let test_project_name () =
   let input = "(project my-project\n  (doc \"Test\")\n  (status planned))" in
-  let file = Borge_sexp.Parse.parse input in
+  let file = Borge_lang.Parse.parse input in
   let name = Borge_lib.Spec.project_name file in
   Alcotest.(check (option string)) __LOC__ (Some "my-project") name
 
 let test_inline_targets () =
   let input = "(project test\n  (section foo\n   (doc \"Foo\")\n   (status planned)\n   (inline bar.borg)\n   (inline baz.borg)))" in
-  let file = Borge_sexp.Parse.parse input in
+  let file = Borge_lang.Parse.parse input in
   let targets = Borge_lib.Spec.inline_targets file in
   Alcotest.(check (list string)) __LOC__ ["bar.borg"; "baz.borg"] targets
 
 let test_inline_targets_empty () =
   let input = "(project test\n  (doc \"No inlines\")\n  (status planned))" in
-  let file = Borge_sexp.Parse.parse input in
+  let file = Borge_lang.Parse.parse input in
   let targets = Borge_lib.Spec.inline_targets file in
   Alcotest.(check (list string)) __LOC__ [] targets
 
 let test_has_no_inline () =
   let input = "(project test\n  (doc \"Standalone\")\n  (status planned)\n  (no-inline))" in
-  let file = Borge_sexp.Parse.parse input in
+  let file = Borge_lang.Parse.parse input in
   Alcotest.(check bool) __LOC__ true (Borge_lib.Spec.has_no_inline file)
 
 let test_has_no_inline_false () =
   let input = "(project test\n  (doc \"Has parent\")\n  (status planned))" in
-  let file = Borge_sexp.Parse.parse input in
+  let file = Borge_lang.Parse.parse input in
   Alcotest.(check bool) __LOC__ false (Borge_lib.Spec.has_no_inline file)
 
 let () =
