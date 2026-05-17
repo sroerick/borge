@@ -99,11 +99,11 @@
      the whole app.
 
      (theme
-       (color bg-primary "#e0d7d2")
-       (color bg-surface "#f5f0eb")
-       (color text-primary "#1a1a1a")
-       (color text-muted "#666666")
-       (color accent "#a8421c")
+       (palette bg-primary "#e0d7d2")
+       (palette bg-surface "#f5f0eb")
+       (palette text-primary "#1a1a1a")
+       (palette text-muted "#666666")
+       (palette accent "#a8421c")
        (spacing xs 4)
        (spacing sm 8)
        (spacing md 16)
@@ -117,9 +117,13 @@
        (radius md 8)
        (radius lg 12))
 
-     Referencing theme variables in elements:
+     Referencing palette variables in elements:
 
-       (bg (color bg-primary))
+       (bg (palette bg-primary))
+       (color (palette text-primary))
+
+     Referencing spacing, font-size, radius variables:
+
        (padding (spacing md))
        (text "Hello" (size (font-size lg)))
        (corner (radius md))
@@ -128,12 +132,25 @@
      CSS: var(--bg-primary) or inline. Clay: hex literal.
      React: theme context or CSS variable.
 
-     A theme is optional. Elements can use literal values directly.
-     But for any app larger than a prototype, theme variables are
-     strongly recommended — they're the single source of truth
-     for visual identity.
+     Two-phase color workflow:
 
-     Theme variables are flat: (color name value), (spacing name value),
+     1. Sketch phase: use keyword colors like (bg blue),
+        (color white), (bg dark). The LLM picks actual hex
+        values when generating code. Fast for prototyping.
+     2. Refinement phase: define a (palette ...) and reference
+        it like (bg (palette primary)). Precise, unified,
+        consistent across the whole app.
+
+     Keyword colors and palette references can coexist. The spec
+     doesn't force precision before you're ready. A work-in-progress
+     might have (bg blue) on some elements and (bg (palette primary))
+     on others. The palette wins during refinement.
+
+     Recognized keyword colors: red, orange, yellow, green, blue,
+     purple, pink, white, black, gray, dark, light, transparent.
+     The generator interprets these per target and convention.
+
+     Theme variables are flat: (palette name value), (spacing name value),
      (font-size name value), (radius name value). No nesting, no
      grouping beyond the category prefix. This keeps the theme
      simple to read and simple to generate from.
@@ -156,7 +173,7 @@
        (height grow)
        (padding (spacing md))
        (gap (spacing sm))
-       (bg (color bg-primary))
+       (bg (palette bg-primary))
        (children
          (ui header ...)))
 
@@ -259,10 +276,15 @@
      (corner N)            — uniform corner radius in px
      (corner (top-left N) (top-right N) (bottom-left N) (bottom-right N))
 
-     Colors: hex strings like "#a8421c", named like "red"/"white"/
-     "transparent", or theme variable references like
-     (color bg-primary). The generator translates to the target's
-     color format.
+     Color values accept three forms:
+       - Hex: "#a8421c" or "#a8421c99" (with alpha)
+       - Keyword: blue, red, green, dark, white, etc.
+         For sketching — the LLM picks actual values when generating.
+       - Palette reference: (palette name)
+         For refined specs — references a (palette ...) theme variable.
+
+     The two-phase workflow: sketch with keywords, refine with palette.
+     (bg blue) during prototyping, (bg (palette primary)) later.
 
      For opacity: "#a8421c99" (hex with alpha) or
      (bg "#a8421c" (alpha 0.6)).
@@ -317,7 +339,7 @@
        (ui save-button
          (interactive click)
          (text "Save")
-         (bg (color accent))
+         (bg (palette accent))
          (padding (top (spacing sm)) (right (spacing md))
                   (bottom (spacing sm)) (left (spacing md)))
          (corner (radius sm)))
@@ -378,7 +400,7 @@
      (ui sidebar
        (padding (spacing md))
        (gap (spacing sm))
-       (bg (color bg-primary))
+       (bg (palette bg-primary))
        (children ...)
 
        (variant wide
@@ -420,7 +442,7 @@
      (ui card
        (layout vertical)
        (padding (spacing md))
-       (bg (color bg-surface))
+       (bg (palette bg-surface))
        (corner (radius lg))
        (children
          (text "Card Title" (size (font-size lg)) (bold))
@@ -429,7 +451,7 @@
            (layout horizontal)
            (gap (spacing sm))
            (children
-             (ui btn (interactive click) (text "OK") (bg (color accent)))
+             (ui btn (interactive click) (text "OK") (bg (palette accent)))
              (ui btn (interactive click) (text "Cancel") (bg "#999"))))))
 
      Children are ordered: the order in (children ...) is the
@@ -463,14 +485,14 @@
          (align-x center)
          (align-y center)
          (variant primary
-           (bg (color accent)) (color "#ffffff"))
+           (bg (palette accent)) (color "#ffffff"))
          (variant secondary
-           (bg (color bg-surface)) (color (color text-primary))))
+           (bg (palette bg-surface)) (color (palette text-primary))))
 
        (component card
          (layout vertical)
          (padding (spacing md))
-         (bg (color bg-surface))
+         (bg (palette bg-surface))
          (corner (radius lg))
          (gap (spacing sm))
          (children ..content))
@@ -499,7 +521,7 @@
        (component card-with-header
          (layout vertical)
          (padding (spacing md))
-         (bg (color bg-surface))
+         (bg (palette bg-surface))
          (corner (radius lg))
          (children
            (slot header)
@@ -539,13 +561,13 @@
            (layout vertical)
            (width full)
            (height full)
-           (bg (color bg-primary))
+           (bg (palette bg-primary))
            (children
              (ui nav-bar
                (layout horizontal)
                (width full)
                (height auto)
-               (bg (color accent))
+               (bg (palette accent))
                (padding (spacing sm))
                (align-y center)
                (gap (spacing md))
@@ -577,7 +599,7 @@
                (width full)
                (height auto)
                (padding (spacing sm))
-               (bg (color accent))
+               (bg (palette accent))
                (children ..nav))
              (ui body
                (layout horizontal)
@@ -589,7 +611,7 @@
                    (layout vertical)
                    (width 1)
                    (height grow)
-                   (bg (color bg-surface))
+                   (bg (palette bg-surface))
                    (corner (radius md))
                    (padding (spacing md))
                    (children ..sidebar))
@@ -703,10 +725,10 @@
 
      (ui my-app
        (theme
-         (color bg-primary "#e0d7d2")
-         (color bg-surface "#f5f0eb")
-         (color text-primary "#1a1a1a")
-         (color accent "#a8421c")
+         (palette bg-primary "#e0d7d2")
+         (palette bg-surface "#f5f0eb")
+         (palette text-primary "#1a1a1a")
+         (palette accent "#a8421c")
          (spacing sm 8) (spacing md 16) (spacing lg 24)
          (font-size sm 12) (font-size base 14) (font-size lg 18)
          (radius sm 4) (radius md 8))
@@ -716,13 +738,13 @@
          (padding (top (spacing sm)) (right (spacing md))
                   (bottom (spacing sm)) (left (spacing md)))
          (corner (radius sm))
-         (variant primary (bg (color accent)) (color "#ffffff"))
-         (variant secondary (bg (color bg-surface)) (color (color text-primary))))
+         (variant primary (bg (palette accent)) (color "#ffffff"))
+         (variant secondary (bg (palette bg-surface)) (color (palette text-primary))))
 
        (component card
          (layout vertical)
          (padding (spacing md))
-         (bg (color bg-surface))
+         (bg (palette bg-surface))
          (corner (radius lg))
          (gap (spacing sm))
          (children ..content))
@@ -759,12 +781,12 @@
    (doc (|
      (ui text-editor
        (theme
-         (color bg-primary "#e0d7d2")
-         (color bg-surface "#f5f0eb")
-         (color bg-dark "#2a2520")
-         (color text-primary "#1a1a1a")
-         (color text-muted "#888888")
-         (color accent "#a8421c")
+         (palette bg-primary "#e0d7d2")
+         (palette bg-surface "#f5f0eb")
+         (palette bg-dark "#2a2520")
+         (palette text-primary "#1a1a1a")
+         (palette text-muted "#888888")
+         (palette accent "#a8421c")
          (spacing xs 4) (spacing sm 8) (spacing md 16)
          (spacing lg 24) (spacing xl 32)
          (font-size sm 12) (font-size base 14)
@@ -776,8 +798,8 @@
          (padding (top (spacing sm)) (right (spacing md))
                   (bottom (spacing sm)) (left (spacing md)))
          (corner (radius sm))
-         (bg (color bg-surface))
-         (color (color text-primary))
+         (bg (palette bg-surface))
+         (color (palette text-primary))
          (children ..content))
 
        (component doc-item
@@ -786,18 +808,18 @@
          (corner (radius sm))
          (children ..content)
          (variant active
-           (bg (color accent))
+           (bg (palette accent))
            (color "#ffffff"))
          (variant inactive
-           (bg (color bg-surface))
-           (color (color text-muted))))
+           (bg (palette bg-surface))
+           (color (palette text-muted))))
 
        (layout editor-shell
          (ui root
            (layout vertical)
            (width full)
            (height full)
-           (bg (color bg-primary))
+           (bg (palette bg-primary))
            (children
              (ui header
                (layout horizontal)
@@ -806,7 +828,7 @@
                (padding (spacing sm))
                (gap (spacing md))
                (align-y center)
-               (bg (color bg-dark))
+               (bg (palette bg-dark))
                (children
                  ..header-content))
              (ui body
@@ -821,7 +843,7 @@
                    (layout vertical)
                    (width 1)
                    (height grow)
-                   (bg (color bg-surface))
+                   (bg (palette bg-surface))
                    (corner (radius md))
                    (padding (spacing md))
                    (gap (spacing sm))
@@ -831,7 +853,7 @@
                    (layout vertical)
                    (width 3)
                    (height grow)
-                   (bg (color bg-surface))
+                   (bg (palette bg-surface))
                    (corner (radius md))
                    (padding (spacing md))
                    (scroll vertical)
@@ -876,7 +898,7 @@
      ocaml-dream target:
        (layout vertical)  → div with flex-direction: column
        (width 1)         → flex: 1
-       (bg (color bg-primary)) → background-color: var(--bg-primary)
+       (bg (palette bg-primary)) → background-color: var(--bg-primary)
        (interactive click) → htmx attribute or onclick
        (variant wide)    → @media (min-width: 768px) { ... }
        (component ...)   → shared template include or sub-view
@@ -898,7 +920,7 @@
      react target:
        (layout vertical)  → className with flex-col
        (width 1)          → style={{ flex: 1 }}
-       (bg (color bg-primary)) → style={{ backgroundColor: theme.bgPrimary }}
+       (bg (palette bg-primary)) → style={{ backgroundColor: theme.bgPrimary }}
        (interactive click) → onClick prop
        (variant wide)     → useMediaQuery hook + conditional class
        (component ...)   → React component
