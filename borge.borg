@@ -149,6 +149,49 @@
         |))
    )
   )
+  (subsection future
+   (doc "Show what's planned but not yet implemented - the roadmap view")
+   (status planned)
+   (depends-on "report command implementation")
+   (details
+    (doc (|
+          borge future scans all .borg files and extracts a roadmap:
+          what's spec'd as 'planned' or 'in-progress' vs what's
+          'implemented'. This is the forward-looking companion to
+          'borge report' which shows current state.
+
+          Output format:
+          
+          === PLANNED ===
+          victor.borg:485  (section agentic-task-ui) - agent run popup UI
+          victor.borg:523  (section agentic-task-ui) auto-accept mode
+          borge.borg:320   (subsection doc-coverage-command)
+          
+          === IN PROGRESS ===
+          victor.borg:237  (section codemirror-integration)
+          
+          === READY FOR REVIEW ===
+          victor.borg:120  (subsection job-panel) - jobs complete
+          (anything implemented but depends on planned items)
+
+          Usage:
+          borge future              # Show all planned work
+          borge future --section X  # Future work in specific section
+          borge future --summary    # Just counts: planned/in-prog/implemented
+
+          This command helps answer:
+          - "What's next on the roadmap?"
+          - "How much of the vision is implemented?"
+          - "What depends on what?"
+          - "Which sections are ready to work on?"
+
+          Integration with Victor IDE:
+          - Shows in job panel as "12 items planned"
+          - Click to see full future report
+          - Can queue agents to work on planned sections
+        |))
+   )
+  )
   (subsection nodes
    (doc "Dump the parsed AST with types and positions for debugging")
    (status implemented)
@@ -309,6 +352,109 @@
         inline documentation) does not cover it.
       |))
   )
+  (subsection doc-coverage-command
+   (doc "borge drift --docs: analyze documentation coverage")
+   (status planned)
+   (details
+    (doc (|
+       Implementation: borge drift --docs flag triggers documentation
+       coverage analysis.
+
+       Algorithm:
+       1. Find all .ml files (respecting _build/.git exclusion)
+       2. Parse each file using compiler-libs Parsetree
+       3. Extract all toplevel let bindings (Pstr_value)
+       4. For each binding, check for preceding doc comment:
+          - (** docstring *) attribute (ocaml.doc)
+          - (* author note (|...|) *) borg-style comment
+          - (*| ... |*) alternative borg format
+          - (* exempt doc *) — marks as exempt, not undocumented
+       5. Skip bindings:
+          - let%test (test bindings)
+          - let%lwt/async (async wrappers without logic)
+          - let _ = (ignored bindings)
+          - Bindings starting with _ (implicitly private)
+       6. Output: (documentation ...) block in .borg.meta
+
+       Coverage calculation:
+       - documented = count of bindings with valid doc
+       - exempt = count of bindings with (* exempt doc *)
+       - total-bindings = all extracted bindings
+       - undocumented = total - documented - exempt
+       - coverage-percent = documented / (total - exempt) * 100
+
+       Drift findings产 produced:
+       - undocumented-module: file with coverage < 50%
+       - undocumented-function: specific binding missing doc (if --verbose)
+
+       CLI output (non-json):
+       lib/borge/spec.ml: 38/45 documented (84.4%), 2 exempt, 5 undocumented
+       lib/borge/parse.ml: 12/28 documented (42.9%) ⚠ undocumented-module
+
+       Integration with stats: borge stats aggregates all (documentation ...)
+       blocks from .borg.meta files for project-wide coverage report.
+     |))
+   )
+  )
+  (subsection doc-formats
+   (doc "Supported documentation comment formats")
+   (status planned)
+   (details
+    (doc (|
+       OCaml supports multiple doc comment styles. Borge recognizes:
+
+       1. Standard docstring (ocamldoc style):
+          (** Convert a string to a status value.
+              @raise Invalid_argument if string is unknown *)
+          let status_of_string s = ...
+
+       2. Borg-style annotated comment:
+          (* roerick note (|
+             This function implements the status conversion logic.
+             It handles all valid status strings defined in the spec.
+           |) *)
+          let status_of_string s = ...
+
+       3. Short borg comment:
+          (*| Convert string to status. Raises on invalid input. |*)
+          let status_of_string s = ...
+
+       4. Exemption marker:
+          (* exempt doc *)
+          let internal_helper x = ...
+
+       All formats are extracted during drift --docs analysis and
+       contribute to coverage calculations.
+     |))
+   )
+  )
+  (subsection drift-doc-integration
+   (doc "How doc coverage is reported in drift")
+   (status planned)
+   (details
+    (doc (|
+       When borge drift --docs runs, findings are generated in two
+       places:
+
+       1. .borg.meta files get (documentation ...) blocks with full
+          metrics. These are machine-readable and git-tracked.
+
+       2. Drift findings list includes coverage-related findings:
+          - (finding undocumented-module (file PATH) (coverage PERCENT))
+          - (finding undocumented-function (file PATH) (name NAME))
+            (only with --verbose flag)
+
+       Thresholds:
+       - Coverage >= 80%: no finding (good)
+       - Coverage 50-80%: warning-level finding
+       - Coverage < 50%: error-level finding
+
+       The threshold is configurable per-project in borge.borg:
+       (convention ocaml-dune
+         (doc-coverage-threshold 0.7))
+     |))
+   )
+  )
  )
  (section ast-position-tracking
   (doc "Source position tracking on AST nodes for better diagnostics")
@@ -327,27 +473,27 @@
       |))
   )
  )
- (section generate
-  (doc "Open pi interactively with a structured prompt")
+ (section make
+  (doc "Agent-driven implementation — have an agent write code to match spec")
   (status implemented)
   (details
    (doc (|
-        borge generate is the interactive entry point for agent-driven
-        work. It opens a pi session with a prompt built from the spec,
-        convention rules, existing code context, and the declared role.
-        The agent does the work interactively; borge validates and
-        commits after.
+        borge make is the interactive entry point for agent-driven
+        implementation. It opens a pi session with a prompt built from
+        the spec, convention rules, existing code context, and the
+        declared role. The agent writes code interactively; borge
+        journals and commits after.
 
         borge make
           Open pi to implement planned sections. The agent reads the
-          full spec, writes code and tests, and journals status
-          changes. Auto-commits on clean exit. Calls borge balance
-          first to ensure structural soundness.
+          full spec, writes code and tests to match planned sections,
+          and journals status changes. Auto-commits on clean exit.
+          Calls borge balance first to ensure structural soundness.
 
-        borge plan
-          Open pi to edit the spec. The agent reads the whole spec,
-          adds sections, refines descriptions, updates priorities.
-          Produces journal entries for all changes, auto-commits.
+        borge make spec "description"
+          Single-shot spec generation. Not interactive. The agent
+          produces a (status planned) section from a description.
+          For interactive spec editing, use borge plan instead.
 
         borge drift --agent [--fix]
           Open pi to check alignment between spec and code. Read-only
@@ -360,8 +506,9 @@
           borge make/plan unless --no-commit. Can be called
           manually after --no-commit sessions.
 
-        All commands create a .borge.lock/ directory (see lock-
-        mechanism). The lock is removed after commit or abort.
+        All agent-driven commands create a .borge.lock/ directory
+        (see lock-mechanism). The lock is removed after commit or
+        abort.
       |))
   )
   (subsection make-command
@@ -744,23 +891,26 @@
   (status implemented)
   (details
    (doc (|
-        In a borge project, the spec is not documentation — it is the
-        source of truth. Code is generated from and continuously
-        verified against the spec. Every .borg file is both a human-
-        readable design document and a machine-checkable contract.
+        In a borge project, the spec is not documentation — it IS the
+        source of truth. The .borg file is the artifact. Borge reads
+        specs, validates them, reports on them, and helps agents edit
+        them. But borge does NOT generate code. Every .borg file is
+        both a human-readable design document and a machine-checkable
+        contract.
 
         The three pillars:
 
         1. Spec first: write (status planned) sections before code.
-           Use borge generate spec to turn todos into structured specs.
+           Use borge make spec to turn todos into structured specs.
 
-        2. Generate implementation: borge generate code reads planned
-           sections and produces files. This is NOT freeform coding —
-           every generated construct traces back to a spec subsection.
+        2. Implement via agent: borge make opens an interactive session
+           where an agent implements planned sections. The agent writes
+           code AND updates the spec, journaling changes. This is NOT
+           code generation — the spec is authored, not derived.
 
         3. Verify continuously: borge balance, check, drift, and review
-           keep spec and code aligned. Drift means either the spec is
-           stale (fix spec) or the code is incomplete (generate more).
+           keep spec and code aligned. Drift means the implementation
+           has diverged from the spec. Fix the code or update the spec.
 
         A completed project is one where every section is (status
         implemented), every file has a code review, and borge drift
@@ -820,6 +970,162 @@
       |))
   )
  )
+ (section merge-queue
+  (doc "CI/CD pipeline for agentic development — isolated worktrees, batched merges")
+  (status planned)
+
+  (subsection agent-isolation
+   (doc "Every agent run is isolated in its own worktree and branch")
+   (status planned)
+   (details
+    (doc (|
+         PROBLEM: Agents running concurrently clobber each other's
+         changes, modify files directly in main worktree, create
+         chaos that humans must clean up.
+
+         SOLUTION: Pi harness enforces isolation at the tool level.
+         Every `pi --mode agent` invocation:
+
+         1. Creates unique branch: agent/run-{timestamp}-{uuid}
+         2. Creates worktree: .pi/worktrees/agent-{id}/
+         3. Runs entirely within that worktree
+         4. On completion: submits to borge merge-queue
+         5. On failure: preserves worktree for debugging
+
+         HARNESS RULES (enforced by pi, not optional):
+         - If .pi/concurrent.lock shows target files already locked,
+           queue behind existing agent or refuse to start
+         - If worktree creation fails, agent cannot proceed
+         - If branch already exists, agent cannot proceed
+         - Agent never modifies files outside its worktree
+
+         LOCKFILE FORMAT (.pi/concurrent.lock):
+         {
+           "active_runs": [
+             {"id": "agent-123", "branch": "agent/run-...", 
+              "files": ["lib/parser.ml"], "since": "2026-05-17T..."}
+           ]
+         }
+
+         This prevents conflicts BEFORE they happen, not after.
+         |)))
+   (depends-on "pi harness worktree support"))
+
+  (subsection merge-queue
+   (doc "Central queue of pending agent changes, processed atomically")
+   (status planned)
+   (details
+    (doc (|
+         After agent completes in isolated worktree, it submits to
+         the merge queue rather than applying directly:
+
+         borge merge-queue submit \
+           --from-worktree .pi/worktrees/agent-123/ \
+           --summary "Generated parser section" \
+           --confidence 0.92 \
+           --affected-files lib/parser.ml,test/parser.ml
+
+         QUEUE STATE:
+         - PENDING: Submitted, waiting for merge
+         - READY: No conflicts with queued items before it
+         - BLOCKED: Conflicts with earlier queue item
+         - MERGING: Currently being processed
+         - MERGED: Successfully merged to main
+         - REJECTED: Merge failed, worktree preserved
+
+         CONFLICT DETECTION:
+         borge analyzes file overlap between queue items:
+         agent/run-123 touches lib/parser.ml
+         agent/run-124 touches lib/parser.ml  → BLOCKED behind 123
+         agent/run-125 touches lib/lexer.ml   → READY (no overlap)
+
+         Commands:
+         borge merge-queue list        # Show pending items
+         borge merge-queue show 123    # Diff for specific item
+         borge merge --next            # Merge first ready item
+         borge merge --all             # Merge all ready items
+         borge merge --dry-run         # Show what would happen
+
+         AUTO-MERGE AGENT (optional):
+         - Daemon that continuously runs `borge merge --all`
+         - Configurable policies: batch size, delay between merges
+         - Can pause on failure, wait for human review
+         |)))
+   (depends-on "git worktree management" "conflict detection"))
+
+  (subsection merge-strategies
+   (doc "How to integrate agent changes into main")
+   (status planned)
+   (details
+    (doc (|
+         MERGE STRATEGIES (configurable per project):
+
+         1. FAST-FORWARD (default for linear history):
+            - If main hasn't moved since agent branched: git merge --ff
+            - Cleanest history, no merge commits
+            - Fails if main has new commits (use rebase instead)
+
+         2. REBASE-THEN-MERGE:
+            - Rebase agent branch onto latest main
+            - Then fast-forward merge
+            - Linear history even when main moves
+            - Risk: conflicts during rebase need agent re-run
+
+         3. MERGE-COMMIT:
+            - Always create merge commit
+            - Preserves agent branch history
+            - Easier to revert entire agent run if needed
+
+         4. SQUASH:
+            - Squash all agent commits to single commit
+            - Clean history, lose agent's internal iterations
+            - Good for: simple changes, auto-accepted runs
+
+         ROLLBACK ON FAILURE:
+         If merge fails or CI rejects:
+         1. Revert merge commit (if created)
+         2. Mark queue item REJECTED
+         3. Preserve worktree for debugging
+         4. Notify agent owner (human or meta-agent)
+         5. Block dependent queue items
+
+         ATOMICITY:
+         Either entire agent run merges or none of it does.
+         No partial merges leaving codebase broken.
+         |)))
+   (depends-on "merge queue" "git strategies"))
+
+  (subsection victor-integration
+   (doc "IDE visibility into merge pipeline, not control")
+   (status planned)
+   (details
+    (doc (|
+         Victor's role is OBSERVABILITY, not orchestration.
+         Borge owns the queue; Victor just shows it.
+
+         UI ELEMENTS:
+         - Status bar: "🔄 3 pending merges" or "✅ Queue clear"
+         - Heatmap: Files with pending agent changes glow differently
+         - Popup on agent complete: "Submitted to merge queue #123"
+         - Diff preview: Click queue item → see what agent changed
+         - Emergency brake: "PAUSE ALL MERGES" button (sets borge flag)
+
+         NO APPLY/DISCARD BUTTONS:
+         - Agents don't ask "should I apply?"
+         - They submit to queue, queue processes when ready
+         - Human can still intervene via `borge merge-queue cancel 123`
+         - But default flow is: agent runs → submits → auto-merges
+
+         This separation keeps Victor simple:
+         - Victor = editor + visibility
+         - Borge = merge orchestration  
+         - Pi = isolated agent execution
+
+         Three layers, each with one job, clean interfaces.
+         |)))
+  )
+ )
+
  (section future-work
   (doc "Planned improvements and architectural decisions")
   (status planned)

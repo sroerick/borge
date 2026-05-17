@@ -1,8 +1,8 @@
 (project borge-cli
  (doc "Thin CLI entrypoints that call lib functions")
  (status implemented)
- (exports cmd_balance cmd_check cmd_diff cmd_drift cmd_execute
-          cmd_fmt cmd_generate cmd_inline cmd_issue cmd_lint cmd_log
+ (exports cmd_balance cmd_check cmd_diff cmd_drift
+          cmd_fmt cmd_inline cmd_issue cmd_lint cmd_log
           cmd_make cmd_modules cmd_nodes cmd_normalize cmd_parse cmd_plan
           cmd_print cmd_report cmd_review cmd_stats cmd_undo cmd_version)
  (section commands
@@ -120,17 +120,21 @@
    (doc "Code intelligence metrics dashboard")
    (status implemented)
   )
-  (subsection generate-spec
-   (doc "Turn a todo description into a .borg section via LLM")
-   (status implemented)
-  )
-  (subsection generate-code
-   (doc "Implement a planned section from its spec via pi")
-   (status implemented)
-  )
-  (subsection execute
-   (doc "Alias for generate code (spec = todo list)")
-   (status implemented)
+  (subsection make-spec
+   (doc "Single-shot spec generation from todo description")
+   (status planned)
+   (details
+    (doc (|
+         borge make spec "description of what to build"
+
+         Single-shot LLM call that produces a .borg section.
+         The agent reads the project context and returns a
+         (status planned) section with proper structure.
+
+         This is NOT interactive — for interactive spec editing
+         use borge plan instead.
+       |))
+   )
   )
   (subsection exit-codes
    (doc "0 success, 1 issues found, 2 usage error")

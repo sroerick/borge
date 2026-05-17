@@ -2,10 +2,11 @@
  (doc "Declarative UI DSL — an extension of the borge language, not a separate one.
        Adds (theme), (component), (layout), (variant), (page), (routes) and related
        forms inside .borg sections. All existing borge commands work on UI sections.
-       Renderer-agnostic: can target HTML/CSS, React, Clay, or any frontend.")
+       The spec is the artifact — borge does NOT generate code. Renderer-agnostic
+       semantics for human interpretation and implementation.")
  (no-inline)
  (status planned)
- (exports parse_ui validate_ui ui_to_json ui_to_html_css
+ (exports parse_ui validate_ui ui_to_json
           parse_component parse_layout parse_page)
 
  (section relationship-to-borge
@@ -25,7 +26,7 @@
      - borge report: counts UI section statuses like any other section
      - borge drift: detects drift between UI spec and generated code
      - borge nodes: dumps UI AST like any other section
-     - borge generate ui: NEW subcommand — generates code from UI spec
+     - borge make (with appropriate prompt): agent edits UI spec interactively
 
      The new forms are just sexp — the parser already handles them.
      A (ui ...) section is another section body, same as (doc ...)
@@ -35,7 +36,7 @@
      What IS new:
        1. New sexp forms: (theme), (component), (layout), (variant),
           (page), (routes), (use), (fill), (use-layout), (slot)
-       2. New subcommand: borge generate ui
+       2. NO code generation — the spec IS the UI definition
        3. Future: semantic awareness — lint validates that (use button)
           refers to a defined component, drift checks generated UI code,
           etc. But this is incremental enhancement, not a prerequisite.
@@ -937,28 +938,26 @@
   )
  )
 
- (section generation-workflow
-  (doc "How borge generate produces UI code from specs")
+ (section agentic-editing
+  (doc "How agents edit UI specs using borge make")
   (status planned)
   (details
    (doc (|
-     borge generate ui SECTION-NAME
+     borge make
 
-     1. Read the (ui ...) spec from the section
-     2. Read the project convention to determine the target
-     3. Assemble prompt: spec text + convention rules + existing
-        code context
-     4. Call the LLM to generate target code
-     5. Write generated files
-     6. Mark section (status implemented)
+     1. Agent reads the current .borg files with (ui ...) sections
+     2. Agent identifies planned sections or gaps
+     3. Agent adds or modifies (component ...), (layout ...), (page ...)
+     4. Agent validates: borge balance, borge check
+     5. Agent commits changes
 
-     Like borge generate code, the spec is always right. If the
-     generated code doesn't match, fix the spec or regenerate.
+     This is NOT code generation. The spec IS the artifact. The
+     agent is helping write the spec, just as it helps write any
+     other .borg section.
 
-     Drift detection works the same way: borge drift can check
-     whether the generated code matches the UI spec structure.
-     A section marked (status implemented) whose generated files
-     are missing or structurally different is code drift.
+     Drift detection: borge drift can check whether implementation
+     matches the spec. A section marked (status implemented) whose
+     corresponding code doesn't exist is code drift.
    |))
   )
  )

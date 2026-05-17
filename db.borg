@@ -1,12 +1,12 @@
 (project borge-db
  (doc "Database schema DSL — an extension of the borge language.
        Describes tables, columns, types, relations, CRUD operations,
-       and row-level security in sexp. Generates SQL migrations and
-       application-level query code via LLM. Postgres-first.
-       All existing borge commands work on db sections.")
+       and row-level security in sexp. The spec is the artifact —
+       borge does NOT generate SQL or code. Use borge make to have an
+       agent edit the spec interactively. Postgres-first semantics.")
  (no-inline)
  (status planned)
- (exports parse_table validate_table generate_sql
+ (exports parse_table validate_table
           parse_schema db_to_json validate_schema)
 
  (section relationship-to-borge
@@ -26,7 +26,7 @@
      - borge report: counts DB section statuses like any other section
      - borge drift: detects drift between DB spec and actual schema
      - borge nodes: dumps DB AST like any other section
-     - borge generate db: NEW subcommand — generates SQL from DB spec
+     - borge make (with appropriate prompt): agent edits DB spec interactively
 
      The principle: borge DB sections are first-class borge citizens.
      They get the same tooling, the same workflow, and the same
@@ -36,7 +36,7 @@
        1. New sexp forms: (db), (table), (column), (type),
           (references), (operations), (crud), (query), (relation),
           (join), (groups), (group), (can), (ownership)
-       2. New subcommand: borge generate db
+       2. NO code generation — the spec IS the schema definition
        3. Integration with borge-ui: pages can reference (data ...)
           to declare what queries they need
    |))
@@ -52,10 +52,10 @@
 
     Three core principles:
 
-    1. Schema is spec, SQL is derived. The .borg file describes
-       the schema. The generator produces SQL migrations from it.
-       If the generated SQL doesn't match reality, fix the spec
-       or regenerate. Same discipline as borge generate code.
+    1. Schema is spec. The .borg file IS the schema definition.
+       There is no code generation. The spec is read by humans and
+       agents who implement it. If the implementation doesn't match,
+       the spec is still correct — the implementation is wrong.
 
     2. Permissions live on the model, not on the page. Row-level
        security is declared once on the table definition and
@@ -519,31 +519,27 @@
   )
  )
 
- (section generation-workflow
-  (doc "How borge generate produces database code from specs")
+ (section agentic-editing
+  (doc "How agents edit DB specs using borge make")
   (status planned)
   (details
    (doc (|
-     borge generate db SECTION-NAME
+     borge make
 
-     1. Read the (db ...) spec from the section
-     2. Read the project convention to determine the target
-     3. Assemble prompt: spec text + convention rules + existing
-        migrations
-     4. Call the LLM to generate SQL migrations and/or application code
-     5. Write generated files
-     6. Mark section (status implemented)
+     1. Agent reads the current .borg files with (db ...) sections
+     2. Agent identifies planned sections or gaps
+     3. Agent adds or modifies (table ...), (operations ...), etc.
+     4. Agent validates: borge balance, borge check
+     5. Agent commits changes
 
-     Migration files are versioned. The generator produces a new
-     migration for each schema change. Existing migrations are
-     never modified — only new ones are added.
-
-     Like borge generate code, the spec is always right. If the
-     generated SQL doesn't match, fix the spec or regenerate.
+     This is NOT code generation. The spec IS the artifact. The
+     agent is helping write the spec, just as it helps write any
+     other .borg section.
 
      Drift detection: borge drift can check whether the actual
      database schema matches the spec by comparing against the
      migration history or by introspecting the live database.
+     This is advisory — the spec is still the source of truth.
    |))
  )
  )

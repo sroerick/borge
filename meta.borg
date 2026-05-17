@@ -471,4 +471,171 @@
    |))
   )
  )
+ (section semantic-review-integration
+  (doc "How semantic review writes to .borg.meta")
+  (status planned)
+  (details
+   (doc (|
+     Semantic review (borge review) produces per-function assessments
+     that are stored in .borg.meta as a new block type:
+
+     (semantic-review
+       (source-file lib/borge/spec.ml)
+       (reviewed-at 2026-05-17T10:30:00Z)
+       (reviewer agent:semantic-reviewer)
+       (functions
+         (function name:"status_of_string"
+           (doc-present true)
+           (doc-accuracy high)
+           (signature-match accurate)
+           (behavior-coverage complete)
+           (structural-issues none)
+           (confidence high)
+           (checked-at 2026-05-17T10:30:00Z))
+         (function name:"project_name"
+           (doc-present true)
+           (doc-accuracy medium)
+           (signature-match accurate)
+           (behavior-coverage partial)
+           (structural-issues "doc claims X but code does Y when Z")
+           (confidence medium)
+           (checked-at 2026-05-17T10:30:00Z))))
+
+     Merge strategy: semantic review replaces previous review for the
+     same file. Reviews are scoped per-file, not per-project, to allow
+     incremental updates. The analyzed-at timestamp in the parent
+     (meta ...) block is NOT updated by semantic review — semantic
+     review is an additive layer, not a full re-analysis.
+
+     Staleness: a semantic review for file X is stale if:
+     - The file's content hash changed since reviewed-at, OR
+     - The corresponding .borg section describing this module changed
+   |))
+  )
+  (subsection review-command
+   (doc "borge review implementation details")
+   (status planned)
+   (details
+    (doc (|
+       Implementation strategy:
+
+       1. Extraction: Use OCaml's compiler-libs to parse .ml files
+          into Parsetree. Extract:
+          - Value bindings (let declarations)
+          - Type signatures (val_decl in .mli files)
+          - Docstrings attached via (** ... *) comments
+
+       2. Batching: Group functions by file. For files with >20
+          functions, batch into chunks of 15-20 to respect token
+          limits. Sort functions alphabetically for determinism.
+
+       3. Prompt template (per batch):
+
+          You are reviewing OCaml code for alignment between
+          documentation and implementation.
+
+          For each function below, assess:
+          1. Is there a docstring/doc comment present?
+          2. Does the documentation accurately describe the behavior?
+          3. Does the implementation match the claimed signature?
+          4. Are there edge cases or error paths not documented?
+
+          Return ONLY a sexp list in this exact format:
+          (findings
+            (function name:"FUNCTION_NAME"
+              (doc-present BOOLEAN)
+              (doc-accuracy high|medium|low)
+              (signature-match accurate|mismatch|unknown)
+              (behavior-coverage complete|partial|missing)
+              (structural-issues "optional description or 'none'")
+              (confidence high|medium|low))
+            ...)
+
+          Functions to review:
+          {function_list_with_signatures_and_docstrings}
+
+       4. Parse handling: Parse failures mean the LLM produced
+          malformed output. Log the failure with the raw response
+          for debugging, but do NOT corrupt the .borg.meta. The
+          previous review (if any) is preserved.
+
+       5. Merge: Replace any existing (semantic-review ...) block
+          for this file with the new findings.
+
+       Commands:
+       - borge review FILE: review single file
+       - borge review --dir DIR: review all .ml files in directory
+       - borge review --all: review all .ml files in project
+       - borge review --stale: only review files with stale reviews
+     |))
+   )
+  )
+ )
+ (section code-documentation-integration
+  (doc "How doc coverage tracking integrates with .borg.meta")
+  (status planned)
+  (details
+   (doc (|
+     Code documentation tracking counts documented vs undocumented
+     bindings in .ml files. Results stored in (documentation ...) block:
+
+     (documentation
+       (analyzed-at 2026-05-17T11:00:00Z)
+       (file lib/borge/spec.ml)
+       (total-bindings 45)
+       (documented 38)
+       (exempt 2)
+       (undocumented 5)
+       (coverage-percent 84.4)
+       (undocumented-names
+         (name internal_helper_1)
+         (name internal_helper_2)
+         ...))
+
+     Binding detection:
+     - Top-level let bindings: let f x = ...
+     - let%test bindings: excluded (tests don't need docs)
+     - let open M in: excluded (local opens)
+
+     Doc detection (OCaml):
+     - (** docstring *) attached to binding
+     - (* author note (|description|) *) borg-style comment on prior line
+     - (*| description |*) alternative borg format
+     - (* exempt doc *) — marks binding as exempt from coverage
+
+     Integration with drift: borge drift --docs flag runs documentation
+     analysis and writes .borg.meta files. Drift findings can include
+     undocumented-module for files with <50% coverage.
+
+     Integration with stats: borge stats shows coverage aggregate across
+     all .borg.meta files.
+   |))
+  )
+  (subsection extraction-strategy
+   (doc "How to extract bindings and doc comments from OCaml")
+   (status planned)
+   (details
+    (doc (|
+       Two approaches: compiler-libs (accurate) vs regex (fast).
+
+       Compiler-libs approach (recommended):
+       - Use ocaml-common/parsetree to parse .ml files
+       - Walk the AST for toplevel Pstr_value bindings
+       - Extract docstrings from attributes
+       - For .ml files without .mli: all toplevel vals are exports
+       - For .ml files with .mli: cross-reference to determine public vs private
+
+       Regex fallback (if compiler-libs is heavy):
+       - Match ^let\\s+(rec\\s+)?([a-z][a-zA-Z0-9_]*)
+       - Look backward for comment before the let
+       - Heuristic: skip lines containing "let%"
+       - Less accurate but faster for large codebases
+
+       Current limitation: metrics/stats.ml uses regex and reports 0%
+       coverage because it doesn't parse nested comments. This section
+       describes the proper implementation using compiler-libs.
+     |))
+   )
+  )
+ )
 )
