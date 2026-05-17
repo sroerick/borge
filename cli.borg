@@ -2,9 +2,9 @@
  (doc "Thin CLI entrypoints that call lib functions")
  (status implemented)
  (exports cmd_balance cmd_check cmd_diff cmd_drift cmd_execute
-          cmd_fmt cmd_generate cmd_inline cmd_lint cmd_log
-          cmd_make cmd_nodes cmd_normalize cmd_parse cmd_plan
-          cmd_print cmd_report cmd_stats cmd_undo cmd_version)
+          cmd_fmt cmd_generate cmd_inline cmd_issue cmd_lint cmd_log
+          cmd_make cmd_modules cmd_nodes cmd_normalize cmd_parse cmd_plan
+          cmd_print cmd_report cmd_review cmd_stats cmd_undo cmd_version)
  (section commands
   (doc "The individual CLI commands")
   (status implemented)
@@ -147,6 +147,18 @@
   (subsection quiet-mode
    (doc "--quiet flag. Suppress all output except errors")
    (status implemented)
+  )
+  (subsection issue
+   (doc "Issue tracker commands: new, list, show, close")
+   (status implemented)
+  )
+  (subsection modules
+   (doc "Check distributed module specs")
+   (status implemented)
+  )
+  (subsection review
+   (doc "Semantic code review (planned, not fully active)")
+   (status planned)
   )
  )
 )

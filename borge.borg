@@ -620,6 +620,36 @@
        |))
    )
   )
+  (subsection architectural-decisions
+   (doc "Capturing spec gaps discovered during implementation")
+   (status implemented)
+   (details
+    (doc (|
+         When an agent in implementer role discovers an architectural
+         decision that requires spec changes, it CANNOT edit the spec
+         directly (role restriction). Instead, it files a bug:
+
+         Workflow:
+         1. Agent implementing feature X hits unclear spec boundary
+         2. Agent makes local decision to proceed with implementation
+         3. Agent files bug: "Architecture: X needs spec clarification"
+         4. Bug includes context: what was discovered, why spec unclear
+         5. Later session (plan/spec-writer role) addresses bug
+         6. Spec updated → bug closed
+
+         Bug format for architectural decisions:
+         (borge-bug id:"BORGE-..."
+           (title "Arch: clarify Z behavior when Y occurs")
+           (status open)
+           (doc "|While implementing X, discovered that...|")
+           (affects section:"lib.borg:section")
+           (discovered-during "implementer-session-id"))
+
+         This separates implementation (keep moving) from
+         architecture (think carefully) without losing insight.
+       |))
+   )
+  )
  )
  (section lock-mechanism
   (doc "Transactional isolation for agent sessions — metadata, not workspace")

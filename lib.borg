@@ -7,7 +7,10 @@
           run_lint run_check run_report run_drift run_fmt
           generate_code extract_surface parse_dune
           count_sections status_counts tree_status_counts
-          new_bug list_bugs load_bug save_bug close_bug)
+          new_bug list_bugs load_bug save_bug close_bug
+          json_drift json_report json_spec
+          bug_ast bug_parse bug_write bug_registry
+          borg_comment module_spec semantic_review)
  (section core
   (doc "Spec model: what borge files ARE. lib/core/")
   (status implemented)
@@ -248,6 +251,11 @@
        |))
    )
   )
+  (subsection json-out
+   (doc "Individual JSON output serializers")
+   (status implemented)
+   (details (doc (|Json_out contains to_json functions for each command result.|)))
+  )
  )
  (section ui
   (doc "UI DSL types and parsing. lib/ui/")
@@ -392,6 +400,53 @@
          relations, groups, capabilities.
        |))
    )
+  )
+ )
+ (section bug
+  (doc "Issue tracking for repo-stored bugs")
+  (status implemented)
+  (subsection bug-ast
+   (doc "Bug AST types and operations")
+   (status implemented)
+   (details (doc (|Bug_ast defines bug type, status workflow, and helper functions.|)))
+  )
+  (subsection bug-parse
+   (doc "Parse .borge-bug files")
+   (status implemented)
+   (details (doc (|Bug_parse reads .borge-bug files into typed bug records.|)))
+  )
+  (subsection bug-registry
+   (doc "Manage .borge-bug directory")
+   (status implemented)
+   (details (doc (|Bug_registry handles file paths, listing, loading, saving bugs.|)))
+  )
+  (subsection bug-write
+   (doc "Write bugs to .borge-bug files")
+   (status implemented)
+   (details (doc (|Bug_write renders bug records to .borge-bug file format.|)))
+  )
+ )
+ (section distributed
+  (doc "Distributed specs: module-level .borg files")
+  (status implemented)
+  (subsection borg-comment
+   (doc "Parse borg-comments from OCaml source")
+   (status implemented)
+   (details (doc (|Extract (* (fn name ...) *) comments from .ml files.|)))
+  )
+  (subsection module-spec
+   (doc "Discover and parse module .borg files")
+   (status implemented)
+   (details (doc (|Find all .borg files, extract exports, check integrity.|)))
+  )
+ )
+ (section review
+  (doc "Semantic code review with LLM")
+  (status planned)
+  (subsection semantic-review
+   (doc "Verify function docs match implementation")
+   (status planned)
+   (details (doc (|Extract functions, query LLM, store results in .borg.meta.|)))
   )
  )
 )
