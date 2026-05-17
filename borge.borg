@@ -545,6 +545,45 @@
         automatically or link to existing bugs.
       |))
   )
+  (subsection semantic-review
+   (doc "LLM-powered verification that function docs match implementation")
+   (status planned)
+   (details
+    (doc (|
+         Walks OCaml files, extracts functions and their docstrings,
+         uses LLM to verify alignment between description and code.
+         Stores findings in .borg.meta node metadata.
+
+         Process per function:
+         1. Extract: function name, signature, docstring, body
+         2. Prompt LLM: Does docstring describe this implementation?
+            - Is there a docstring present?
+            - Does the description match the behavior?
+            - Are there structural issues (complexity, unclear flow)?
+         3. Store result in .borg.meta under node metadata
+
+         Metadata structure:
+         (function name:"parse_expr"
+           (doc-present true)
+           (doc-accuracy high|medium|low)
+           (structural-issues "optional description")
+           (confidence high|medium|low)
+           (checked-at 2025-05-16T10:30:00Z)
+         )
+
+         Commands:
+         - borge review [--file FILE] [--dir DIR]
+             Run semantic review on specified scope
+         - borge review --all
+             Review all .ml files in project
+
+         Findings flow to issue-tracker:
+         - Low doc-accuracy → creates .borge-bug
+         - Missing doc on exported function → warning or bug
+         - Structural issues → drift report linked to bug
+       |))
+   )
+  )
  )
  (section lock-mechanism
   (doc "Transactional isolation for agent sessions — metadata, not workspace")
