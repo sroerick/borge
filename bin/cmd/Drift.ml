@@ -158,8 +158,15 @@ let run_static dir json quiet modules =
   Printf.printf "\nTotal drift: %d item(s)\n" total;
   if total > 0 then exit 1 else exit 0
 
-let run dir agent fix no_commit json quiet modules =
-  if agent then run_agent ~fix ~no_commit ~dir ~quiet
+let run_docs dir =
+  Printf.printf "Documentation coverage analysis for '%s'\n\n" dir;
+  let coverage = Doc_coverage.calculate_dir_coverage dir in
+  Printf.printf "%s\n" (Doc_coverage.format_project_summary coverage);
+  if coverage.Doc_coverage.total_undocumented > 0 then exit 1 else exit 0
+
+let run dir agent fix no_commit json quiet modules docs =
+  if docs then run_docs dir
+  else if agent then run_agent ~fix ~no_commit ~dir ~quiet
   else if fix then begin
     Printf.eprintf "Error: --fix requires --agent\n";
     exit 1
@@ -193,6 +200,9 @@ let quiet =
 let modules =
   Arg.(value & flag & info ["modules"; "m"] ~doc:"Include module integrity checks")
 
+let docs =
+  Arg.(value & flag & info ["docs"; "d"] ~doc:"Analyze documentation coverage")
+
 let cmd : unit Cmd.t =
   Cmd.v (Cmd.info "drift" ~doc:"detect spec, code, and structural drift"
     ~man:[`S "DESCRIPTION";
@@ -200,9 +210,13 @@ let cmd : unit Cmd.t =
           `P "1. Spec drift: .borg describes something not in the code";
           `P "2. Code drift: code has something not in any .borg spec";
           `P "3. Structural drift: code organization violates the convention";
+          `S "DOCUMENTATION MODE";
+          `P "With --docs, analyzes documentation coverage of .ml files.";
+          `P "Reports which bindings have/don't have documentation.";
+          `P "Exits with code 1 if undocumented bindings are found.";
           `S "AGENT MODE";
           `P "With --agent, opens pi interactively with observer role.";
           `P "The agent checks whether code matches spec and reports findings.";
           `P "With --agent --fix, the agent can write code repairs.";
           `P "Auto-commits on clean exit (use --no-commit to review first)."])
-  Term.(const run $ dir $ agent $ fix $ no_commit $ json $ quiet $ modules)
+  Term.(const run $ dir $ agent $ fix $ no_commit $ json $ quiet $ modules $ docs)

@@ -6,7 +6,7 @@
  *   Writes (documentation ...) blocks to .borg.meta files.
  * |) *)
 
-open Borge_lib
+
 
 (** Coverage statistics for a file *)
 type file_coverage = {

@@ -30,7 +30,7 @@ let test_meta_write () =
       Meta.at = "2026-01-01T00:00:00Z";
     }];
   } in
-  let content = Meta.string_of_meta meta in
+  let content = Meta.string_of_meta meta ~docs:None () in
   Alcotest.(check bool) __LOC__ true (String.length content > 0);
   Alcotest.(check bool) __LOC__ true
     (let s = "DO NOT EDIT" in

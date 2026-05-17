@@ -122,7 +122,7 @@ let find_binding_doc lines binding_line =
             | [] -> None_found
             | (doc_line, doc_content) :: prev ->
                 match parse_doc_line doc_content with
-                | Some doc_kind -> Preceding (binding_line - doc_line)
+                | Some _doc_kind -> Preceding (binding_line - doc_line)
                 | None -> find_preceding prev
           in
           find_preceding prev_lines

@@ -6,7 +6,7 @@
  *   Filters out test bindings, ignored bindings, and local opens.
  * |) *)
 
-open Borge_lib
+
 
 (** Information about a binding extracted for doc coverage *)
 type binding_info = {

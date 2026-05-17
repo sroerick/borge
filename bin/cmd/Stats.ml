@@ -4,7 +4,41 @@ let pad_right n s =
   let len = String.length s in
   if len >= n then s else s ^ String.make (n - len) ' '
 
-let run dir json quiet =
+let run_coverage dir =
+  Printf.printf "Documentation Coverage — %s\n\n" dir;
+  let coverage = Doc_coverage.calculate_dir_coverage dir in
+  if coverage.files = [] then begin
+    Printf.printf "No .ml files found.\n";
+    exit 0
+  end;
+  Printf.printf "Overall: %.1f%% (%d/%d documented, %d exempt, %d undocumented)\n\n"
+    coverage.overall_percent
+    coverage.total_documented
+    (coverage.total_bindings - coverage.total_exempt)
+    coverage.total_exempt
+    coverage.total_undocumented;
+  Printf.printf "Per-file coverage:\n";
+  List.iter (fun (fc : Doc_coverage.file_coverage) ->
+    Printf.printf "  %-40s %6.1f%% (%d/%d doc, %d undoc)%s\n"
+      (Filename.basename fc.path)
+      fc.coverage_percent
+      fc.documented
+      (fc.total_bindings - fc.exempt)
+      fc.undocumented
+      (if fc.undocumented_names <> [] then
+        let rec take n = function
+          | [] -> []
+          | _ when n <= 0 -> []
+          | x :: xs -> x :: take (n - 1) xs
+        in
+        ": " ^ String.concat ", " (take 3 fc.undocumented_names)
+      else "")
+  ) coverage.files;
+  if coverage.total_undocumented > 0 then exit 1 else exit 0
+
+let run dir json quiet coverage =
+  if coverage then run_coverage dir
+  else
   let result = Stats.run dir in
   if json then begin
     if not quiet then Printf.printf "%s\n" (Yojson.Basic.to_string (Json_out.stats result));
@@ -50,10 +84,14 @@ let json =
 let quiet =
   Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
 
+let coverage =
+  Arg.(value & flag & info ["coverage"; "c"] ~doc:"Show documentation coverage analysis")
+
 let cmd : unit Cmd.t =
   Cmd.v (Cmd.info "stats" ~doc:"show code intelligence metrics"
     ~man:[`S "DESCRIPTION";
           `P "Scans all .ml files and reports lines of code, function count, \
               average function length, export count, and .mli coverage.";
-          `P "With --json, outputs structured JSON instead of formatted text."])
-  Term.(const run $ dir $ json $ quiet)
+          `P "With --json, outputs structured JSON instead of formatted text.";
+          `P "With --coverage, shows documentation coverage analysis."])
+  Term.(const run $ dir $ json $ quiet $ coverage)
