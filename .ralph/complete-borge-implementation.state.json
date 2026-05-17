@@ -1,7 +1,7 @@
 {
   "name": "complete-borge-implementation",
   "taskFile": ".ralph/complete-borge-implementation.md",
-  "iteration": 7,
+  "iteration": 8,
   "maxIterations": 100,
   "itemsPerIteration": 3,
   "reflectEvery": 10,
