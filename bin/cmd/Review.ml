@@ -1,6 +1,7 @@
 (** borge review — semantic code review
 
-    Uses LLM to verify function documentation matches implementation *)
+    Uses LLM to verify function documentation matches implementation.
+    Now uses the new semantic review modules from lib/review/. *)
 
 open Borge_lib
 
@@ -11,25 +12,11 @@ let now () =
     tm.Unix.tm_hour tm.Unix.tm_min tm.Unix.tm_sec
 
 let call_pi prompt =
-  (* Write prompt to temp file *)
-  let tmp_file = Filename.temp_file "review" ".txt" in
-  let oc = open_out tmp_file in
-  output_string oc prompt;
-  close_out oc;
-  
-  (* Call pi and capture response *)
-  let cmd = Printf.sprintf "pi --file %s --no-interactive 2>/dev/null || echo 'Doc present: unknown\nAccuracy: unknown\nIssues: LLM unavailable\nConfidence: low'" tmp_file in
-  let ic = Unix.open_process_in cmd in
-  let response = ref "" in
-  (try
-    while true do
-      let line = input_line ic in
-      response := !response ^ line ^ "\n"
-    done
-  with End_of_file -> ());
-  ignore (Unix.close_process_in ic);
-  Sys.remove tmp_file;
-  !response
+  (* Use the new review_agent to call LLM *)
+  match Agent.run_pi_print prompt with
+  | Some response -> response
+  | None -> 
+      "(function name:\"unknown\"\n  (doc-present false)\n  (doc-accuracy low)\n  (signature-match unknown)\n  (behavior-coverage missing)\n  (structural-issues \"LLM unavailable\")\n  (confidence low))"
 
 let review_file path ~dry_run =
   if dry_run then Printf.printf "[DRY-RUN] Would review: %s\n" path;
@@ -90,14 +77,30 @@ let review_dir dir ~dry_run ~recursive =
     review_file (Filename.concat dir f) ~dry_run
   ) ml_files
 
-let run file dir all dry_run =
-  match file, dir, all with
-  | Some f, None, false -> review_file f ~dry_run
-  | None, Some d, false -> review_dir d ~dry_run ~recursive:false
-  | None, None, true -> review_dir "." ~dry_run ~recursive:true
-  | _ ->
-      Printf.eprintf "Error: specify --file, --dir, or --all\n";
-      exit 1
+let review_stale dir ~dry_run =
+  ignore dry_run;
+  Printf.printf "Reviewing stale files in: %s\n" dir;
+  let reviews = Semantic_review.review_stale dir in
+  if reviews = [] then
+    Printf.printf "No stale files found.\n"
+  else
+    List.iter (fun (review : Borge_lib.Review_types.semantic_review) ->
+      Printf.printf "  Reviewed %s: %d functions\n" 
+        review.source_file 
+        (List.length review.functions)
+    ) reviews
+
+let run file dir all stale dry_run =
+  if stale then
+    review_stale (match dir with Some d -> d | None -> ".") ~dry_run
+  else
+    match file, dir, all with
+    | Some f, None, false -> review_file f ~dry_run
+    | None, Some d, false -> review_dir d ~dry_run ~recursive:false
+    | None, None, true -> review_dir "." ~dry_run ~recursive:true
+    | _ ->
+        Printf.eprintf "Error: specify --file, --dir, --all, or --stale\n";
+        exit 1
 
 open Cmdliner
 
@@ -112,6 +115,10 @@ let dir =
 let all =
   Arg.(value & flag & info ["all"; "a"] ~doc:"Review all .ml files in project")
 
+let stale =
+  Arg.(value & flag & info ["stale"; "s"]
+    ~doc:"Only review files with stale metadata")
+
 let dry_run =
   Arg.(value & flag & info ["dry-run"; "n"]
     ~doc:"Show what would be reviewed without calling LLM")
@@ -122,8 +129,10 @@ let cmd : unit Cmd.t =
           `P "Analyzes OCaml functions and verifies documentation with LLM.";
           `P "Stores results in .borg.meta files for tracking.";
           `P "Use --dry-run to preview without LLM calls.";
+          `P "Use --stale to only review changed files.";
           `S "EXAMPLES";
           `P "borge review --file lib/core/spec.ml";
           `P "borge review --dir lib/core --dry-run";
-          `P "borge review --all"])
-  Term.(const run $ file $ dir $ all $ dry_run)
+          `P "borge review --all";
+          `P "borge review --stale"])
+  Term.(const run $ file $ dir $ all $ stale $ dry_run)

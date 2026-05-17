@@ -11,5 +11,7 @@
            semantic_review review_types review_prompt review_parse review_agent
            extract_parsetree extract_functions extract_docs
            borg_comment module_spec
-           lock lock_prompt lock_pi_launch prompt_minimal)
+           lock lock_prompt lock_pi_launch prompt_minimal
+           ; DOC COVERAGE MODULES
+           doc_extract doc_detect doc_coverage)
   (libraries borge.lang unix str yojson))

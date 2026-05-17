@@ -127,3 +127,35 @@ let has_doc docs line =
   | Some { doc_type = Exempt; _ } -> `Exempt
   | Some { doc_type = (Ocamldoc _ | Borg_note _ | Borg_short _); _ } -> `Documented
   | None -> `Undocumented
+
+(** Extract all docs from a string (for testing) *)
+let extract_all_docs_from_string content =
+  let lines = String.split_on_char '\n' content in
+  let docs = ref [] in
+  let line_num = ref 0 in
+  
+  List.iter (fun line ->
+    incr line_num;
+    let trimmed = String.trim line in
+    
+    (* Check for borg-style comment *)
+    (match parse_borg_comment trimmed with
+     | Some doc_type ->
+         let content = match doc_type with
+           | Borg_note (_, c) -> c
+           | Borg_short c -> c
+           | Exempt -> "exempt"
+           | Ocamldoc _ -> ""  (* shouldn't happen *)
+         in
+         docs := { line = !line_num; doc_type; content } :: !docs
+     | None ->
+         (* Check for standard (* ... *) comment that might be borg *)
+         if String.length trimmed >= 4 &&
+            String.sub trimmed 0 2 = "(*" &&
+            String.sub trimmed (String.length trimmed - 2) 2 = "*)" then
+           let inner = String.sub trimmed 2 (String.length trimmed - 4) |> String.trim in
+           if inner = "exempt doc" || inner = "exempt" then
+             docs := { line = !line_num; doc_type = Exempt; content = "exempt" } :: !docs)
+  ) lines;
+  
+  List.rev !docs
