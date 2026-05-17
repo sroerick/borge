@@ -7,5 +7,6 @@
            surface meta fmt nodes generate agent review_quality stats json_out
            ui_ast ui_parse ui_validate ui_json
            db_ast db_parse db_validate db_json
+           bug_ast bug_parse bug_write bug_registry
            lock lock_prompt lock_pi_launch)
   (libraries borge.lang unix str yojson))

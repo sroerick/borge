@@ -6,6 +6,7 @@ open Cmdliner
 let cmds = [
   Abort.cmd;
   Balance.cmd;
+  Issue.cmd;
   Check.cmd;
   Commit.cmd;
   Diff.cmd;
