@@ -12,6 +12,8 @@
            extract_parsetree extract_functions extract_docs
            borg_comment module_spec
            lock lock_prompt lock_pi_launch prompt_minimal
-           ; DOC COVERAGE MODULES
-           doc_extract doc_detect doc_coverage)
+           ; DOC COVERAGE
+           doc_extract doc_detect doc_coverage
+           ; MERGE QUEUE
+           worktree branch lockfile)
   (libraries borge.lang unix str yojson))
