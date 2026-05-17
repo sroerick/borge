@@ -5,11 +5,13 @@
  (status implemented)
  (exports project_name find_roots find_orphans
           run_lint run_check run_report run_drift run_fmt
-          generate_code extract_surface parse_dune
+          extract_surface parse_dune
           count_sections status_counts tree_status_counts
           new_bug list_bugs load_bug save_bug close_bug
           json_drift json_report json_spec
           bug_ast bug_parse bug_write bug_registry
+          review_types review_prompt review_parse review_agent
+          extract_parsetree extract_functions extract_docs
           borg_comment module_spec semantic_review)
  (section core
   (doc "Spec model: what borge files ARE. lib/core/")
@@ -442,10 +444,10 @@
  )
  (section review
   (doc "Semantic code review with LLM")
-  (status planned)
+  (status implemented)
   (subsection semantic-review
    (doc "Verify function docs match implementation")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
        semantic_review.ml implements per-function LLM verification.
@@ -489,7 +491,7 @@
   )
   (subsection review-prompt
    (doc "Prompt assembly for semantic review LLM queries")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
        review_prompt.ml: builds prompts for semantic review.
@@ -511,7 +513,7 @@
   )
   (subsection review-parse
    (doc "Parse LLM responses into typed semantic findings")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
        review_parse.ml: parses sexp responses from LLM.
