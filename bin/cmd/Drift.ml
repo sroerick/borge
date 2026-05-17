@@ -15,13 +15,19 @@ let run_agent dir =
   Printf.printf "\nDetails written to .borg.meta files.\n";
   exit 0
 
-let run dir agent =
+let run dir agent json =
   if agent then run_agent dir
   else begin
     (* Generate and write .borg.meta files *)
     let _meta = Drift.write_meta_files dir in
-    Printf.printf "Drift report for '%s'\n\n" dir;
     let result = Drift.run dir in
+    if json then begin
+      Printf.printf "%s\n" (Yojson.Basic.to_string (Json.drift result));
+      let total = List.length result.spec_drift + List.length result.code_drift +
+                  List.length result.structural_drift in
+      exit (if total > 0 then 1 else 0)
+    end;
+    Printf.printf "Drift report for '%s'\n\n" dir;
     (* Spec drift *)
     if result.spec_drift = [] then
       Printf.printf "Spec drift: none\n"
@@ -73,6 +79,9 @@ let agent =
   Arg.(value & flag & info ["agent"] ~doc:
     "Run LLM-powered semantic drift analysis on top of static analysis")
 
+let json =
+  Arg.(value & flag & info ["json"] ~doc:"Output as JSON")
+
 let cmd : unit Cmd.t =
   Cmd.v (Cmd.info "drift" ~doc:"detect spec, code, and structural drift"
     ~man:[`S "DESCRIPTION";
@@ -81,5 +90,6 @@ let cmd : unit Cmd.t =
           `P "2. Code drift: code has something not in any .borg spec";
           `P "3. Structural drift: code organization violates the convention";
           `S "OPTIONS";
-          `P "With --agent, runs LLM semantic analysis after static checks."])
-  Term.(const run $ dir $ agent)
+          `P "With --agent, runs LLM semantic analysis after static checks.";
+          `P "With --json, outputs structured JSON instead of formatted text."])
+  Term.(const run $ dir $ agent $ json)

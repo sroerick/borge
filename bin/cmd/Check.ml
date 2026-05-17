@@ -51,13 +51,18 @@ let run_worktree dir =
     exit 1
   end
 
-let run dir worktree =
+let run dir worktree json =
   if not (Sys.is_directory dir) then (
     Printf.eprintf "Error: '%s' is not a directory\n" dir;
     exit 2
   );
   if worktree then run_worktree dir
   else begin
+    let result = Check.run dir in
+    if json then begin
+      Printf.printf "%s\n" (Yojson.Basic.to_string (Json.check result));
+      exit 0
+    end;
     Printf.printf "Checking .borg files in '%s'...\n\n" dir;
     let result = Check.run dir in
     print_result result;
@@ -73,12 +78,16 @@ let dir =
 let worktree =
   Arg.(value & flag & info ["worktree"] ~doc:"Deterministic check: clean diff, balance, check, build, test")
 
+let json =
+  Arg.(value & flag & info ["json"] ~doc:"Output as JSON")
+
 let cmd : unit Cmd.t =
   Cmd.v (Cmd.info "check" ~doc:"recursive health check across all .borg files"
     ~man:[`S "DESCRIPTION";
           `P "Finds all .borg files recursively and checks that each one \
               parses correctly and has a project node.";
           `P "With --worktree, runs a deterministic pass/fail check: \
-              git diff clean, balance passes, check passes, dune build, dune test."])
-  Term.(const run $ dir $ worktree)
+              git diff clean, balance passes, check passes, dune build, dune test.";
+          `P "With --json, outputs structured JSON instead of formatted text."])
+  Term.(const run $ dir $ worktree $ json)
 

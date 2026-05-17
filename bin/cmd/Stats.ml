@@ -4,8 +4,12 @@ let pad_right n s =
   let len = String.length s in
   if len >= n then s else s ^ String.make (n - len) ' '
 
-let run dir =
+let run dir json =
   let result = Stats.run dir in
+  if json then begin
+    Printf.printf "%s\n" (Yojson.Basic.to_string (Json.stats result));
+    exit 0
+  end;
   Printf.printf "Borge Stats — %d source file(s) in '%s'\n\n" (List.length result.files) dir;
   if result.files = [] then begin
     Printf.printf "No .ml files found.\n";
@@ -39,9 +43,13 @@ let dir =
   Arg.(value & pos 0 dir "." & info [] ~docv:"DIR"
     ~doc:"Directory to scan for .ml files")
 
+let json =
+  Arg.(value & flag & info ["json"] ~doc:"Output as JSON")
+
 let cmd : unit Cmd.t =
   Cmd.v (Cmd.info "stats" ~doc:"show code intelligence metrics"
     ~man:[`S "DESCRIPTION";
           `P "Scans all .ml files and reports lines of code, function count, \
-              average function length, export count, and .mli coverage."])
-  Term.(const run $ dir)
+              average function length, export count, and .mli coverage.";
+          `P "With --json, outputs structured JSON instead of formatted text."])
+  Term.(const run $ dir $ json)

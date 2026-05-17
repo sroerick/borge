@@ -4,8 +4,12 @@ let pad_right n s =
   let len = String.length s in
   if len >= n then s else s ^ String.make (n - len) ' '
 
-let run dir =
+let run dir json =
   let result = Report.run dir in
+  if json then begin
+    Printf.printf "%s\n" (Yojson.Basic.to_string (Json.report result));
+    exit 0
+  end;
   Printf.printf "Borge Report — %d .borg file(s) in '%s'\n\n" (List.length result.files) dir;
   let max_name = List.fold_left (fun acc (r : Report.file_stats) ->
     let display = match r.project_name with
@@ -50,10 +54,14 @@ let dir =
   Arg.(value & pos 0 dir "." & info [] ~docv:"DIR"
     ~doc:"Directory to scan for .borg files")
 
+let json =
+  Arg.(value & flag & info ["json"] ~doc:"Output as JSON")
+
 let cmd : unit Cmd.t =
   Cmd.v (Cmd.info "report" ~doc:"show status summary across all .borg files"
     ~man:[`S "DESCRIPTION";
           `P "Finds all .borg files recursively and reports how many nodes \
-              are planned, in-progress, and implemented."])
-  Term.(const run $ dir)
+              are planned, in-progress, and implemented.";
+          `P "With --json, outputs structured JSON instead of formatted text."])
+  Term.(const run $ dir $ json)
 

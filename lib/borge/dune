@@ -1,5 +1,5 @@
 (library
   (name borge_lib)
   (public_name borge.lib)
-  (modules spec file_utils check report fmt nodes project lint drift dune_parse surface meta agent stats generate review_quality)
-  (libraries borge.sexp unix str))
+  (modules spec file_utils check report fmt nodes project lint drift dune_parse surface meta agent stats generate review_quality json)
+  (libraries borge.sexp unix str yojson))

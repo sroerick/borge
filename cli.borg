@@ -118,7 +118,7 @@
   )
   (subsection json-output
    (doc "--json flag. Structured output for machine consumption")
-   (status planned)
+   (status implemented)
   )
   (subsection quiet-mode
    (doc "--quiet flag. Suppress all output except errors")

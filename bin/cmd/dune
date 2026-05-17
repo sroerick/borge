@@ -1,4 +1,4 @@
 (library
   (name borge_cmd)
-  (libraries borge.sexp borge.lib cmdliner unix)
+  (libraries borge.sexp borge.lib cmdliner unix yojson)
   (modules Balance Check Diff Drift Execute Fmt Generate Inline Lint Log Nodes Normalize Parse Print Report Review Stats Undo Version))
