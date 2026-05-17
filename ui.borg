@@ -1,9 +1,49 @@
 (project borge-ui
- (doc "Declarative UI DSL for borge — inspired by Clay's 80/20 layout model.
-       Describes UI structure and style in sexp; generates code via LLM.
+ (doc "Declarative UI DSL — an extension of the borge language, not a separate one.
+       Adds (theme), (component), (layout), (variant), (page), (routes) and related
+       forms inside .borg sections. All existing borge commands work on UI sections.
        Renderer-agnostic: can target HTML/CSS, React, Clay, or any frontend.")
  (no-inline)
  (status planned)
+
+ (section relationship-to-borge
+  (doc "UI is an extension of the borge language, not a separate language")
+  (status planned)
+  (details
+   (doc (|
+     Borge UI is NOT a new language. It is a set of new sexp forms
+     that live inside existing .borg files. Every borge command that
+     works today works on UI sections without changes:
+
+     - borge balance: paren-checks UI sections like any other
+     - borge parse: parses UI forms as sexp like anything else
+     - borge fmt: formats UI sections with canonical indentation
+     - borge check: validates UI section files exist and are well-formed
+     - borge lint: validates UI semantics (and gains UI-aware checks)
+     - borge report: counts UI section statuses like any other section
+     - borge drift: detects drift between UI spec and generated code
+     - borge nodes: dumps UI AST like any other section
+     - borge generate ui: NEW subcommand — generates code from UI spec
+
+     The new forms are just sexp — the parser already handles them.
+     A (ui ...) section is another section body, same as (doc ...)
+     or (details ...). Balance, formatting, and reporting all work
+     on day one with zero code changes to the existing tools.
+
+     What IS new:
+       1. New sexp forms: (theme), (component), (layout), (variant),
+          (page), (routes), (use), (fill), (use-layout), (slot)
+       2. New subcommand: borge generate ui
+       3. Future: semantic awareness — lint validates that (use button)
+          refers to a defined component, drift checks generated UI code,
+          etc. But this is incremental enhancement, not a prerequisite.
+
+     The principle: borge UI sections are first-class borge citizens.
+     They get the same tooling, the same workflow, and the same
+     spec-is-source-of-truth discipline as every other section.
+   |))
+  )
+ )
 
  (section philosophy
   (doc (|
