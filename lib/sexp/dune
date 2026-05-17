@@ -1,4 +1,8 @@
 (library
   (name borge_sexp)
   (public_name borge.sexp)
-  (modules ast balance error lexer parse print))
+  (modules ast balance error lexer parse print parser)
+  (libraries sedlex))
+
+(menhir
+  (modules parser))

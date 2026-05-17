@@ -43,7 +43,7 @@
       |))
   )
  )
-  (section modules
+ (section modules
   (doc "The modules that make up borge, inlined by filename")
   (status implemented)
   (subsection sexp
@@ -70,12 +70,6 @@
    (inline history.borg
    )
   )
-  (subsection nvim
-   (doc "Neovim plugin for inline .borg editing")
-   (status implemented)
-   (inline nvim.borg
-   )
-  )
   (subsection meta
    (doc "Companion metadata files for structured analysis observations")
    (status in-progress)
@@ -83,7 +77,7 @@
    )
   )
  )
-(section format
+ (section format
   (doc "The file format")
   (status implemented)
   (details

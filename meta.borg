@@ -1,7 +1,8 @@
 (project borge-meta
  (doc "Companion metadata files for .borg specs — machine-generated observations about code reality")
  (status in-progress)
- (no-inline)
+ (no-inline
+ )
  (section purpose
   (doc (|
     .borg files are the source of truth for intent — what the project
@@ -414,7 +415,7 @@
         Status: planned 13  implemented 19  in-progress 2
         Quality drift: 1 file with declining coverage (lint.ml)
       |))
-   )
+  )
   (subsection stats-command
    (doc "Print aggregate code intelligence dashboard")
    (status implemented)
