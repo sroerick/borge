@@ -1,5 +1,5 @@
-(project borge-sexp
- (doc "The sexp parsing, printing, and balancing library")
+(project borge-lang
+ (doc "The borge language: parsing, printing, and balancing")
  (status in-progress)
  (section ast
   (doc "AST types for sexp, annotated comments, verbatim strings")

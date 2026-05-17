@@ -46,8 +46,8 @@
  (section modules
   (doc "The modules that make up borge, inlined by filename")
   (status implemented)
-  (subsection sexp
-   (doc "The sexp parsing, printing, and balancing library")
+  (subsection lang
+   (doc "The borge language: parsing, printing, and balancing")
    (status implemented)
    (inline sexp.borg
    )

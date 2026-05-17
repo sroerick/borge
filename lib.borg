@@ -1,199 +1,247 @@
 (project borge-lib
- (doc "Domain operations: checking, reporting, formatting, spec extraction")
+ (doc "Domain operations: checking, reporting, formatting, spec extraction.
+       Organized into concern-based subdirectories under lib/ with
+       include_subdirs unqualified — same flat namespace, better layout.")
  (status implemented)
- (section spec
-  (doc "Borge-specific types and operations on top of the sexp AST")
+ (section core
+  (doc "Spec model: what borge files ARE. lib/core/")
   (status implemented)
-  (details
-   (doc (|
-        Types: status (planned, in-progress, partial, implemented,
-        drifted, blank). Functions: status_of_string, string_of_status,
-        project_name, count_sections, statuses, status_counts,
-        inline_targets, has_no_inline.
-      |))
+  (subsection spec
+   (doc "Borge-specific types and operations on top of the sexp AST")
+   (status implemented)
+   (details
+    (doc (|
+         Types: status (planned, in-progress, partial, implemented,
+         drifted, blank). Functions: status_of_string, string_of_status,
+         project_name, count_sections, statuses, status_counts,
+         inline_targets, has_no_inline.
+       |))
+   )
   )
- )
- (section file-utils
-  (doc "File discovery and reading shared by all commands")
-  (status implemented)
-  (details
-   (doc (|
-        find_borg_files: recursively discover .borg files, skipping
-        _build and .git. read_file: read a file into a string.
-      |))
+  (subsection file-utils
+   (doc "File discovery and reading shared by all commands")
+   (status implemented)
+   (details
+    (doc (|
+         find_borg_files: recursively discover .borg files, skipping
+         _build and .git. read_file: read a file into a string.
+       |))
+   )
+  )
+  (subsection project
+   (doc "Inline tree building and orphan detection")
+   (status implemented)
+   (details
+    (doc (|
+         build_tree: recursively follow inline directives from a root
+         .borg file, producing a project_node tree. Each node carries
+         its path, project_name, children, and orphan status.
+
+         find_roots: find .borg files not inlined by any other file.
+         find_orphans: find files not in any tree, no (no-inline), and
+         don't inline any children themselves.
+
+         tree_status_counts: count statuses across the tree without
+         double-counting inlined sub-specs.
+
+         format_tree: indented text representation of the tree.
+       |))
+   )
   )
  )
  (section check
-  (doc "Recursive health check across all .borg files")
+  (doc "Validation and analysis. lib/check/")
   (status implemented)
-  (details
-   (doc (|
-        Walks a directory, finds .borg files, parses each, reports
-        project name and validity. Returns a typed result per file
-        with pass/fail status and warnings (orphan detection).
-      |))
+  (subsection check-command
+   (doc "Recursive health check across all .borg files")
+   (status implemented)
+   (details
+    (doc (|
+         Walks a directory, finds .borg files, parses each, reports
+         project name and validity. Returns a typed result per file
+         with pass/fail status and warnings (orphan detection).
+       |))
+   )
   )
- )
- (section report
-  (doc "Status summary across all .borg files")
-  (status implemented)
-  (details
-   (doc (|
-        Aggregates status counts per file and globally. Returns typed
-        data: per-file (name, impl, in-progress, planned) and totals.
-        Uses inline tree to avoid double-counting sub-specs.
-        Reports orphaned files.
-      |))
+  (subsection report
+   (doc "Status summary across all .borg files")
+   (status implemented)
+   (details
+    (doc (|
+         Aggregates status counts per file and globally. Returns typed
+         data: per-file (name, impl, in-progress, planned) and totals.
+         Uses inline tree to avoid double-counting sub-specs.
+         Reports orphaned files.
+       |))
+   )
   )
- )
- (section fmt
-  (doc "Auto-format a .borg file to canonical indentation")
-  (status implemented)
-  (details
-   (doc (|
-        Parses and re-prints with canonical indentation. Supports
-        --check (exit 1 if formatting would change) and --diff
-        (show line-by-line diff).
-      |))
+  (subsection lint
+   (doc "Semantic validation of .borg files")
+   (status implemented)
+   (details
+    (doc (|
+         Checks: invalid status values, duplicate project names,
+         unknown comment types, missing comment values, deleted
+         human comments (against git HEAD), pending ask/response
+         slots, orphaned files.
+       |))
+   )
   )
- )
- (section lint
-  (doc "Semantic validation of .borg files")
-  (status implemented)
-  (details
-   (doc (|
-        Checks: invalid status values, duplicate project names,
-        unknown comment types, missing comment values, deleted
-        human comments (against git HEAD), pending ask/response
-        slots, orphaned files.
-      |))
-  )
- )
- (section drift
-  (doc "Detect spec drift, code drift, and structural drift")
-  (status implemented)
-  (details
-   (doc (|
-        Three drift layers:
-        1. Spec drift: .borg describes something not in code
-        2. Code drift: dune-aware — modules from dune files not in .borg
-        3. Structural drift: code organization does not match inline
-           architecture
+  (subsection drift
+   (doc "Detect spec drift, code drift, and structural drift")
+   (status implemented)
+   (details
+    (doc (|
+         Three drift layers:
+         1. Spec drift: .borg describes something not in code
+         2. Code drift: dune-aware — modules from dune files not in .borg
+         3. Structural drift: code organization does not match inline
+            architecture
 
-        Generates .borg.meta files with findings, module surfaces,
-        and dune snapshots. Supports --agent flag for LLM-driven
-        semantic analysis.
-      |))
+         Generates .borg.meta files with findings, module surfaces,
+         and dune snapshots. Supports --agent flag for LLM-driven
+         semantic analysis.
+       |))
+   )
+  )
+  (subsection dune-parse
+   (doc "Parse dune files for structural drift detection")
+   (status implemented)
+   (details
+    (doc (|
+         Parses dune (sexp) files to extract library, executable,
+         and test stanzas. Returns typed records with name, modules,
+         public_name, and libraries. Used by drift for cross-referencing
+         dune structure against .borg spec sections.
+       |))
+   )
+  )
+  (subsection surface
+   (doc "Extract public module interface from .ml/.mli files")
+   (status implemented)
+   (details
+    (doc (|
+         For modules with .mli: .mli is the authoritative surface.
+         For modules without .mli: infer from top-level let bindings,
+         type definitions, exceptions, and module declarations.
+         Returns module_name, file path, and export list.
+       |))
+   )
+  )
+  (subsection meta
+   (doc "Types and writer for .borg.meta companion files")
+   (status implemented)
+   (details
+    (doc (|
+         .borg.meta files hold machine-generated observations:
+         analyzed-at timestamp, content hashes, module surfaces,
+         dune snapshots, and findings. The writer is idempotent
+         and deterministic. Findings are sorted for clean git diffs.
+         Agent findings merge (replace) on re-run; static findings
+         are preserved.
+       |))
+   )
   )
  )
- (section dune-parse
-  (doc "Parse dune files for structural drift detection")
+ (section format
+  (doc "Formatting and display. lib/format/")
   (status implemented)
-  (details
-   (doc (|
-        Parses dune (sexp) files to extract library, executable,
-        and test stanzas. Returns typed records with name, modules,
-        public_name, and libraries. Used by drift for cross-referencing
-        dune structure against .borg spec sections.
-      |))
+  (subsection fmt
+   (doc "Auto-format a .borg file to canonical indentation")
+   (status implemented)
+   (details
+    (doc (|
+         Parses and re-prints with canonical indentation. Supports
+         --check (exit 1 if formatting would change) and --diff
+         (show line-by-line diff).
+       |))
+   )
   )
- )
- (section surface
-  (doc "Extract public module interface from .ml/.mli files")
-  (status implemented)
-  (details
-   (doc (|
-        For modules with .mli: .mli is the authoritative surface.
-        For modules without .mli: infer from top-level let bindings,
-        type definitions, exceptions, and module declarations.
-        Returns module_name, file path, and export list.
-      |))
-  )
- )
- (section meta
-  (doc "Types and writer for .borg.meta companion files")
-  (status implemented)
-  (details
-   (doc (|
-        .borg.meta files hold machine-generated observations:
-        analyzed-at timestamp, content hashes, module surfaces,
-        dune snapshots, and findings. The writer is idempotent
-        and deterministic. Findings are sorted for clean git diffs.
-        Agent findings merge (replace) on re-run; static findings
-        are preserved.
-      |))
-  )
- )
- (section agent
-  (doc "LLM-driven semantic drift analysis")
-  (status implemented)
-  (details
-   (doc (|
-        Assembles context (spec + code + existing findings) into a
-        prompt, invokes an LLM via BORGE_AGENT_CMD env var, parses
-        the sexp response into typed findings. Parse failures are
-        discarded — never corrupt .borg.meta. Agent findings merge
-        with static findings (static preserved, agent replaced).
-      |))
-  )
- )
- (section stats
-  (doc "Code intelligence metrics: lines, functions, exports per file")
-  (status implemented)
-  (details
-   (doc (|
-        Scans all .ml files and reports: line count, function count,
-        average function length, export count, doc coverage, mli status.
-        Aggregates into project totals. Filters _build, .git, test dirs.
-        Doc coverage is a placeholder (0%) — proper nested-comment parsing
-        needs a real lexer.
-      |))
+  (subsection nodes
+   (doc "Dump the parsed AST with types and positions for debugging")
+   (status implemented)
+   (details
+    (doc (|
+         Walks the AST and prints each node with its type, keyword (if
+         list), source position, and child count. Useful for debugging
+         mismatches between source and AST.
+       |))
+   )
   )
  )
  (section generate
-  (doc "Generate spec sections and code from specs via LLM")
+  (doc "LLM-driven generation. lib/generate/")
   (status implemented)
-  (details
-   (doc (|
-        Two subcommands: generate spec (todo -> .borg section) and
-        generate code (spec -> implementation). Both use pi -p via
-        Agent.run_pi_print. Generate spec takes free-form text and
-        produces a structured (status planned) section. Generate code
-        reads a planned section's spec text and module surfaces, then
-        invokes pi to write the implementation.
-      |))
+  (subsection generate-command
+   (doc "Generate spec sections and code from specs via LLM")
+   (status implemented)
+   (details
+    (doc (|
+         Two subcommands: generate spec (todo -> .borg section) and
+         generate code (spec -> implementation). Both use pi -p via
+         Agent.run_pi_print. Generate spec takes free-form text and
+         produces a structured (status planned) section. Generate code
+         reads a planned section's spec text and module surfaces, then
+         invokes pi to write the implementation.
+       |))
+   )
+  )
+  (subsection agent
+   (doc "LLM-driven semantic drift analysis")
+   (status implemented)
+   (details
+    (doc (|
+         Assembles context (spec + code + existing findings) into a
+         prompt, invokes an LLM via BORGE_AGENT_CMD env var, parses
+         the sexp response into typed findings. Parse failures are
+         discarded — never corrupt .borg.meta. Agent findings merge
+         with static findings (static preserved, agent replaced).
+       |))
+   )
+  )
+  (subsection review-quality
+   (doc "Per-file LLM code quality assessment against spec")
+   (status implemented)
+   (details
+    (doc (|
+         review_quality.ml: for each implemented section, find the
+         corresponding source file, build a prompt comparing spec vs
+         code, call pi -p, and return structured findings. Exposed
+         via borge review --agent.
+       |))
+   )
   )
  )
- (section review-quality
-  (doc "Per-file LLM code quality assessment against spec")
+ (section metrics
+  (doc "Code statistics. lib/metrics/")
   (status implemented)
-  (details
-   (doc (|
-        review_quality.ml: for each implemented section, find the
-        corresponding source file, build a prompt comparing spec vs
-        code, call pi -p, and return structured findings. Exposed
-        via borge review --agent.
-      |))
+  (subsection stats
+   (doc "Code intelligence metrics: lines, functions, exports per file")
+   (status implemented)
+   (details
+    (doc (|
+         Scans all .ml files and reports: line count, function count,
+         average function length, export count, doc coverage, mli status.
+         Aggregates into project totals. Filters _build, .git, test dirs.
+         Doc coverage is a placeholder (0%) — proper nested-comment parsing
+         needs a real lexer.
+       |))
+   )
   )
  )
- (section project
-  (doc "Inline tree building and orphan detection")
+ (section output
+  (doc "Structured output formats. lib/output/")
   (status implemented)
-  (details
-   (doc (|
-        build_tree: recursively follow inline directives from a root
-        .borg file, producing a project_node tree. Each node carries
-        its path, project_name, children, and orphan status.
-
-        find_roots: find .borg files not inlined by any other file.
-        find_orphans: find files not in any tree, no (no-inline), and
-        don't inline any children themselves.
-
-        tree_status_counts: count statuses across the tree without
-        double-counting inlined sub-specs.
-
-        format_tree: indented text representation of the tree.
-      |))
+  (subsection json
+   (doc "JSON serialization for --json flag across borge commands")
+   (status implemented)
+   (details
+    (doc (|
+         Yojson-based serializers for Report, Check, Lint, Drift, Stats,
+         and Balance result types. Each command's --json flag calls the
+         corresponding Json.to_json function and prints the result.
+       |))
+   )
   )
  )
 )
