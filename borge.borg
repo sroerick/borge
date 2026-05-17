@@ -466,59 +466,57 @@
   )
  )
  (section lock-mechanism
-  (doc "Transactional isolation for agent sessions")
+  (doc "Transactional isolation for agent sessions — metadata, not workspace")
   (status planned)
   (details
    (doc (|
         Every agent-driven command (make, plan, drift --agent) creates
-        a .borge.lock/ directory. The lock is the agent's workspace.
-        The repo working tree is never modified by the agent directly.
+        a .borge.lock/ directory. The lock is a transaction log and
+        metadata store, NOT a workspace. The agent edits .borg files
+        directly in the repo. The lock captures the session for audit,
+        integrity checking, and abort/restore.
+
+        The agent's workspace IS the repo. The lock provides:
+
+        1. Concurrency prevention. If .borge.lock/ exists, refuse new
+           agent sessions. One agent at a time prevents conflicting
+           edits. The human can `borge abort` to clear a stale lock.
+
+        2. Snapshot for integrity check. On lock creation, all .borg
+           files are copied to .borge.lock/original/. At commit time,
+           borge diffs original/ against the working tree to detect
+           deletions of human-authored comments. If found, commit is
+           blocked unless --force.
+
+        3. Snapshot for abort. If the session goes wrong, `borge abort`
+           copies original/ back to the repo, restoring .borg files.
+           Code file changes are NOT reverted — git handles that.
+
+        4. Audit trail. The lock contains:
+           - prompt.md: the full prompt sent to pi
+           - journal: structured log of proposed changes
+           - role: the role declaration for the session
+           - state: running | completed | failed
+
+        5. Commit message construction. The journal provides the
+           summary for the auto-generated git commit message. Each
+           entry includes the reason for the change.
 
         Lock directory layout:
           .borge.lock/
             original/            # snapshot of all .borg files at lock time
-            working/             # writable copy of .borg files for the agent
             role                 # role declaration (text + sexp)
             prompt.md            # prompt sent to pi
-            journal              # agent's proposed .borg changes
+            journal              # structured session log
             state                # running | completed | failed
 
-        1. Snapshot isolation. On lock creation, all .borg files are
-           copied to .borge.lock/original/. The agent gets a writable
-           copy at .borge.lock/working/. The repo working tree is NOT
-           touched for .borg files during the session.
-
-        2. Work. The agent edits .borg files in working/ and code files
-           in the repo. The pi harness mounts working/ as the effective
-           .borg directory so all reads/writes go through the lock.
-
-        3. Commit. On clean exit:
-           a) Integrity check: compare original/ with working/. If any
-              human-authored annotated comments were deleted, block
-              commit. The diff is shown. User must either fix the
-              deletions or run borge commit --force to override.
-           b) Apply: copy working/ files back to repo working tree.
-           c) Validate: borge fmt on changed files, borge balance.
-           d) Git: git add changed files, git commit with journal summary.
-           e) Clean: remove .borge.lock/.
-
-        4. Integrity check details. A "human-authored annotated comment"
-           is any comment of the form:
-             (* <author> <type> (|...|) *)
-           where <author> is not "agent" or "bot". The check compares
-           each .borg file in original/ against working/ and reports
-           deletions. This check is cheap — it's a diff between two
-           snapshot directories, no git needed.
-
-        5. Code file integrity. For .ml, .go, .c files written directly
-           to the repo, integrity is checked via git: git diff --cached
-           and git diff HEAD against the agent session's original commit.
-           Comment deletion detection for code files is a future feature
-           (currently only .borg files are checked).
-
-        6. Abort. Discard working/ and journal. .borg files in the repo
-           are untouched (they were never modified). Code files may have
-           been modified — use git checkout or git reset to undo.
+        Agent editing rules:
+        - .borg files: edit in place (repo root). The agent uses normal
+          paths like lib.borg, borge.borg, etc.
+        - Code files: edit in place (repo tree). Standard paths.
+        - At commit: diff checks, fmt, balance, git commit.
+        - At abort: restore .borg files from original/. Code files stay
+          as-is; use git to undo if needed.
       |))
   )
  )
