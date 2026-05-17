@@ -1,4 +1,5 @@
 (library
   (name borge_cmd)
   (libraries borge.lang borge.lib cmdliner unix yojson)
-  (modules Balance Check Diff Drift Execute Fmt Generate Inline Lint Log Nodes Normalize Parse Print Report Review Stats Undo Version Make Plan Abort))
+  (modules Abort Balance Check Commit Diff Drift Execute Fmt Generate Inline Lint Log Make Nodes Normalize Parse Plan Print Report Review Stats Undo Version)
+)

@@ -7,6 +7,7 @@ let cmds = [
   Abort.cmd;
   Balance.cmd;
   Check.cmd;
+  Commit.cmd;
   Diff.cmd;
   Drift.cmd;
   Execute.cmd;
