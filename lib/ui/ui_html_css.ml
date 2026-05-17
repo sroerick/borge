@@ -123,8 +123,20 @@ let rec element_css (indent : int) (el : ui_element) : string list =
   let children_css = List.concat_map (element_css indent) el.children in
   own_css @ children_css
 
+(** Generate HTML for a component instance.
+    Uses the component definition to render the component's children. *)
+let rec component_html (indent : int) (comp : component) : string =
+  let prefix = String.make indent ' ' in
+  let cls = class_name comp.name in
+  if comp.children = [] then
+    Printf.sprintf "%s<div class=\"%s\"></div>" prefix cls
+  else
+    let children = List.map (element_html (indent + 2)) comp.children in
+    Printf.sprintf "%s<div class=\"%s\">\n%s\n%s</div>"
+      prefix cls (String.concat "\n" children) prefix
+
 (** Generate HTML for an element *)
-let rec element_html (indent : int) (el : ui_element) : string =
+and element_html (indent : int) (el : ui_element) : string =
   let prefix = String.make indent ' ' in
   let cls = match el.name with
     | Some n -> Printf.sprintf " class=\"%s\"" (class_name n)
@@ -137,16 +149,54 @@ let rec element_html (indent : int) (el : ui_element) : string =
     Printf.sprintf "%s<div%s>\n%s\n%s</div>"
       prefix cls (String.concat "\n" children) prefix
 
+(** Find a layout by name *)
+let find_layout (app : ui_app) (name : string) : layout_def option =
+  List.find_opt (fun (ly : layout_def) -> ly.name = name) app.layouts
+
+(** Find a component by name *)
+let find_component (app : ui_app) (name : string) : component option =
+  List.find_opt (fun (c : component) -> c.name = name) app.components
+
+(** Render a layout's root element, replacing slot markers with content *)
+let rec render_layout_html (indent : int) (el : ui_element) (fills : slot_fill list) : string =
+  let prefix = String.make indent ' ' in
+  let cls = match el.name with
+    | Some n -> Printf.sprintf " class=\"%s\"" (class_name n)
+    | None -> ""
+  in
+  (* Check if this element is a slot placeholder — indicated by name matching a fill *)
+  let is_slot = match el.name with
+    | Some n -> List.exists (fun (f : slot_fill) -> f.slot_name = n) fills
+    | None -> false
+  in
+  if is_slot then begin
+    (* Replace with the fill content *)
+    let fill = List.find (fun (f : slot_fill) -> f.slot_name = Option.get el.name) fills in
+    let content = List.map (element_html (indent + 2)) fill.content in
+    Printf.sprintf "%s<div%s>\n%s\n%s</div>"
+      prefix cls (String.concat "\n" content) prefix
+  end else if el.children = [] then
+    Printf.sprintf "%s<div%s></div>" prefix cls
+  else
+    let children = List.map (fun child ->
+      render_layout_html (indent + 2) child fills
+    ) el.children in
+    Printf.sprintf "%s<div%s>\n%s\n%s</div>"
+      prefix cls (String.concat "\n" children) prefix
+
 (** Generate the full HTML page for a ui_app *)
 let generate_html (app : ui_app) : string =
   match app.pages with
   | [] -> "<!-- No pages defined -->\n"
   | page :: _ ->
-    let body = match page.override_element with
-      | [] -> "<!-- No content -->"
-      | _ -> "<!-- Page content from layout -->"
+    let body =
+      match find_layout app page.layout_name with
+      | Some ly ->
+        render_layout_html 4 ly.root page.fills
+      | None ->
+        "<!-- Layout not found: " ^ page.layout_name ^ " -->"
     in
-    Printf.sprintf "<!DOCTYPE html>\n<html>\n<head>\n  <title>%s</title>\n  <link rel=\"stylesheet\" href=\"style.css\">\n</head>\n<body>\n  %s\n</body>\n</html>"
+    Printf.sprintf "<!DOCTYPE html>\n<html>\n<head>\n  <title>%s</title>\n  <link rel=\"stylesheet\" href=\"style.css\">\n</head>\n<body>\n%s\n</body>\n</html>"
       page.name body
 
 (** Generate the full CSS for a ui_app *)

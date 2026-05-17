@@ -143,6 +143,76 @@ let rls_group_policies (t : table_def) (groups : group_def list) : string list =
       ) g.capabilities
   ) groups
 
+(** Generate CREATE VIEW from a relation *)
+let create_view (rel : relation_def) : string =
+  let select_cols = String.concat ", " (List.map sql_name rel.select_columns) in
+  let from = Printf.sprintf "FROM %s" (sql_name rel.from_table) in
+  let joins = String.concat "\n" (List.map (fun (j : join_clause) ->
+    let jt = match j.join_type with
+      | Inner_join -> "JOIN"
+      | Left_join -> "LEFT JOIN"
+    in
+    Printf.sprintf "%s %s ON %s" jt (sql_name j.table) j.on_condition
+  ) rel.joins) in
+  let where = match rel.where_clause with
+    | Some w -> Printf.sprintf "\nWHERE %s" w
+    | None -> ""
+  in
+  Printf.sprintf "CREATE VIEW %s AS\nSELECT %s\n%s\n%s%s;"
+    (sql_name rel.name) select_cols from joins where
+
+(** Generate CRUD function stubs for a table.
+    These are PostgreSQL function stubs that can be filled in by an LLM. *)
+let crud_functions (ops : operations_def) : string list =
+  let t = sql_name ops.table_name in
+  let base = String.map (fun c -> if c = '-' then '_' else c) ops.table_name in
+  let fns = ref [] in
+  (match ops.crud with
+  | Some crud ->
+    let all_ops = match crud with
+      | Crud_all -> ["create"; "read"; "update"; "delete"]
+      | Crud_except excluded ->
+        List.filter (fun op -> not (List.mem op excluded))
+          ["create"; "read"; "update"; "delete"]
+      | Crud_only included -> included
+    in
+    List.iter (fun op ->
+      let fn_name = Printf.sprintf "%s_%s" base op in
+      let stub = match op with
+        | "create" ->
+          Printf.sprintf
+            "CREATE OR REPLACE FUNCTION %s(\n  -- TODO: add parameters from %s columns\n)\nRETURNS UUID\nLANGUAGE sql\nAS $$\n  INSERT INTO %s DEFAULT VALUES RETURNING id;\n$$;"
+            fn_name t t
+        | "read" ->
+          Printf.sprintf
+            "CREATE OR REPLACE FUNCTION %s_by_id(\n  p_id UUID\n)\nRETURNS SETOF %s\nLANGUAGE sql\nAS $$\n  SELECT * FROM %s WHERE id = p_id;\n$$;"
+            fn_name t t
+        | "update" ->
+          Printf.sprintf
+            "CREATE OR REPLACE FUNCTION %s(\n  p_id UUID\n  -- TODO: add updatable columns from %s\n)\nRETURNS void\nLANGUAGE sql\nAS $$\n  -- TODO: UPDATE %s SET ... WHERE id = p_id;\n$$;"
+            fn_name t t
+        | "delete" ->
+          Printf.sprintf
+            "CREATE OR REPLACE FUNCTION %s(\n  p_id UUID\n)\nRETURNS void\nLANGUAGE sql\nAS $$\n  DELETE FROM %s WHERE id = p_id;\n$$;"
+            fn_name t
+        | _ ->
+          Printf.sprintf "-- TODO: %s function for %s" op t
+      in
+      fns := stub :: !fns
+    ) all_ops
+  | None -> ());
+  let query_fns = List.map (fun (q : query_def) ->
+    let fn_name = Printf.sprintf "%s_%s" base q.name in
+    let limit = match q.limit with
+      | Some n -> Printf.sprintf "\n  LIMIT %d" n
+      | None -> ""
+    in
+    Printf.sprintf
+      "CREATE OR REPLACE FUNCTION %s(\n  -- TODO: add filter parameters\n)\nRETURNS SETOF %s\nLANGUAGE sql\nAS $$\n  SELECT * FROM %s%s;\n$$;"
+      fn_name t t limit
+  ) ops.queries in
+  List.rev !fns @ query_fns
+
 (** Generate the full SQL migration for a db_app *)
 let generate (app : db_app) : string =
   let parts = ref [] in
@@ -161,5 +231,15 @@ let generate (app : db_app) : string =
     (* RLS group policies *)
     List.iter (fun s -> parts := s :: !parts) (rls_group_policies t app.groups)
   ) app.tables;
+
+  (* Views from relations *)
+  List.iter (fun (rel : relation_def) ->
+    parts := create_view rel :: !parts
+  ) app.relations;
+
+  (* CRUD function stubs *)
+  List.iter (fun (ops : operations_def) ->
+    List.iter (fun fn -> parts := fn :: !parts) (crud_functions ops)
+  ) app.operations;
 
   String.concat "\n\n" (List.rev !parts) ^ "\n"

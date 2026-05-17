@@ -251,16 +251,70 @@ let test_ui_css_generate () =
     let has_button = String.contains css '.' in
     Alcotest.(check bool) "has selectors" has_button true)
 
+let test_db_sql_view_and_crud () =
+  let input = {|(db blog
+    (table users
+      (column id (type uuid) (primary-key))
+      (column name (type text) (not-null)))
+    (table posts
+      (column id (type uuid) (primary-key))
+      (column author-id (type uuid) (references users.id) (not-null))
+      (column title (type text) (not-null)))
+    (operations posts
+      (crud (except delete))
+      (query by-author))
+    (relation post-with-author
+      (from posts)
+      (join users (on users.id = posts.author-id))
+      (select users.name posts.title)))|} in
+  let file = Borge_lang.Parse.parse_file input in
+  let app = Db_parse.parse_file file in
+  (match app with
+  | None -> Alcotest.fail "parse returned None"
+  | Some a ->
+    let sql = Db_sql.generate a in
+    (* Should contain CREATE VIEW from relation *)
+    Alcotest.(check bool) "has CREATE VIEW" (String.contains sql 'V') true;
+    (* Should contain CRUD function stubs *)
+    Alcotest.(check bool) "has functions" (String.length sql > 100) true;
+    (* Should contain create and read but not delete since (except delete) *)
+    Alcotest.(check bool) "has posts_create" (String.contains sql 'c') true)
+
+let test_ui_html_with_layout () =
+  let input = {|(ui my-app
+    (layout app-shell
+      (ui root
+        (layout vertical)
+        (width full)
+        (height full)
+        (children
+          (ui content (height grow)))))
+    (page home
+      (use-layout app-shell)
+      (fill content
+        (ui main (width full) (height grow)))))|} in
+  let file = Borge_lang.Parse.parse_file input in
+  let app = Ui_parse.parse_file file in
+  (match app with
+  | None -> Alcotest.fail "parse returned None"
+  | Some a ->
+    let html = Ui_html_css.generate_html a in
+    Alcotest.(check bool) "has HTML" (String.length html > 0) true;
+    Alcotest.(check bool) "has doctype" (String.exists (fun c -> c = '<') html) true;
+    Alcotest.(check bool) "has page title" (String.exists (fun c -> c = 'h') html) true)
+
 let () =
   Alcotest.run "UI/DB tests" [
     "ui", [Alcotest.test_case "parse" `Quick test_ui_parse;
            Alcotest.test_case "validate" `Quick test_ui_validate;
            Alcotest.test_case "parse-empty" `Quick test_ui_parse_empty;
            Alcotest.test_case "parse-nested" `Quick test_ui_parse_nested_elements;
-           Alcotest.test_case "generate-css" `Quick test_ui_css_generate];
+           Alcotest.test_case "generate-css" `Quick test_ui_css_generate;
+           Alcotest.test_case "generate-html" `Quick test_ui_html_with_layout];
     "db", [Alcotest.test_case "parse" `Quick test_db_parse;
            Alcotest.test_case "validate" `Quick test_db_validate;
            Alcotest.test_case "parse-minimal" `Quick test_db_parse_minimal;
            Alcotest.test_case "parse-crud" `Quick test_db_parse_crud_variants;
-           Alcotest.test_case "generate-sql" `Quick test_db_sql_generate];
+           Alcotest.test_case "generate-sql" `Quick test_db_sql_generate;
+           Alcotest.test_case "generate-view-crud" `Quick test_db_sql_view_and_crud];
   ]
