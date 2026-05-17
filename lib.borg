@@ -3,6 +3,11 @@
        Organized into concern-based subdirectories under lib/ with
        include_subdirs unqualified — same flat namespace, better layout.")
  (status implemented)
+ (exports project_name find_roots find_orphans
+          run_lint run_check run_report run_drift run_fmt
+          generate_code extract_surface parse_dune
+          count_sections status_counts tree_status_counts
+          new_bug list_bugs load_bug save_bug close_bug)
  (section core
   (doc "Spec model: what borge files ARE. lib/core/")
   (status implemented)

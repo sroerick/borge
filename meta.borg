@@ -1,8 +1,9 @@
 (project borge-meta
  (doc "Companion metadata files for .borg specs — machine-generated observations about code reality")
  (status in-progress)
- (no-inline
- )
+ (no-inline)
+ (exports write_meta read_meta update_meta
+          meta_of_file file_of_meta)
  (section purpose
   (doc (|
     .borg files are the source of truth for intent — what the project

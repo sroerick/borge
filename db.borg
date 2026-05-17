@@ -6,6 +6,8 @@
        All existing borge commands work on db sections.")
  (no-inline)
  (status planned)
+ (exports parse_table validate_table generate_sql
+          parse_schema db_to_json validate_schema)
 
  (section relationship-to-borge
   (doc "DB is an extension of the borge language, not a separate language")

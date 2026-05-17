@@ -1,6 +1,8 @@
 (project borge-lang
  (doc "The borge language: parsing, printing, and balancing")
  (status in-progress)
+ (exports parse_string parse_file print balance
+          string_of_sexp sexp_of_string)
  (section ast
   (doc "AST types for sexp, annotated comments, verbatim strings")
   (status implemented)

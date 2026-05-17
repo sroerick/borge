@@ -1,6 +1,7 @@
 (project borge-history
  (doc "Git is the history engine. Every agent action gets a commit.")
  (status implemented)
+ (exports log_commit log_action show_history)
  (section philosophy
   (doc "Why git IS the history system")
   (status implemented)

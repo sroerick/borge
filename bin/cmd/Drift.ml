@@ -91,16 +91,38 @@ let run_agent ~fix ~no_commit ~dir ~quiet =
     exit exit_status
   end
 
-let run_static dir json quiet =
+let run_static dir json quiet modules =
+  (* Run classic drift analysis *)
   let _meta = Drift.write_meta_files dir in
   let result = Drift.run dir in
+
+  (* Optionally run module integrity check *)
+  let module_issues = if modules then begin
+    let specs = Module_spec.load_all_specs dir in
+    List.concat_map (fun (spec : Module_spec.module_def) ->
+      let impl_files = Module_spec.find_implementation_files spec.path in
+      List.concat_map (fun impl_path ->
+        let (missing, undocumented) = Module_spec.check_integrity spec impl_path in
+        List.map (fun name ->
+          Printf.sprintf "module %s: missing implementation of %s" spec.module_name name
+        ) missing @
+        List.map (fun name ->
+          Printf.sprintf "module %s: undocumented function %s" spec.module_name name
+        ) undocumented
+      ) impl_files
+    ) specs
+  end else [] in
+
   if json then begin
+    (* TODO: include module_issues in JSON *)
     if not quiet then Printf.printf "%s\n" (Yojson.Basic.to_string (Json_out.drift result));
     let total = List.length result.spec_drift + List.length result.code_drift +
-                List.length result.structural_drift in
+                List.length result.structural_drift + List.length module_issues in
     exit (if total > 0 then 1 else 0)
   end;
+
   if quiet then exit 0;
+
   Printf.printf "Drift report for '%s'\n\n" dir;
   if result.spec_drift = [] then
     Printf.printf "Spec drift: none\n"
@@ -128,17 +150,21 @@ let run_static dir json quiet =
     ) result.structural_drift
   end;
   let total = List.length result.spec_drift + List.length result.code_drift +
-              List.length result.structural_drift in
+              List.length result.structural_drift + List.length module_issues in
+  if module_issues <> [] then begin
+    Printf.printf "Module integrity issues (%d):\n" (List.length module_issues);
+    List.iter (Printf.printf "  ▷ %s\n") module_issues
+  end;
   Printf.printf "\nTotal drift: %d item(s)\n" total;
   if total > 0 then exit 1 else exit 0
 
-let run dir agent fix no_commit json quiet =
+let run dir agent fix no_commit json quiet modules =
   if agent then run_agent ~fix ~no_commit ~dir ~quiet
   else if fix then begin
     Printf.eprintf "Error: --fix requires --agent\n";
     exit 1
   end
-  else run_static dir json quiet
+  else run_static dir json quiet modules
 
 open Cmdliner
 
@@ -164,6 +190,9 @@ let json =
 let quiet =
   Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
 
+let modules =
+  Arg.(value & flag & info ["modules"; "m"] ~doc:"Include module integrity checks")
+
 let cmd : unit Cmd.t =
   Cmd.v (Cmd.info "drift" ~doc:"detect spec, code, and structural drift"
     ~man:[`S "DESCRIPTION";
@@ -176,4 +205,4 @@ let cmd : unit Cmd.t =
           `P "The agent checks whether code matches spec and reports findings.";
           `P "With --agent --fix, the agent can write code repairs.";
           `P "Auto-commits on clean exit (use --no-commit to review first)."])
-  Term.(const run $ dir $ agent $ fix $ no_commit $ json $ quiet)
+  Term.(const run $ dir $ agent $ fix $ no_commit $ json $ quiet $ modules)

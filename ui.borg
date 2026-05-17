@@ -5,6 +5,8 @@
        Renderer-agnostic: can target HTML/CSS, React, Clay, or any frontend.")
  (no-inline)
  (status planned)
+ (exports parse_ui validate_ui ui_to_json ui_to_html_css
+          parse_component parse_layout parse_page)
 
  (section relationship-to-borge
   (doc "UI is an extension of the borge language, not a separate language")
