@@ -44,7 +44,7 @@ let write_prompt role =
   close_out oc;
   path
 
-let run no_commit dir =
+let run no_commit dir quiet =
   ignore dir;
   (match Lock.create () with
    | Error msg ->
@@ -53,24 +53,28 @@ let run no_commit dir =
    | Ok () -> ());
 
   let prompt_path = write_prompt Lock_prompt.Spec_writer in
-  Printf.printf "Lock created at .borge.lock/\n";
-  Printf.printf "Prompt written to %s\n" prompt_path;
+  if not quiet then begin
+    Printf.printf "Lock created at .borge.lock/\n";
+    Printf.printf "Prompt written to %s\n" prompt_path;
+  end;
 
   let exit_status = Lock_pi_launch.launch prompt_path in
 
   if exit_status = 0 then begin
-    Printf.printf "\nAgent session completed (exit 0).\n";
+    if not quiet then Printf.printf "\nAgent session completed (exit 0).\n";
     if no_commit then begin
-      Printf.printf "--no-commit: changes left in working tree.\n";
-      Printf.printf "Run 'borge commit' to finalize or 'borge abort' to discard.\n";
+      if not quiet then begin
+        Printf.printf "--no-commit: changes left in working tree.\n";
+        Printf.printf "Run 'borge commit' to finalize or 'borge abort' to discard.\n";
+      end;
       Lock.set_state "completed";
       exit 0
     end else begin
       match Lock.teardown ~commit:true with
       | Ok msg ->
-        Printf.printf "%s\n" msg;
+        if not quiet then Printf.printf "%s\n" msg;
         Lock.remove ();
-        Printf.printf "Committed and lock removed.\n";
+        if not quiet then Printf.printf "Committed and lock removed.\n";
         exit 0
       | Error msg ->
         Printf.eprintf "Commit failed: %s\n" msg;
@@ -95,6 +99,9 @@ let dir =
   Arg.(value & opt dir "." & info ["dir"; "d"] ~docv:"DIR"
     ~doc:"Project directory")
 
+let quiet =
+  Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
+
 let cmd : unit Cmd.t =
   Cmd.v (Cmd.info "plan" ~doc:"edit the spec interactively [launches pi]"
     ~man:[`S "DESCRIPTION";
@@ -102,4 +109,4 @@ let cmd : unit Cmd.t =
           `P "The agent reads the full spec and adds/refines sections.";
           `P "Auto-commits on clean exit (use --no-commit to keep lock).";
           `P "See also: borge make (write code), borge drift (check alignment)."])
-  Term.(const run $ no_commit $ dir)
+  Term.(const run $ no_commit $ dir $ quiet)

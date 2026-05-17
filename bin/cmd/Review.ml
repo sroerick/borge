@@ -1,6 +1,10 @@
 open Borge_lib
 
-let run_agent_review dir =
+let run_agent_review dir quiet =
+  if quiet then (
+    (* Even in quiet mode, agent review produces output as that's its main purpose *)
+    ()
+  );
   Printf.printf "Borge Review — LLM code quality review for '%s'\n\n" dir;
   let results = Review_quality.run dir in
   if results = [] then begin
@@ -13,8 +17,9 @@ let run_agent_review dir =
   ) results;
   exit 0
 
-let run dir agent =
-  if agent then run_agent_review dir
+let run dir agent quiet =
+  if agent then run_agent_review dir quiet
+  else if quiet then exit 0
   else begin
     Printf.printf "Borge Review — advisory report for '%s'\n\n" dir;
     (* Run lint *)
@@ -71,6 +76,9 @@ let dir =
   Arg.(value & pos 0 dir "." & info [] ~docv:"DIR"
     ~doc:"Directory to review")
 
+let quiet =
+  Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
+
 let agent =
   Arg.(value & flag & info ["agent"] ~doc:
     "Run LLM-powered code quality review on implemented sections")
@@ -83,4 +91,4 @@ let cmd : unit Cmd.t =
               it surfaces information, not verdicts.";
           `P "With --agent, runs LLM semantic review on each implemented \
               section, comparing the spec against the source code."])
-  Term.(const run $ dir $ agent)
+  Term.(const run $ dir $ agent $ quiet)

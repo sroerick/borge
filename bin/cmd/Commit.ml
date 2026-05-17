@@ -12,7 +12,7 @@
 
 open Borge_lib
 
-let run force dir =
+let run force dir quiet =
   ignore dir;
   if not (Lock.is_locked ()) then begin
     Printf.eprintf "Error: No active lock. Nothing to commit.\n";
@@ -40,15 +40,15 @@ let run force dir =
       exit 1
     | Ok _ -> ()
   end else begin
-    Printf.printf "--force: skipping integrity check.\n"
+    if not quiet then Printf.printf "--force: skipping integrity check.\n"
   end;
 
   (* Run teardown with commit *)
   match Lock.teardown ~commit:true with
   | Ok msg ->
-    Printf.printf "%s\n" msg;
+    if not quiet then Printf.printf "%s\n" msg;
     Lock.remove ();
-    Printf.printf "Committed and lock removed.\n";
+    if not quiet then Printf.printf "Committed and lock removed.\n";
     exit 0
   | Error msg ->
     Printf.eprintf "Commit failed: %s\n" msg;
@@ -65,6 +65,9 @@ let dir =
   Arg.(value & opt dir "." & info ["dir"; "d"] ~docv:"DIR"
     ~doc:"Project directory")
 
+let quiet =
+  Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
+
 let cmd : unit Cmd.t =
   Cmd.v (Cmd.info "commit" ~doc:"commit the current agent session"
     ~man:[`S "DESCRIPTION";
@@ -76,4 +79,4 @@ let cmd : unit Cmd.t =
           `P "The integrity check verifies that human-authored comments were not";
           `P "deleted during the agent session. If deletions are detected,";
           `P "the commit is blocked unless --force is used."])
-  Term.(const run $ force $ dir)
+  Term.(const run $ force $ dir $ quiet)

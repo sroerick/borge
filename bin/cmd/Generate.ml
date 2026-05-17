@@ -1,15 +1,16 @@
 open Borge_lib
 
-let run_spec todo dir =
+let run_spec todo dir quiet =
   match Generate.generate_spec todo dir with
   | Some sexp ->
-    Printf.printf "%s\n" sexp;
+    if not quiet then Printf.printf "%s\n" sexp;
     exit 0
   | None ->
     Printf.eprintf "Failed to generate spec.\n";
     exit 1
 
-let run_code section dir =
+let run_code section dir quiet =
+  ignore quiet;
   match Generate.generate_code section dir with
   | Some _ ->
     exit 0
@@ -17,7 +18,7 @@ let run_code section dir =
     Printf.eprintf "Failed to generate code for section '%s'.\n" section;
     exit 1
 
-let run_ui section dir json =
+let run_ui section dir json quiet =
   let borg_files = File_utils.find_borg_files dir in
   let matching_borg = List.filter (fun p ->
     try
@@ -44,7 +45,7 @@ let run_ui section dir json =
       if json then begin
         let json_val = Ui_json.ui_app_to_json app in
         Printf.printf "%s\n" (Yojson.Basic.pretty_to_string json_val)
-      end else begin
+      end else if not quiet then begin
         Printf.printf "UI spec found in %s\n" borg_path;
         (match app.Ui_ast.theme with
         | Some t ->
@@ -78,7 +79,7 @@ let run_ui section dir json =
       Printf.eprintf "Failed to parse UI spec from %s\n" borg_path;
       exit 1)
 
-let run_db section dir json =
+let run_db section dir json quiet =
   let borg_files = File_utils.find_borg_files dir in
   let matching_borg = List.filter (fun p ->
     try
@@ -103,7 +104,7 @@ let run_db section dir json =
       if json then begin
         let json_val = Db_json.db_app_to_json app in
         Printf.printf "%s\n" (Yojson.Basic.pretty_to_string json_val)
-      end else begin
+      end else if not quiet then begin
         Printf.printf "DB spec found in %s\n" borg_path;
         Printf.printf "  tables: %d\n" (List.length app.Db_ast.tables);
         List.iter (fun (t : Borge_lib.Db_ast.table_def) ->
@@ -151,11 +152,14 @@ let spec_cmd : unit Cmd.t =
     Arg.(value & opt dir "." & info ["dir"; "d"] ~docv:"DIR"
       ~doc:"Project directory")
   in
+  let quiet =
+    Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
+  in
   Cmd.v (Cmd.info "spec" ~doc:"generate a .borg section from a todo description"
     ~man:[`S "DESCRIPTION";
           `P "Takes a free-form todo description and uses an LLM to produce \
               a structured .borg section with (status planned)."])
-  Term.(const run_spec $ todo $ dir)
+  Term.(const run_spec $ todo $ dir $ quiet)
 
 let code_cmd : unit Cmd.t =
   let section =
@@ -166,12 +170,15 @@ let code_cmd : unit Cmd.t =
     Arg.(value & opt dir "." & info ["dir"; "d"] ~docv:"DIR"
       ~doc:"Project directory")
   in
+  let quiet =
+    Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
+  in
   Cmd.v (Cmd.info "code" ~doc:"generate implementation code from a planned section"
     ~man:[`S "DESCRIPTION";
           `P "Reads the spec for a planned section and uses an LLM to \
               generate the implementation code. The section should be \
               marked (status planned) in a .borg file."])
-  Term.(const run_code $ section $ dir)
+  Term.(const run_code $ section $ dir $ quiet)
 
 let ui_cmd : unit Cmd.t =
   let section =
@@ -185,12 +192,15 @@ let ui_cmd : unit Cmd.t =
   let json =
     Arg.(value & flag & info ["json"] ~doc:"Output as JSON")
   in
+  let quiet =
+    Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
+  in
   Cmd.v (Cmd.info "ui" ~doc:"generate code from a UI spec section"
     ~man:[`S "DESCRIPTION";
           `P "Reads a (ui ...) spec from a .borg file and generates \
               target code. The convention determines the output format \
               (HTML+CSS, React, Clay, etc.)."])
-  Term.(const run_ui $ section $ dir $ json)
+  Term.(const run_ui $ section $ dir $ json $ quiet)
 
 let db_cmd : unit Cmd.t =
   let section =
@@ -204,12 +214,15 @@ let db_cmd : unit Cmd.t =
   let json =
     Arg.(value & flag & info ["json"] ~doc:"Output as JSON")
   in
+  let quiet =
+    Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
+  in
   Cmd.v (Cmd.info "db" ~doc:"generate code from a DB spec section"
     ~man:[`S "DESCRIPTION";
           `P "Reads a (db ...) spec from a .borg file and generates \
               SQL migrations and/or application code. The convention \
               determines the output format."])
-  Term.(const run_db $ section $ dir $ json)
+  Term.(const run_db $ section $ dir $ json $ quiet)
 
 let cmd : unit Cmd.t =
   let info = Cmd.info "generate" ~doc:"generate spec sections or code from specs"

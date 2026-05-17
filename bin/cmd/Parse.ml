@@ -6,7 +6,7 @@ let parse_file path =
   close_in ic;
   Bytes.to_string input
 
-let run path json diagnostics =
+let run path json diagnostics quiet =
   let input = parse_file path in
   try
     let file = Borge_lang.Parse.parse input in
@@ -14,7 +14,7 @@ let run path json diagnostics =
       Printf.printf "JSON output not yet implemented\n"
     else if diagnostics then
       Printf.printf "Diagnostics output not yet implemented\n"
-    else begin
+    else if not quiet then begin
       let name = Borge_lib.Spec.project_name file in
       let sections = Borge_lib.Spec.count_sections file in
       let statuses = Borge_lib.Spec.statuses file in
@@ -48,10 +48,13 @@ let json =
 let diagnostics =
   Arg.(value & flag & info ["diagnostics"] ~doc:"Output LSP-compatible diagnostics")
 
+let quiet =
+  Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
+
 let cmd : unit Cmd.t =
   Cmd.v (Cmd.info "parse" ~doc:"parse a .borg file and validate its structure"
     ~man:[`S "DESCRIPTION";
           `P "Parse a .borg file and validate its structure. \
               Exit 0 if the file is valid, 1 if not."])
-  Term.(const run $ path $ json $ diagnostics)
+  Term.(const run $ path $ json $ diagnostics $ quiet)
 

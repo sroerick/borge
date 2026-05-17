@@ -2,7 +2,7 @@ open Borge_lang.Balance
 open Borge_lib
 open Cmdliner
 
-let run path verbose json =
+let run path verbose json quiet =
   let ic = open_in path in
   let n = in_channel_length ic in
   let buf = Bytes.create n in
@@ -14,7 +14,8 @@ let run path verbose json =
     Printf.printf "%s\n" (Yojson.Basic.to_string (Json_out.balance path result));
     exit (match result with Balanced _ -> 0 | Imbalanced _ -> 1)
   end;
-  let ok = report_file ~verbose path in
+  if quiet then exit (match result with Balanced _ -> 0 | Imbalanced _ -> 1);
+  let ok = Borge_lang.Balance.report_file ~verbose path in
   if ok then exit 0 else exit 1
 
 let path =
@@ -27,6 +28,9 @@ let verbose =
 let json =
   Arg.(value & flag & info ["json"] ~doc:"Output as JSON")
 
+let quiet =
+  Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
+
 let cmd : unit Cmd.t =
   Cmd.v (Cmd.info "balance" ~doc:"check structural balance of a .borg file"
     ~man:[`S "DESCRIPTION";
@@ -36,5 +40,5 @@ let cmd : unit Cmd.t =
           `P "With --verbose, shows the full paren stack on unclosed-paren \
               errors, listing each open paren with its position and keyword.";
           `P "With --json, outputs structured JSON instead of formatted text."])
-  Term.(const run $ path $ verbose $ json)
+  Term.(const run $ path $ verbose $ json $ quiet)
 

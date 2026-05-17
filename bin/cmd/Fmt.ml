@@ -23,14 +23,14 @@ let show_diff original formatted =
   in
   show 1 (orig_lines, fmt_lines)
 
-let run path check diff output =
+let run path check diff output quiet =
   if check then
     match Fmt.check_file path with
     | Fmt.CheckClean ->
-        Printf.printf "%s: already formatted\n" (Filename.basename path);
+        if not quiet then Printf.printf "%s: already formatted\n" (Filename.basename path);
         exit 0
     | Fmt.CheckDirty formatted ->
-        Printf.printf "%s: needs formatting\n" (Filename.basename path);
+        if not quiet then Printf.printf "%s: needs formatting\n" (Filename.basename path);
         (match output with
          | Some dst ->
              let oc = open_out dst in
@@ -43,7 +43,7 @@ let run path check diff output =
     let original = File_utils.read_file path in
     match Fmt.format_file path with
     | Fmt.Formatted formatted ->
-        show_diff original formatted;
+        if not quiet then show_diff original formatted;
         if Fmt.strip_trailing_newlines original = Fmt.strip_trailing_newlines formatted
         then exit 0 else exit 1
     | _ -> exit 1
@@ -55,8 +55,8 @@ let run path check diff output =
              let oc = open_out dst in
              output_string oc txt;
              close_out oc;
-             Printf.printf "%s\n" (Filename.basename dst)
-         | None -> print_endline txt);
+             if not quiet then Printf.printf "%s\n" (Filename.basename dst)
+         | None -> if not quiet then print_endline txt else ());
         exit 0
     | _ -> (* check results in format mode shouldn't happen *) exit 1
 
@@ -76,11 +76,14 @@ let check =
 let diff =
   Arg.(value & flag & info ["diff"] ~doc:"Show diff between current and formatted output")
 
+let quiet =
+  Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
+
 let cmd : unit Cmd.t =
   Cmd.v (Cmd.info "fmt" ~doc:"auto-format a .borg file to canonical indentation"
     ~man:[`S "DESCRIPTION";
           `P "Parses the .borg file and re-prints it with canonical indentation.";
           `P "Use --check for CI (exit 1 if formatting would change). \
               Use --diff to see what would change."])
-  Term.(const run $ path $ check $ diff $ output)
+  Term.(const run $ path $ check $ diff $ output $ quiet)
 

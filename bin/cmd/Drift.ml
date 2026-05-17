@@ -44,7 +44,9 @@ let write_prompt role =
   close_out oc;
   path
 
-let run_agent ~fix ~no_commit ~dir =
+let run_agent ~fix ~no_commit ~dir ~quiet =
+  (* Agent mode is interactive; quiet flag is only relevant for final output *)
+  ignore quiet;
   ignore dir;
   let role = if fix then Lock_prompt.Fixer else Lock_prompt.Observer in
   let role_name = if fix then "fixer" else "observer" in
@@ -89,15 +91,16 @@ let run_agent ~fix ~no_commit ~dir =
     exit exit_status
   end
 
-let run_static dir json =
+let run_static dir json quiet =
   let _meta = Drift.write_meta_files dir in
   let result = Drift.run dir in
   if json then begin
-    Printf.printf "%s\n" (Yojson.Basic.to_string (Json_out.drift result));
+    if not quiet then Printf.printf "%s\n" (Yojson.Basic.to_string (Json_out.drift result));
     let total = List.length result.spec_drift + List.length result.code_drift +
                 List.length result.structural_drift in
     exit (if total > 0 then 1 else 0)
   end;
+  if quiet then exit 0;
   Printf.printf "Drift report for '%s'\n\n" dir;
   if result.spec_drift = [] then
     Printf.printf "Spec drift: none\n"
@@ -129,13 +132,13 @@ let run_static dir json =
   Printf.printf "\nTotal drift: %d item(s)\n" total;
   if total > 0 then exit 1 else exit 0
 
-let run dir agent fix no_commit json =
-  if agent then run_agent ~fix ~no_commit ~dir
+let run dir agent fix no_commit json quiet =
+  if agent then run_agent ~fix ~no_commit ~dir ~quiet
   else if fix then begin
     Printf.eprintf "Error: --fix requires --agent\n";
     exit 1
   end
-  else run_static dir json
+  else run_static dir json quiet
 
 open Cmdliner
 
@@ -158,6 +161,9 @@ let no_commit =
 let json =
   Arg.(value & flag & info ["json"] ~doc:"Output as JSON")
 
+let quiet =
+  Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
+
 let cmd : unit Cmd.t =
   Cmd.v (Cmd.info "drift" ~doc:"detect spec, code, and structural drift"
     ~man:[`S "DESCRIPTION";
@@ -170,4 +176,4 @@ let cmd : unit Cmd.t =
           `P "The agent checks whether code matches spec and reports findings.";
           `P "With --agent --fix, the agent can write code repairs.";
           `P "Auto-commits on clean exit (use --no-commit to review first)."])
-  Term.(const run $ dir $ agent $ fix $ no_commit $ json)
+  Term.(const run $ dir $ agent $ fix $ no_commit $ json $ quiet)

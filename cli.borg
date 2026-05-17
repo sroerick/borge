@@ -122,7 +122,7 @@
   )
   (subsection quiet-mode
    (doc "--quiet flag. Suppress all output except errors")
-   (status planned)
+   (status implemented)
   )
  )
 )

@@ -1,13 +1,13 @@
 open Borge_lib
 
-let run dir json =
+let run dir json quiet =
   let result = Lint.run dir in
   if json then begin
     Printf.printf "%s\n" (Yojson.Basic.to_string (Json_out.lint result));
     exit (if result.error_count > 0 then 1 else 0)
   end;
-  Printf.printf "Linting .borg files in '%s'...\n\n" dir;
-  List.iter (function
+  if not quiet then Printf.printf "Linting .borg files in '%s'...\n\n" dir;
+  let print_issue = function
     | Lint.Invalid_status { path; value; line; col } ->
         Printf.printf "  ✗ %s:%d:%d: invalid status value '%s'\n" path line col value
     | Lint.Duplicate_project_name { name; paths } ->
@@ -25,8 +25,19 @@ let run dir json =
         Printf.printf "  ⚠ %s: human-authored comment by '%s' was deleted\n" path author
     | Lint.Pending_response { path; author; line; question } ->
         Printf.printf "  ⚠ %s:%d: unanswered ask by '%s': %s\n" path line author question
-  ) result.issues;
-  Printf.printf "\n%d errors, %d warnings\n" result.error_count result.warning_count;
+  in
+  if quiet then begin
+    (* In quiet mode, only print errors to stderr, suppress warnings *)
+    List.iter (fun issue ->
+      match issue with
+      | Lint.Invalid_status _ | Lint.Duplicate_project_name _ | Lint.Orphaned_file _ ->
+          print_issue issue
+      | _ -> ()
+    ) result.issues
+  end else begin
+    List.iter print_issue result.issues;
+    Printf.printf "\n%d errors, %d warnings\n" result.error_count result.warning_count;
+  end;
   if result.error_count > 0 then exit 1 else exit 0
 
 open Cmdliner
@@ -38,6 +49,9 @@ let dir =
 let json =
   Arg.(value & flag & info ["json"] ~doc:"Output as JSON")
 
+let quiet =
+  Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
+
 let cmd : unit Cmd.t =
   Cmd.v (Cmd.info "lint" ~doc:"semantic validation of .borg files"
     ~man:[`S "DESCRIPTION";
@@ -45,5 +59,5 @@ let cmd : unit Cmd.t =
               unknown comment types, missing comment values, deleted human \
               comments, pending ask/response slots, and orphaned files.";
           `P "With --json, outputs structured JSON instead of formatted text."])
-  Term.(const run $ dir $ json)
+  Term.(const run $ dir $ json $ quiet)
 
