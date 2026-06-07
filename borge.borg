@@ -301,10 +301,15 @@
           Domain logic in wrong layer: caught by drift (structural).
           Human comment deleted by agent: caught by lint (comment integrity).
           Undocumented function: caught by drift (code-documentation).
-          Unsafe stdlib call (List.hd, List.assoc): caught by
-            lint --mechanical (code-quality).
-          Polymorphic equality on strings/lists: caught by
-            lint --mechanical (code-quality).
+          Unsafe stdlib call (List.hd, List.assoc, Hashtbl.find,
+            String.sub, int_of_string, open_in, input_line):
+            caught by lint --mechanical. Full rule table in
+            lib.borg section check / subsection code-quality.
+          Polymorphic equality on strings/lists: planned —
+            lint --mechanical with AST walker.
+          Deeply nested match (> 3 levels): planned — lint
+            --mechanical with AST walker. Exception: state-
+            machine patterns (e.g., balance checker).
         |))
    )
   )
