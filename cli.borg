@@ -33,7 +33,7 @@
    (status implemented)
   )
   (subsection lint
-   (doc "Semantic validation: invalid status, illegal placement, duplicate names")
+   (doc "Semantic validation and mechanical code quality checks")
    (status implemented)
   )
   (subsection drift

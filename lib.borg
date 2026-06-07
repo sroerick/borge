@@ -4,7 +4,7 @@
        include_subdirs unqualified — same flat namespace, better layout.")
  (status implemented)
  (exports project_name find_roots find_orphans
-          run_lint run_check run_report run_drift run_fmt
+          run_lint check_code_quality run_check run_report run_drift run_fmt
           extract_surface parse_dune
           count_sections status_counts tree_status_counts
           new_bug list_bugs load_bug save_bug close_bug
@@ -12,7 +12,9 @@
           bug_ast bug_parse bug_write bug_registry
           review_types review_prompt review_parse review_agent
           extract_parsetree extract_functions extract_docs
-          borg_comment module_spec semantic_review)
+          borg_comment module_spec semantic_review
+          convention
+          go_parse go_surface go_doc_extract)
  (section core
   (doc "Spec model: what borge files ARE. lib/core/")
   (status implemented)
@@ -94,6 +96,21 @@
          unknown comment types, missing comment values, deleted
          human comments (against git HEAD), pending ask/response
          slots, orphaned files.
+       |))
+   )
+  )
+  (subsection code-quality
+   (doc "Mechanical code quality checks in .ml/.mli files")
+   (status implemented)
+   (details
+    (doc (|
+         Scans OCaml source for mechanical anti-patterns:
+         unsafe stdlib calls (List.hd, List.assoc, Hashtbl.find),
+         polymorphic equality on structural types, and excessive
+         match nesting. Regex-based for fast unambiguous calls;
+         planned AST-based phase for equality and nesting.
+         Integrates with borge lint --mechanical. Supports
+         (* exempt: FUNC *) comments for intentional overrides.
        |))
    )
   )
@@ -525,6 +542,209 @@
 
        Never raises on parse failure — always returns result type.
      |))
+   )
+  )
+ )
+ (section doc
+  (doc "Documentation coverage detection and enforcement for .ml files")
+  (status in-progress)
+  (subsection doc-extract
+   (doc "Extract top-level let bindings from OCaml source files")
+   (status implemented)
+   (details
+    (doc (|
+         Gathers all top-level value bindings from .ml files,
+         distinguishing between public exports and internal helpers.
+         Filters out test bindings, ignored bindings, and local opens.
+
+         Types:
+         - binding_info: { name; line; is_exported; is_test; is_internal }
+
+         Functions:
+         - extract_bindings : string -> binding_info list
+             Parse a .ml file and return all top-level let bindings
+             with name, line number, and classification.
+         - extract_binding_name : string -> string option
+             Parse a let-binding line to extract the binding name.
+         - find_ml_files : string -> string list
+             Recursively find .ml files under a directory,
+             skipping _build/ and .git/.
+         - extract_project_bindings : string -> (string * binding_info) list
+             All bindings from all .ml files, paired with file path.
+         - count_stats : binding_info list -> int * int * int * int
+             Returns (total, exported, tests, internal).
+
+         Classification rules:
+         - is_test: line starts with let%
+         - is_internal: name starts with _ or is a test binding
+         - is_exported: not internal and name starts with lowercase a-z
+
+         Skips let open and let module forms.
+       |))
+   )
+  )
+  (subsection doc-detect
+   (doc "Detect documentation comment formats preceding let bindings")
+   (status implemented)
+   (details
+    (doc (|
+         Identifies various documentation formats and exempt markers
+         on lines preceding a let binding:
+         - Standard docstrings: (** ... *)
+         - Borg annotated: (* author note (|...|) *)
+         - Short borg: (*| ... |*)
+         - Exempt: (* exempt doc *)
+
+         Types:
+         - doc_kind: Docstring of string | Borg_note of string*string
+                     | Borg_short of string | Exempt_marker
+         - doc_position: Preceding of int | Inline | None_found
+         - binding_doc: { binding_line : int; doc : (doc_kind * doc_position) option }
+
+         Functions:
+         - parse_doc_line : string -> doc_kind option
+             Classify a single line as one of the four doc kinds
+             or return None.
+         - extract_file_docs : string -> binding_doc list
+             Scan a .ml file for all let bindings and their
+             preceding doc comments. Returns one binding_doc per
+             binding with the closest preceding comment.
+         - binding_has_doc : binding_doc -> bool
+             True if doc exists and is not Exempt_marker.
+         - binding_is_exempt : binding_doc -> bool
+             True if doc is Exempt_marker.
+
+         Detection logic for extract_file_docs:
+         - Walk lines left to right, accumulating a prev_docs stack.
+         - When a let-binding line is found, search prev_docs
+           backward for the nearest parse_doc_line hit.
+         - Stop searching at the first non-comment, non-empty line.
+         - This handles multi-line comments and blank lines between
+           comment and binding.
+       |))
+   )
+  )
+  (subsection doc-coverage
+   (doc "Compute documentation coverage statistics and write .borg.meta blocks")
+   (status implemented)
+   (details
+    (doc (|
+         Computes per-file and project-wide doc coverage, formats
+         human-readable reports, and generates (documentation ...)
+         blocks for .borg.meta files.
+
+         Types:
+         - file_coverage: { path; total_bindings; documented; exempt;
+                            undocumented; coverage_percent;
+                            undocumented_names }
+         - project_coverage: { files; total_files; total_bindings;
+                                total_documented; total_exempt;
+                                total_undocumented; overall_percent }
+
+         Functions:
+         - calculate_file_coverage : string -> file_coverage
+             Combine Doc_extract.extract_bindings with
+             Doc_detect.extract_file_docs. Skip tests and internals.
+             coverage_percent = documented / (total - exempt) * 100.
+         - calculate_dir_coverage : string -> project_coverage
+             All .ml files under a directory.
+         - format_coverage : file_coverage -> string
+             "path: N/M documented (X.X%), E exempt, U undocumented"
+         - format_project_summary : project_coverage -> string
+             Multi-line project summary.
+         - generate_meta_block : file_coverage -> string
+             Sexp block for .borg.meta:
+             (documentation (analyzed-at ...) (file ...) ...)
+         - write_coverage_meta : file_coverage -> string -> unit
+             Write meta block to a .borg.meta path.
+         - meets_threshold : file_coverage -> float -> bool
+             Check if coverage_percent >= threshold.
+
+         Coverage calculation:
+         documented = bindings with valid doc (not exempt)
+         exempt = bindings with (* exempt doc *)
+         total_bindings = all extracted bindings (after filtering tests/internals)
+         undocumented = total - documented - exempt
+         coverage_percent = documented / (total - exempt) * 100
+
+         Integration: called by borge drift --docs (see borge.borg
+         code-documentation.doc-coverage-command).
+       |))
+   )
+  )
+ )
+ (section config
+  (doc "Configuration loading from .borgerc files. lib/config/")
+  (status planned)
+  (subsection config-core
+   (doc "Read, merge, and expose borge configuration")
+   (status planned)
+   (details
+    (doc (|
+         config.ml reads .borgerc files and exposes a typed
+         config record to all borge commands.
+
+         Types:
+         - api_key_source: Env of string | Literal of string
+         - config: {
+             developer_name : string option;
+             api_keys : (string * api_key_source) list;
+           }
+
+         Functions:
+         - load_config : unit -> config
+             Read project .borgerc, merge with
+             ~/.config/borge/config, return merged config.
+             Project values override user values.
+         - load_project_config : unit -> config option
+             Read ./.borgerc only. None if file missing.
+         - load_user_config : unit -> config option
+             Read ~/.config/borge/config only.
+             None if file missing.
+         - resolve_api_key : config -> string -> string option
+             Look up a provider key by name. Resolve (env X)
+             by reading the env var. Return None if not found.
+         - developer_name : config -> string
+             Return the configured developer name, or "agent"
+             if not set.
+
+         The developer_name function is used by lock-prompt,
+         lint, and comment-generating code to set the authorship
+         on annotated comments. Today these default to "agent";
+         with config, they use the developer's chosen name.
+
+         resolve_api_key is used by agent.ml and review_agent.ml
+         when calling LLMs directly (not via pi). Today they
+         only support BORGE_AGENT_CMD env var; config adds
+         per-provider key resolution with env var indirection.
+       |))
+   )
+  )
+ )
+ (section convention
+  (doc "Convention dispatch: select the right module set based on project convention")
+  (status implemented)
+  (subsection convention-core
+   (doc "Convention type, resolution from .borg files, fallback to ocaml-dune")
+   (status implemented)
+   (details
+    (doc (|
+         Convention.ml provides convention-aware dispatch for borge commands.
+         Reads the (convention NAME) form from the root .borg file and
+         returns a typed Convention.t variant.
+
+         Types:
+         - Convention.t: Ocaml_dune | Go_standard
+
+         Functions:
+         - Convention.name : t -> string
+         - Convention.source_extension : t -> string
+         - Convention.interface_extension : t -> string option
+         - Convention.excluded_dirs : t -> string list
+         - Convention.of_string : string -> t option
+         - Convention.resolve_from_file : string -> t
+         - Convention.resolve : string -> t
+       |))
    )
   )
  )

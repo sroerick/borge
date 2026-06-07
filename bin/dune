@@ -6,4 +6,4 @@
 (executables
   (names borge_parse borge_check borge_balance borge_report borge_fmt borge_nodes borge_inline borge_version borge_print borge_lint borge_drift borge_normalize borge_review borge_log borge_diff borge_undo)
   (public_names borge-parse borge-check borge-balance borge-report borge-fmt borge-nodes borge-inline borge-version borge-print borge-lint borge-drift borge-normalize borge-review borge-log borge-diff borge-undo)
-  (libraries borge.lang borge.lib cmdliner unix))
+  (libraries borge.lang borge.lib borge_cmd cmdliner unix))

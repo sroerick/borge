@@ -7,8 +7,14 @@ type lint_issue =
   | Unknown_comment_type of { path : string; type_name : string; line : int }
   | Missing_comment_value of { path : string; author : string; type_name : string option; line : int }
   | Deleted_human_comment of { path : string; author : string; line : int }
+  | Inserted_human_comment of { path : string; author : string; line : int }
   | Pending_response of { path : string; author : string; line : int; question : string }
   | Orphaned_file of { path : string }
+  | Db_validation of { path : string; severity : [ `Error | `Warning ]; message : string }
+  | Ui_validation of { path : string; severity : [ `Error | `Warning ]; message : string }
+  | Undocumented_binding of { path : string; name : string; line : int }
+  | Stale_doc_comment of { path : string; name : string; line : int }
+  | Unsafe_call of { path : string; line : int; call : string; severity : [ `Error | `Warning ]; suggestion : string }
 
 type lint_result = {
   issues : lint_issue list;
@@ -16,6 +22,11 @@ type lint_result = {
   warning_count : int;
 }
 
+(* agent note (|
+ *   WHAT: Extract position info from a sexp node.
+ *   Returns the position regardless of whether node is Atom, String, or List.
+ *   WHY: Used throughout lint to report line/column of issues.
+ * |) *)
 let pos_of_sexp = function
   | Ast.Atom (p, _) -> p
   | Ast.String (p, _) -> p
@@ -52,6 +63,11 @@ let check_duplicate_names file_stats =
   in
   find_dups grouped
 
+(* agent note (|
+ *   WHAT: Extract author name from an annotated comment.
+ *   Handles both single author (Single) and multiple authors (Multiple).
+ *   WHY: Used to identify who wrote a comment that has issues.
+ * |) *)
 let authorship_string = function
   | Ast.Single a -> a
   | Ast.Multiple auths -> String.concat " " auths
@@ -158,9 +174,90 @@ let check_comment_integrity path =
       end
     end
   ) (List.rev !lines);
+  (* Also detect added human comments in git diff *)
+  List.iter (fun line ->
+    if String.length line > 0 && line.[0] = '+' then begin
+      let content = String.sub line 1 (String.length line - 1) in
+      if String.length content > 3 && String.sub content 0 3 = "(* " then begin
+        let rest = String.sub content 3 (String.length content - 3) in
+        let space_idx = try String.index rest ' ' with Not_found -> -1 in
+        if space_idx > 0 then begin
+          let author = String.sub rest 0 space_idx in
+          if author <> "agent" && author <> "bot" then
+            issues := Inserted_human_comment { path; author; line = 0 } :: !issues
+        end
+      end
+    end
+  ) (List.rev !lines);
   !issues
 
-let run dir =
+(** Check DB forms inside .borg files using Db_validate *)
+let check_db_specs path file =
+  (* Try to parse as DB spec *)
+  let db_app = Db_parse.parse_file file in
+  match db_app with
+  | None -> []  (* Not a DB file, or no (db ...) forms *)
+  | Some app ->
+    let issues = Db_validate.validate app in
+    List.map (fun (i : Db_validate.issue) ->
+      Db_validation {
+        path;
+        severity = i.severity;
+        message = i.message;
+      }
+    ) issues
+
+(** Check UI forms inside .borg files using Ui_validate *)
+let check_ui_specs path file =
+  let ui_app = Ui_parse.parse_file file in
+  match ui_app with
+  | None -> []  (* Not a UI file, or no (ui ...) forms *)
+  | Some app ->
+    let issues = Ui_validate.validate app in
+    List.map (fun (i : Ui_validate.issue) ->
+      Ui_validation {
+        path;
+        severity = i.severity;
+        message = i.message;
+      }
+    ) issues
+
+(** Check .ml files for undocumented exported bindings.
+    Uses Doc_extract to find bindings and Doc_detect to check for
+    doc comments. Reports Undocumented_binding for each exported
+    binding without documentation or exemption, and Stale_doc_comment
+    for bindings with (status drifted) markers. *)
+let check_code_doc dir =
+  let ml_files = Doc_extract.find_ml_files dir in
+  let issues = ref [] in
+  List.iter (fun path ->
+    let bindings = Doc_extract.extract_bindings path in
+    let docs = Doc_detect.extract_file_docs path in
+    List.iter (fun (b : Doc_extract.binding_info) ->
+      if not b.is_internal && not b.is_test then begin
+        let doc = List.find_opt (fun (bd : Doc_detect.binding_doc) ->
+          bd.binding_line = b.line
+        ) docs in
+        match doc with
+        | None ->
+            issues := Undocumented_binding { path; name = b.name; line = b.line } :: !issues
+        | Some bd ->
+            if Doc_detect.binding_is_drifted bd then
+              issues := Stale_doc_comment { path; name = b.name; line = b.line } :: !issues
+            else if not (Doc_detect.binding_has_doc bd) && not (Doc_detect.binding_is_exempt bd) then
+              issues := Undocumented_binding { path; name = b.name; line = b.line } :: !issues
+      end
+    ) bindings
+  ) ml_files;
+  List.rev !issues
+
+(* agent note (|
+ *   WHAT: Run lint checks on all .borg files in a directory.
+ *   Performs validation: status values, duplicate names, annotated
+ *   comments, pending responses, orphans, and optional code-doc checks.
+ *   WHY: Main entry point for borge lint command.
+ * |) *)
+let run ~code_doc ~mechanical dir =
   let all_files = File_utils.find_borg_files dir in
   let file_stats = List.filter_map (fun path ->
     try
@@ -184,14 +281,40 @@ let run dir =
   let orphan_issues = List.map (fun path ->
     Orphaned_file { path }
   ) (Project.find_orphans dir) in
-  let all_issues = status_issues @ name_issues @ comment_issues @ pending_issues @ orphan_issues in
+  let db_issues = List.concat_map (fun (path, _, file) ->
+    check_db_specs path file
+  ) file_stats in
+  let ui_issues = List.concat_map (fun (path, _, file) ->
+    check_ui_specs path file
+  ) file_stats in
+  let (db_issues, ui_issues) = (db_issues, ui_issues) in
+  let code_doc_issues = if code_doc then check_code_doc dir else [] in
+  let mechanical_issues = if mechanical then
+    List.map (fun (i : Code_quality.issue) ->
+      Unsafe_call {
+        path = i.path;
+        line = i.line;
+        call = i.call;
+        severity = (match i.severity with Code_quality.Error -> `Error | Code_quality.Warning -> `Warning);
+        suggestion = i.suggestion;
+      }
+    ) (Code_quality.run dir)
+  else [] in
+  let all_issues = status_issues @ name_issues @ comment_issues @ pending_issues @ orphan_issues @ db_issues @ ui_issues @ code_doc_issues @ mechanical_issues in
   let errors = List.filter (function
-    | Invalid_status _ | Duplicate_project_name _ | Orphaned_file _ -> true
+    | Invalid_status _ | Duplicate_project_name _ | Orphaned_file _
+    | Db_validation { severity = `Error; _ }
+    | Ui_validation { severity = `Error; _ }
+    | Unsafe_call { severity = `Error; _ } -> true
     | _ -> false
   ) all_issues in
   let warnings = List.filter (function
-    | Deleted_human_comment _ | Pending_response _ | Unknown_comment_type _
-    | Missing_comment_value _ -> true
+    | Deleted_human_comment _ | Inserted_human_comment _ | Pending_response _ | Unknown_comment_type _
+    | Missing_comment_value _
+    | Db_validation { severity = `Warning; _ }
+    | Ui_validation { severity = `Warning; _ }
+    | Undocumented_binding _ | Stale_doc_comment _
+    | Unsafe_call { severity = `Warning; _ } -> true
     | _ -> false
   ) all_issues in
   { issues = all_issues; error_count = List.length errors; warning_count = List.length warnings }

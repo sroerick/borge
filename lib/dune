@@ -3,10 +3,11 @@
 (library
   (name borge_lib)
   (public_name borge.lib)
-  (modules spec file_utils project check report lint drift dune_parse
+  (modules convention
+           spec file_utils project check code_quality report lint drift dune_parse
            surface meta fmt nodes generate agent review_quality stats json_out
-           ui_ast ui_parse ui_validate ui_json
-           db_ast db_parse db_validate db_json
+           ui_ast ui_parse ui_validate ui_json ui_dream ui_clay
+           db_ast db_parse db_validate db_json db_sql
            bug_ast bug_parse bug_write bug_registry
            semantic_review review_types review_prompt review_parse review_agent
            extract_parsetree extract_functions extract_docs
@@ -14,6 +15,9 @@
            lock lock_prompt lock_pi_launch prompt_minimal
            ; DOC COVERAGE
            doc_extract doc_detect doc_coverage
+           go_parse
+           go_surface
+           go_doc_extract
            ; MERGE QUEUE
            worktree branch lockfile queue_types queue_storage conflict_detect merge_strategies rollback agent_submit
            ; FUTURE COMMAND
