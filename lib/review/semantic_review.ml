@@ -135,7 +135,12 @@ let review_to_metadata (review : semantic_review) : string =
   List.iter (fun (f : function_finding) ->
     Buffer.add_string buf (Printf.sprintf "    (function name:\"%s\"\n" f.name);
     Buffer.add_string buf (Printf.sprintf "      (doc-present %b)\n" f.doc_present);
+    Buffer.add_string buf (Printf.sprintf "      (doc-status %s)\n" (string_of_doc_status f.doc_status));
     Buffer.add_string buf (Printf.sprintf "      (doc-accuracy %s)\n" (string_of_accuracy f.doc_accuracy));
+    Buffer.add_string buf (Printf.sprintf "      (consistency %s)\n" (string_of_consistency f.consistency));
+    (match f.internal_issues with
+     | Some i -> Buffer.add_string buf (Printf.sprintf "      (internal-issues \"%s\")\n" i)
+     | None -> ());
     Buffer.add_string buf (Printf.sprintf "      (signature-match %s)\n" (string_of_signature_match f.signature_match));
     Buffer.add_string buf (Printf.sprintf "      (behavior-coverage %s)\n" (string_of_behavior_coverage f.behavior_coverage));
     (match f.structural_issues with
@@ -211,14 +216,20 @@ type function_info = {
 
 type review_result = {
   doc_present : bool;
+  doc_status : Review_types.doc_status;
   doc_accuracy : [ `High | `Medium | `Low | `Unknown ];
+  consistency : Review_types.consistency;
+  internal_issues : string option;
   structural_issues : string option;
   confidence : [ `High | `Medium | `Low ];
 }
 
 let empty_result = {
   doc_present = false;
+  doc_status = Review_types.Doc_missing;
   doc_accuracy = `Unknown;
+  consistency = Review_types.Cons_consistent;
+  internal_issues = None;
   structural_issues = None;
   confidence = `Low;
 }
@@ -273,12 +284,27 @@ let parse_response response : review_result =
       result := { !result with doc_present = 
         let v = String.trim (String.sub line 12 (String.length line - 12)) in
         v = "yes" }
+    else if String.length line > 11 && String.sub line 0 11 = "Doc status:" then
+      let v = String.trim (String.sub line 11 (String.length line - 11)) in
+      let st = match v with
+        | "accurate" -> Review_types.Doc_accurate | "drifted" -> Review_types.Doc_drifted | _ -> Review_types.Doc_missing
+      in
+      result := { !result with doc_status = st }
     else if String.length line > 10 && String.sub line 0 10 = "Accuracy:" then
       let v = String.trim (String.sub line 10 (String.length line - 10)) in
       let acc = match v with
         | "high" -> `High | "medium" -> `Medium | "low" -> `Low | _ -> `Unknown
       in
       result := { !result with doc_accuracy = acc }
+    else if String.length line > 12 && String.sub line 0 12 = "Consistency:" then
+      let v = String.trim (String.sub line 12 (String.length line - 12)) in
+      let cons = match v with
+        | "consistent" -> Review_types.Cons_consistent | "questionable" -> Review_types.Cons_questionable | _ -> Review_types.Cons_inconsistent
+      in
+      result := { !result with consistency = cons }
+    else if String.length line > 15 && String.sub line 0 15 = "Internal issues:" then
+      let issues = String.trim (String.sub line 15 (String.length line - 15)) in
+      result := { !result with internal_issues = if issues = "none" then None else Some issues }
     else if String.length line > 7 && String.sub line 0 7 = "Issues:" then
       let issues = String.trim (String.sub line 7 (String.length line - 7)) in
       result := { !result with structural_issues = if issues = "none" then None else Some issues }
@@ -300,12 +326,24 @@ let render_metadata (info : function_info) (result : review_result) =
   let conf = match result.confidence with
     | `High -> "high" | `Medium -> "medium" | `Low -> "low"
   in
+  let doc_st = match result.doc_status with
+    | Review_types.Doc_accurate -> "accurate" | Review_types.Doc_drifted -> "drifted" | Review_types.Doc_missing -> "missing"
+  in
+  let cons = match result.consistency with
+    | Review_types.Cons_consistent -> "consistent" | Review_types.Cons_questionable -> "questionable" | Review_types.Cons_inconsistent -> "inconsistent"
+  in
   let lines = [
     Printf.sprintf "  (function name:\"%s\" line:%d" info.name info.line;
     Printf.sprintf "    (doc-present %b)" result.doc_present;
+    Printf.sprintf "    (doc-status %s)" doc_st;
     Printf.sprintf "    (doc-accuracy %s)" doc_acc;
+    Printf.sprintf "    (consistency %s)" cons;
     Printf.sprintf "    (confidence %s)" conf;
   ] in
+  let lines = match result.internal_issues with
+    | Some i -> lines @ [Printf.sprintf "    (internal-issues \"%s\")" i]
+    | None -> lines
+  in
   let lines = match result.structural_issues with
     | Some i -> lines @ [Printf.sprintf "    (structural-issues \"%s\")" i]
     | None -> lines

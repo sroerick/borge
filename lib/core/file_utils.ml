@@ -8,6 +8,11 @@ let read_file path =
   close_in ic;
   Bytes.to_string buf
 
+(* agent note (|
+ *   WHAT: Recursively find all .borg files under a directory,
+ *   skipping _build and .git directories, excluding .borg.meta.
+ *   WHY: Used by lint, check, and drift to find all spec files.
+ * |) *)
 let rec find_borg_files dir =
   try
     let entries = Sys.readdir dir in

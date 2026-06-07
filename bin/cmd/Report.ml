@@ -1,9 +1,11 @@
 open Borge_lib
 
+(** Pad a string to reach a minimum length with spaces *)
 let pad_right n s =
   let len = String.length s in
   if len >= n then s else s ^ String.make (n - len) ' '
 
+(** Run report analysis on all .borg files in a directory *)
 let run dir json quiet =
   let result = Report.run dir in
   if json then begin
@@ -51,13 +53,16 @@ let run dir json quiet =
 
 open Cmdliner
 
+(* exempt doc *)
 let dir =
   Arg.(value & pos 0 dir "." & info [] ~docv:"DIR"
     ~doc:"Directory to scan for .borg files")
 
+(* exempt doc *)
 let json =
   Arg.(value & flag & info ["json"] ~doc:"Output as JSON")
 
+(* exempt doc *)
 let quiet =
   Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
 

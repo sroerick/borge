@@ -73,6 +73,13 @@ let statuses (file : Borge_lang.Ast.file) : status list =
 
 let status_order = [Planned; In_progress; Partial; Implemented; Drifted; Blank]
 
+(* agent note (|
+ *   WHAT: Ordered list of status values for display and comparison.
+ *   Used as the canonical ordering when computing status counts.
+ *   WHY: Provides a consistent sort order for reports and ensures
+ *   all status types appear in output even if not present in a file.
+ * |) *)
+
 (** Extract inline target filenames from (inline filename.borg) forms *)
 let inline_targets (file : Borge_lang.Ast.file) : string list =
   let rec extract = function
@@ -99,6 +106,12 @@ let has_no_inline (file : Borge_lang.Ast.file) : bool =
   in
   walk file.top_level
 
+(* agent note (|
+ *   WHAT: Count occurrences of each status value in a .borg file.
+ *   Returns an ordered list of status-count pairs using status_order.
+ *   WHY: Used by borge report to show implementation progress and
+ *   by borge drift to detect sections marked implemented that aren't.
+ * |) *)
 let status_counts (file : Borge_lang.Ast.file) : (status * int) list =
   let st_list = statuses file in
   let init = List.map (fun s -> (s, 0)) status_order in

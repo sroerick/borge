@@ -230,15 +230,41 @@ and parse_ui_element = function
     let children =
       List.concat_map (function
         | List (_, Atom (_, "children") :: kids) ->
-          List.filter_map parse_ui_element kids
+          List.filter_map (function
+            | Atom (_, s) when String.length s > 2 && String.sub s 0 2 = ".." ->
+              Some (Slot_ref (String.sub s 2 (String.length s - 2)))
+            | kid ->
+              (match parse_ui_element kid with
+              | Some el -> Some (El el)
+              | None -> None)
+          ) kids
         | _ -> []
       ) children_forms
     in
     let variants = List.filter_map parse_variant variant_forms in
-    Some { name; properties; children; variants }
+    Some { name; properties; children; variants; text = None }
   | List (_, [Atom (_, "use"); Atom (_, comp_name)]) ->
     (* (use component-name) — creates a component reference element *)
-    Some { name = Some comp_name; properties = []; children = []; variants = [] }
+    Some { name = Some comp_name; properties = []; children = []; variants = []; text = None }
+  | List (_, [Atom (_, "text"); String (_, Quoted { q_content })]) ->
+    (* (text "...") — inline text node *)
+    Some { name = None; properties = []; children = []; variants = []; text = Some q_content }
+  | List (_, Atom (_, comp_name) :: args) ->
+    (* (component-name ...) — a component use with slot children *)
+    let is_known_component = String.length comp_name > 0 &&
+      comp_name.[0] <> '_' &&
+      not (List.mem comp_name ["ui"; "layout"; "page"; "theme"; "variant"; "children"; "fill"]) in
+    if not is_known_component then None
+    else begin
+      let children = List.filter_map (function
+        | List (_, _) as kid ->
+          (match parse_ui_element kid with
+          | Some el -> Some (El el)
+          | None -> None)
+        | _ -> None
+      ) args in
+      Some { name = Some comp_name; properties = []; children; variants = []; text = None }
+    end
   | _ -> None
 
 (** Parse a (theme ...) form *)
@@ -283,7 +309,14 @@ and parse_component = function
     let children =
       List.concat_map (function
         | List (_, Atom (_, "children") :: kids) ->
-          List.filter_map parse_ui_element kids
+          List.filter_map (function
+            | Atom (_, s) when String.length s > 2 && String.sub s 0 2 = ".." ->
+              Some (Slot_ref (String.sub s 2 (String.length s - 2)))
+            | kid ->
+              (match parse_ui_element kid with
+              | Some el -> Some (El el)
+              | None -> None)
+          ) kids
         | _ -> []
       ) children_forms
     in
@@ -309,10 +342,16 @@ and parse_layout_def = function
     let root = List.filter_map parse_ui_element rest in
     let root_el = match root with
       | [el] -> el
-      | _ -> { name = Some "root"; properties = []; children = root; variants = [] }
+      | _ -> { name = Some "root"; properties = []; children = List.map (fun el -> El el) root; variants = []; text = None }
     in
-    (* TODO: collect named slots from the sexp tree *)
-    let slots = [] in
+    (* Extract named slots from the element tree *)
+    let rec collect_slots el =
+      List.concat_map (function
+        | Slot_ref name -> [Named_slot name]
+        | El child -> collect_slots child
+      ) el.children
+    in
+    let slots = collect_slots root_el in
     Some { name; root = root_el; slots }
   | _ -> None
 

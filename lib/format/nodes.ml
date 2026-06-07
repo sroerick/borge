@@ -8,6 +8,14 @@ type node_info = {
   value : string option;    (** For Atom: the symbol; for String: truncated content *)
 }
 
+(* agent note (|
+ *   WHAT: Recursively collect all AST nodes from a sexp tree,
+ *   returning info for each node with position, kind, keyword, etc.
+ *   Uses increasing indent for tracking depth.
+ *
+ *   WHY: The nodes command needs to enumerate every node in a file
+ *   for structural analysis and diffing.
+ * |) *)
 let rec collect_nodes indent sexp =
   let info = node_info_of_sexp sexp indent in
   let children = child_nodes sexp in
@@ -45,6 +53,12 @@ type result = {
   nodes : node_info list;
 }
 
+(* agent note (|
+ *   WHAT: Extract structural information from a file for the
+ *   nodes report - parses and collects all nodes.
+ *
+ *   WHY: Main entry point for borge nodes command.
+ * |) *)
 let run path =
   let input = File_utils.read_file path in
   let file = Borge_lang.Parse.parse_file input in
@@ -53,6 +67,12 @@ let run path =
   ) file.top_level in
   { file_path = path; nodes }
 
+(* agent note (|
+ *   WHAT: Format a single node as a readable line with position,
+ *   kind, and relevant details.
+ *
+ *   WHY: Output formatting for the nodes report.
+ * |) *)
 let format_node indent info =
   let pos_str = Printf.sprintf "%d:%d" info.pos.line info.pos.col in
   let indent_str = String.make (indent * 2) ' ' in
@@ -72,6 +92,11 @@ let format_node indent info =
   | _ ->
       Printf.sprintf "%s%-5s  %s" indent_str pos_str info.kind
 
+(* agent note (|
+ *   WHAT: Format the complete nodes result as multi-line output.
+ *
+ *   WHY: CLI output for borge nodes.
+ * |) *)
 let format_result result =
   let buf = Buffer.create 4096 in
   List.iter (fun info ->

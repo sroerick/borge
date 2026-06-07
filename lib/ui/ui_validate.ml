@@ -115,7 +115,7 @@ let rec check_element (theme_ctx, component_names) (el : ui_element) : issue lis
     List.concat_map (check_property theme_ctx) v.properties
   ) el.variants in
   let children = List.concat_map
-    (check_element (theme_ctx, component_names)) el.children in
+    (function El el -> check_element (theme_ctx, component_names) el | Slot_ref _ -> []) el.children in
   props @ variant_issues @ variant_props @ children
 
 (** Validate a page: check layout reference *)
@@ -131,7 +131,7 @@ let check_component (theme_ctx, component_names) (comp : component) : issue list
     (check_property theme_ctx) comp.properties in
   let variant_issues = check_variant_uniqueness comp.variants in
   let children = List.concat_map
-    (check_element (theme_ctx, component_names)) comp.children in
+    (function El el -> check_element (theme_ctx, component_names) el | Slot_ref _ -> []) comp.children in
   props @ variant_issues @ children
 
 (** Validate a layout: check root element tree *)

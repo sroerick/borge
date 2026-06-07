@@ -22,3 +22,12 @@
 (test
   (name test_doc_coverage)
   (libraries borge.lang borge.lib alcotest))
+(test
+  (name test_db_sql)
+  (libraries borge.lib alcotest))
+(test
+  (name test_ui_dream)
+  (libraries borge.lib alcotest))
+(test
+  (name test_ui_clay)
+  (libraries borge.lib alcotest))

@@ -12,6 +12,12 @@ type confidence = High | Medium | Low
 (** Documentation accuracy assessment *)
 type accuracy = High | Medium | Low
 
+(** Documentation status — whether the doc matches the implementation *)
+type doc_status = Doc_accurate | Doc_drifted | Doc_missing
+
+(** Internal consistency assessment *)
+type consistency = Cons_consistent | Cons_questionable | Cons_inconsistent
+
 (** Signature match assessment *)
 type signature_match = Accurate | Mismatch | Unknown
 
@@ -22,7 +28,10 @@ type behavior_coverage = Complete | Partial | Missing
 type function_finding = {
   name : string;
   doc_present : bool;
+  doc_status : doc_status;
   doc_accuracy : accuracy;
+  consistency : consistency;
+  internal_issues : string option;  (* None or "none" means no issues *)
   signature_match : signature_match;
   behavior_coverage : behavior_coverage;
   structural_issues : string option;  (* None or "none" means no issues *)
@@ -56,6 +65,18 @@ type content_hash = {
   hash : string;  (* e.g., SHA256 or MD5 *)
 }
 
+(** Convert doc_status to string *)
+let string_of_doc_status : doc_status -> string = function
+  | Doc_accurate -> "accurate"
+  | Doc_drifted -> "drifted"
+  | Doc_missing -> "missing"
+
+(** Convert consistency to string *)
+let string_of_consistency : consistency -> string = function
+  | Cons_consistent -> "consistent"
+  | Cons_questionable -> "questionable"
+  | Cons_inconsistent -> "inconsistent"
+
 (** Convert confidence to string *)
 let string_of_confidence : confidence -> string = function
   | High -> "high"
@@ -79,6 +100,20 @@ let string_of_behavior_coverage = function
   | Complete -> "complete"
   | Partial -> "partial"
   | Missing -> "missing"
+
+(** Parse doc_status from string *)
+let doc_status_of_string = function
+  | "accurate" -> Some Doc_accurate
+  | "drifted" -> Some Doc_drifted
+  | "missing" -> Some Doc_missing
+  | _ -> None
+
+(** Parse consistency from string *)
+let consistency_of_string = function
+  | "consistent" -> Some Cons_consistent
+  | "questionable" -> Some Cons_questionable
+  | "inconsistent" -> Some Cons_inconsistent
+  | _ -> None
 
 (** Parse confidence from string *)
 let confidence_of_string = function

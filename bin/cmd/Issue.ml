@@ -2,6 +2,7 @@
 
 open Borge_lib
 
+(* exempt doc *)
 let now () =
   let tm = Unix.localtime (Unix.time ()) in
   Printf.sprintf "%04d-%02d-%02d"
@@ -9,9 +10,11 @@ let now () =
     (tm.Unix.tm_mon + 1)
     tm.Unix.tm_mday
 
+(* exempt doc *)
 let get_user () =
   try Sys.getenv "USER" with Not_found -> "unknown"
 
+(** Create a new bug with a title and optional open status *)
 let cmd_new title open_status with_commit =
   ignore with_commit;
   let id = Bug_ast.make_id () in
@@ -35,6 +38,7 @@ let cmd_new title open_status with_commit =
   if open_status then
     Printf.printf "Run 'borge issue doc %s' to add description.\n" id
 
+(** List all bugs, optionally filtered by status *)
 let cmd_list status_opt =
   let filter_status = match status_opt with
     | Some s -> Bug_ast.status_of_string s
@@ -51,6 +55,7 @@ let cmd_list status_opt =
     ) bugs
   end
 
+(** Show detailed info for a specific bug by ID *)
 let cmd_show id =
   match Bug_registry.load_bug id with
   | None ->
@@ -69,6 +74,7 @@ let cmd_show id =
        | Some d -> Printf.printf "Drift report: %s\n" d
        | None -> ())
 
+(** Close a bug by ID, marking it as resolved *)
 let cmd_close id with_commit =
   ignore with_commit;
   match Bug_registry.close_bug id ~resolution:"closed" ~by:(get_user ()) with
@@ -81,21 +87,26 @@ let cmd_close id with_commit =
 
 open Cmdliner
 
+(* exempt doc *)
 let title =
   Arg.(required & pos 0 (some string) None & info [] ~docv:"TITLE"
     ~doc:"Bug title")
 
+(* exempt doc *)
 let id =
   Arg.(required & pos 0 (some string) None & info [] ~docv:"ID"
     ~doc:"Bug ID (e.g., BORGE-1234567890)")
 
+(* exempt doc *)
 let status_opt =
   Arg.(value & opt (some string) None & info ["status"] ~docv:"STATUS"
     ~doc:"Filter by status (triage, open, in-progress, resolved, closed)")
 
+(* exempt doc *)
 let open_flag =
   Arg.(value & flag & info ["open"] ~doc:"Create as open (not triage)")
 
+(* exempt doc *)
 let with_commit_flag =
   Arg.(value & flag & info ["commit"] ~doc:"Commit changes to git")
 

@@ -4,6 +4,7 @@
 
 open Borge_lib
 
+(** Display the roadmap of planned/in-progress spec sections *)
 let run dir json summary section verbose =
   (* Get roadmap from future module *)
   let roadmap = Future.get_roadmap dir in
@@ -37,22 +38,27 @@ let run dir json summary section verbose =
 
 open Cmdliner
 
+(* exempt doc *)
 let dir =
   Arg.(value & pos 0 dir "." & info [] ~docv:"DIR"
     ~doc:"Project directory to scan")
 
+(* exempt doc *)
 let json =
   Arg.(value & flag & info ["json"; "j"]
     ~doc:"Output as JSON")
 
+(* exempt doc *)
 let summary =
   Arg.(value & flag & info ["summary"; "s"]
     ~doc:"Show summary counts only")
 
+(* exempt doc *)
 let section =
   Arg.(value & opt (some string) None & info ["section"]
     ~docv:"NAME" ~doc:"Filter to specific section")
 
+(* exempt doc *)
 let verbose =
   Arg.(value & flag & info ["verbose"; "v"]
     ~doc:"Show dependency graph and completion order")

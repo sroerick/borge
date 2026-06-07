@@ -7,6 +7,12 @@ type status =
   | Resolved
   | Closed
 
+(* agent note (|
+ *   WHAT: Convert a bug status to its string representation for
+ *   serialization in .borge-bug files.
+ *
+ *   WHY: Bug files need to persist status as text.
+ * |) *)
 let string_of_status = function
   | Triage -> "triage"
   | Open -> "open"
@@ -14,6 +20,12 @@ let string_of_status = function
   | Resolved -> "resolved"
   | Closed -> "closed"
 
+(* agent note (|
+ *   WHAT: Parse a string into a bug status, handling both
+ *   hyphenated and underscore variants.
+ *
+ *   WHY: Reading bug files requires converting text back to status type.
+ * |) *)
 let status_of_string = function
   | "triage" -> Some Triage
   | "open" -> Some Open
@@ -41,10 +53,21 @@ type bug = {
   resolution : resolution option;
 }
 
+(* agent note (|
+ *   WHAT: Generate a unique bug ID using the current timestamp.
+ *   Format: BORGE-{unix_timestamp}
+ *
+ *   WHY: New bugs need IDs for tracking and file naming.
+ * |) *)
 let make_id () =
   let ts = string_of_int (int_of_float (Unix.time ())) in
   "BORGE-" ^ ts
 
+(* agent note (|
+ *   WHAT: Create an empty bug record with default/placeholder values.
+ *
+ *   WHY: Starting point for creating a new bug.
+ * |) *)
 let empty_bug = {
   id = "";
   title = "";

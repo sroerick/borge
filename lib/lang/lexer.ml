@@ -29,10 +29,23 @@ type located_token = {
   start : position;
 }
 
+(* agent note (|
+ *   WHAT: Check if a character is valid in a borge symbol (bare word).
+ *   Includes alphanumerics, dash, underscore, dot, question, exclamation.
+ *
+ *   WHY: Symbol parsing needs to know where words end to correctly
+ *   tokenize the input. This is the character class for valid symbols.
+ * |) *)
 let is_symbol_char = function
   | 'a'..'z' | 'A'..'Z' | '0'..'9' | '-' | '_' | '.' | '?' | '!' -> true
   | _ -> false
 
+(* agent note (|
+ *   WHAT: Check if a character is whitespace (space, tab, newline, return).
+ *
+ *   WHY: The lexer skips whitespace between tokens. This is the
+ *   character class for whitespace.
+ * |) *)
 let is_whitespace = function
   | ' ' | '\t' | '\n' | '\r' -> true
   | _ -> false

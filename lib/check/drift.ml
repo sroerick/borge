@@ -32,6 +32,11 @@ let rec find_status : Ast.sexp list -> Spec.status option = function
       Spec.status_of_string v
   | _ :: rest -> find_status rest
 
+(* agent note (|
+ *   WHAT: Extract the doc string from a sexp list.
+ *   Looks for a (doc ...) form and returns content truncated to 60 chars.
+ *   WHY: Used to show section descriptions in drift reports.
+ * |) *)
 let rec find_doc : Ast.sexp list -> string = function
   | [] -> ""
   | Ast.List (_, Ast.Atom (_, "doc") :: Ast.String (_, Ast.Verbatim v) :: _) :: _ ->
@@ -42,6 +47,12 @@ let rec find_doc : Ast.sexp list -> string = function
       if String.length s > 60 then String.sub s 0 57 ^ "..." else s
   | _ :: rest -> find_doc rest
 
+(* agent note (|
+ *   WHAT: Hardcoded list of known borge subcommands.
+ *   Distinguishes real commands from user-defined section names.
+ *   WHY: Spec drift detection needs to know if an implemented
+ *   section is a built-in command or custom feature.
+ * |) *)
 let known_subcommands = [
   "balance"; "parse"; "check"; "report"; "fmt"; "nodes"; "inline";
   "version"; "print"; "lint"; "drift"; "normalize"; "review";
@@ -49,10 +60,23 @@ let known_subcommands = [
   "balance-verbose"; "fmt-check"; "fmt-diff"; "worktree-check";
 ]
 
+(* agent note (|
+ *   WHAT: Check if a name is a known built-in borge command.
+ *   Returns Some true if known, None if not a command.
+ *   WHY: Used during spec drift to distinguish real commands
+ *   from user-defined sections marked implemented.
+ * |) *)
 let feature_exists name =
   if List.mem name known_subcommands then Some true
   else None
 
+(* agent note (|
+ *   WHAT: Extract all implemented features from a .borg file.
+ *   Walks the sexp tree looking for sections/subsections with
+ *   (status implemented), returns their names and descriptions.
+ *   WHY: Core spec drift detection: finds what the spec claims
+ *   is implemented so we can verify it actually exists.
+ * |) *)
 let find_implemented_features file =
   let results = ref [] in
   let rec walk_sexp = function
@@ -80,6 +104,12 @@ let find_implemented_features file =
   walk_top file.Ast.top_level;
   List.rev !results
 
+(* agent note (|
+ *   WHAT: Check for spec drift in a directory.
+ *   Finds all .borg files, extracts implemented features,
+ *   and reports any that don't correspond to real commands.
+ *   WHY: One of the three drift detection modes in borge.
+ * |) *)
 let check_spec_drift dir =
   let tree_result =
     let roots = Project.find_roots dir in
@@ -312,10 +342,163 @@ let write_meta_files dir =
   ) borg_files;
   meta
 
-(** {1 Main entry point} *)
+(** {1 Go-aware code drift} *)
+
+(* agent note (|
+ *   WHAT: Check for code drift in a Go project by discovering
+ *   packages from directory structure and cross-referencing
+ *   against .borg spec sections.
+ *
+ *   WHY: Go projects don't have dune files — packages are
+ *   discovered from the directory layout and go.mod.
+ * |) *)
+let check_go_code_drift dir =
+  let borg_files = File_utils.find_borg_files dir in
+  let covered = build_covered_modules borg_files in
+  let project = Go_parse.parse_all dir in
+  (* Collect all library packages (not cmd executables) *)
+  let lib_packages = Go_parse.library_packages project in
+  let unspecified = List.filter_map (fun (pkg : Go_parse.go_package) ->
+    let capitalized = String.capitalize_ascii pkg.Go_parse.package_name in
+    if Hashtbl.mem covered capitalized then None
+    else Some { path = pkg.Go_parse.dir_path;
+                kind = "unspecified-package";
+                name = capitalized }
+  ) lib_packages in
+  unspecified
+
+(* agent note (|
+ *   WHAT: Generate findings from drift analysis for a Go project.
+ *   Uses Go_parse for package discovery and Go_surface for
+ *   exported symbol extraction.
+ *
+ *   WHY: The meta generation pipeline needs Go-aware equivalents
+ *   of the dune-aware code in generate_findings.
+ * |) *)
+let generate_go_findings dir =
+  let timestamp = Meta.current_timestamp () in
+  let borg_files = File_utils.find_borg_files dir in
+  let project = Go_parse.parse_all dir in
+
+  (* Collect package surfaces for library packages *)
+  let lib_packages = Go_parse.library_packages project in
+  let all_surfaces = List.filter_map (fun (pkg : Go_parse.go_package) ->
+    if Sys.is_directory pkg.Go_parse.dir_path then
+      Some (Go_surface.extract_package_surface pkg.Go_parse.dir_path)
+    else None
+  ) lib_packages in
+
+  (* Build package snapshot (analogous to dune_snapshot) *)
+  let package_snapshot = List.filter_map (fun (pkg : Go_parse.go_package) ->
+    let surface = Go_surface.extract_package_surface pkg.Go_parse.dir_path in
+    let _exports = Go_surface.exported_names surface in
+    Some {
+      Meta.name = pkg.Go_parse.package_name;
+      Meta.modules = List.map (fun f -> Filename.chop_extension f) pkg.Go_parse.go_files;
+      Meta.public_name = (match pkg.Go_parse.kind with
+                          | Go_parse.Pkg -> Some pkg.Go_parse.package_name
+                          | _ -> None);
+      Meta.libraries = [];
+    }
+  ) lib_packages in
+
+  (* Cross-reference: packages in go.mod but not in .borg *)
+  let covered = build_covered_modules borg_files in
+  let unspecified_findings = List.filter_map (fun (surface : Go_surface.go_package_surface) ->
+    if Hashtbl.mem covered (String.capitalize_ascii surface.Go_surface.package_name) then None
+    else Some {
+      Meta.ft_type = Unspecified_module;
+      Meta.section = None;
+      Meta.module_ = Some surface.Go_surface.package_name;
+      Meta.file = Some surface.Go_surface.path;
+      Meta.export = None;
+      Meta.detail = Some (Printf.sprintf "package %s not mentioned in any .borg spec" surface.Go_surface.package_name);
+      Meta.spec_status = None;
+      Meta.actual_status = None;
+      Meta.confidence = High;
+      Meta.source = Static;
+      Meta.at = timestamp;
+    }
+  ) all_surfaces in
+
+  (* Cross-reference: exports in package but not in spec *)
+  let export_findings =
+    let surfaces_with_spec = List.filter (fun (surface : Go_surface.go_package_surface) ->
+      Hashtbl.mem covered (String.capitalize_ascii surface.Go_surface.package_name)
+    ) all_surfaces in
+    List.filter_map (fun (surface : Go_surface.go_package_surface) ->
+      let exported = Go_surface.exported_names surface in
+      if List.length exported > 15 then
+        Some {
+          Meta.ft_type = Extra_export;
+          Meta.section = None;
+          Meta.module_ = Some surface.Go_surface.package_name;
+          Meta.file = Some surface.Go_surface.path;
+          Meta.export = None;
+          Meta.detail = Some (Printf.sprintf
+            "package %s has %d exports — may not all be covered by spec"
+            surface.Go_surface.package_name (List.length exported));
+          Meta.spec_status = None;
+          Meta.actual_status = None;
+          Meta.confidence = Low;
+          Meta.source = Static;
+          Meta.at = timestamp;
+        }
+      else None
+    ) surfaces_with_spec
+  in
+
+  (* Collect content hashes for staleness detection *)
+  let content_hashes = List.map (fun path ->
+    let hash = Meta.hash_file path in
+    (path, hash)
+  ) borg_files in
+
+  let findings = Meta.sort_findings (unspecified_findings @ export_findings) in
+  let meta_surfaces = List.map (fun (s : Go_surface.go_package_surface) ->
+    let exports = Go_surface.exported_names s in
+    { Meta.module_name = s.Go_surface.package_name; Meta.file = s.Go_surface.path; Meta.exports = exports }
+  ) all_surfaces in
+
+  let project_name = match project.Go_parse.go_mod with
+    | Some m -> m.Go_parse.module_path
+    | None -> "go-project"
+  in
+  let meta : Meta.meta = {
+    Meta.project_name = project_name;
+    Meta.analyzed_at = timestamp;
+    Meta.content_hashes = content_hashes;
+    Meta.module_surfaces = meta_surfaces;
+    Meta.dune_snapshot = package_snapshot;
+    Meta.findings = findings;
+  } in
+  meta
+
+(** Write .borg.meta files for Go projects *)
+let write_go_meta_files dir =
+  let meta = generate_go_findings dir in
+  let borg_files = File_utils.find_borg_files dir in
+  List.iter (fun borg_path ->
+    let meta_path = Meta.meta_path_of borg_path in
+    let project_name = try
+      let input = File_utils.read_file borg_path in
+      let file = Parse.parse_file input in
+      Spec.project_name file
+    with _ -> Some "go-project"
+    in
+    let per_meta = { meta with Meta.project_name = Option.value project_name ~default:"go-project" } in
+    Meta.write_meta meta_path per_meta
+  ) borg_files;
+  meta
+
+(** {1 Main entry point with convention dispatch} *)
 
 let run dir =
   let spec = check_spec_drift dir in
-  let code = check_code_drift dir in
+  let convention = Convention.resolve dir in
+  let code = match convention with
+    | Convention.Go_standard -> check_go_code_drift dir
+    | Convention.Ocaml_dune -> check_code_drift dir
+  in
   let structural = check_structural_drift dir in
   { spec_drift = spec; code_drift = code; structural_drift = structural }

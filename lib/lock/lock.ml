@@ -13,17 +13,57 @@ open Borge_lang
 
 let lock_dir = ".borge.lock"
 
+(* agent note (|
+ *   WHAT: Get the path to the original files snapshot directory.
+ *
+ *   WHY: Lock mechanism copies .borg files to original/ for integrity
+ *   checking and restoration on abort.
+ * |) *)
 let original_dir () = Printf.sprintf "%s/original" lock_dir
+
+(* agent note (|
+ *   WHAT: Get the path to the agent prompt file.
+ *
+ *   WHY: The prompt is written to a file so the pi agent can read it.
+ * |) *)
 let prompt_file () = Printf.sprintf "%s/prompt.md" lock_dir
+
+(* agent note (|
+ *   WHAT: Get the path to the session journal file.
+ *
+ *   WHY: Journal tracks changes made during the agent session.
+ * |) *)
 let journal_file () = Printf.sprintf "%s/journal" lock_dir
+
+(* agent note (|
+ *   WHAT: Get the path to the role file that stores the agent role.
+ *
+ *   WHY: Role is persisted so we know what mode the agent was in.
+ * |) *)
 let role_file () = Printf.sprintf "%s/role" lock_dir
+
+(* agent note (|
+ *   WHAT: Get the path to the state file.
+ *
+ *   WHY: State tracks the lock lifecycle (created, exploring, completed, etc).
+ * |) *)
 let state_file () = Printf.sprintf "%s/state" lock_dir
 
-(* Check whether a lock is active *)
+(* agent note (|
+ *   WHAT: Check if a lock is currently active.
+ *
+ *   WHY: Commands that need isolation check for existing lock first.
+ * |) *)
 let is_locked () =
   Sys.file_exists lock_dir
 
-(* Create lock directory and snapshot all .borg files *)
+(* agent note (|
+ *   WHAT: Create the lock directory structure and snapshot all
+ *   .borg files to the original/ subdirectory.
+ *
+ *   WHY: This is the first step of any agent session - establishes
+ *   the baseline for integrity checking.
+ * |) *)
 let create () =
   if is_locked () then
     Error "Lock already exists — borge abort to clear, or commit to finish"
@@ -67,7 +107,7 @@ let get_state () =
   end
 
 (* Integrity check: compare original/ with working tree for deleted
-   human-authored annotated comments.
+   or inserted human-authored annotated comments.
    A human-authored comment: (* <author> <type> ... *) where
    author != "agent" and author != "bot" *)
 let check_integrity () : (string, string) result =
@@ -106,7 +146,25 @@ let check_integrity () : (string, string) result =
                 end
               end
             end
-          ) orig_lines
+          ) orig_lines;
+          (* Also detect inserted human-authored comments in working tree *)
+          List.iter (fun line ->
+            let trimmed = String.trim line in
+            if String.length trimmed > 4 then begin
+              let prefix = String.sub trimmed 0 3 in
+              if prefix = "(* " then begin
+                let rest = String.sub trimmed 3 (String.length trimmed - 3) in
+                let space_idx = try String.index rest ' ' with Not_found -> -1 in
+                if space_idx > 0 then begin
+                  let author = String.sub rest 0 space_idx in
+                  if author <> "agent" && author <> "bot" then begin
+                    if not (List.mem line orig_lines) then
+                      issues := Printf.sprintf "%s: inserted comment by %s" base author :: !issues
+                  end
+                end
+              end
+            end
+          ) work_lines
         with _ -> ()
       end
     ) original_files;

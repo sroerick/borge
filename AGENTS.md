@@ -9,6 +9,7 @@ This project practices what it preaches: **every module must have a `.borg` sect
 3. **Follow existing patterns.** If the codebase uses `Agent.run_pi_print` for LLM-mediated generation and the spec says the same, follow that pattern. Don't invent alternatives unless the spec calls for them.
 4. **Update spec status after implementation.** Change `(status planned)` → `(status implemented)` in the relevant `.borg` file. Add subsections for new modules.
 5. **Check against spec during loops.** In Ralph loops or multi-step tasks, periodically verify: does my task list match the `.borg` files? If a task has no spec section, stop and ask.
+6. **Agents write only agent comments.** In `.borg` files, an agent may only create, modify, or delete comments where the authorship is `agent` or `bot`. Agents may NOT create, modify, or delete comments attributed to humans (`roerick` or any non-agent author). If an agent needs to quote a human, use `(* agent note (|...|) *)`. For human-agent conversations, the human writes `(* <name> ask ...)` and the agent writes `(* agent response ...)`.
 
 ## Key Spec Files
 

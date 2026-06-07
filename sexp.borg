@@ -176,6 +176,39 @@
         Balance counts the outer parens correctly.
    |))
   )
+  (subsection enhanced-output
+   (doc "Structural skeleton, indent divergence, and smart close suggestions")
+   (status implemented)
+   (details
+    (doc (|
+         When balance finds errors, it now produces three
+         additional diagnostic layers:
+
+         1. Structural skeleton: a table of every paren pair
+            (open position, keyword, close position if closed).
+            Each line shows the source text so the agent can
+            map directly to their file. Unclosed pairs are
+            marked with ⚠ UNCLOSED.
+
+         2. Indent divergence detection: for each open paren,
+            balance checks whether its column matches its
+            canonical depth (col == depth for 1-space indent).
+            When they diverge and the file has balance errors,
+            balance prints a hint. This catches the common
+            case where a missing `)` above causes subsequent
+            forms to sit at the wrong indent.
+
+         3. Smart close suggestions: instead of "add N `)` at
+            EOF", balance scans forward from the unclosed paren
+            to find the next sibling-level form. It suggests
+            inserting `)` before that line, rendered as a
+            mini diff so the fix location is unambiguous.
+
+         These three layers turn "End of file: 1 unclosed `(`"
+         into actionable, structural guidance.
+    |))
+   )
+  )
  )
  (section error
   (doc "Error types for parse and balance failures")

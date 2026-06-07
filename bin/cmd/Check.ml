@@ -1,5 +1,6 @@
 open Borge_lib
 
+(** Print a human-readable summary of check results *)
 let print_result (result : Check.result) =
   List.iter (function
     | Check.Ok { path; project_name; form_count } ->
@@ -14,6 +15,7 @@ let print_result (result : Check.result) =
   Printf.printf "\n%d files checked. %d passed. %d failed. %d warnings.\n"
     (List.length result.files) result.passed result.failed (List.length result.warnings)
 
+(** Run all checks on a worktree: diff clean, balance, check, build, test *)
 let run_worktree dir quiet =
   let failures = ref [] in
   (* 1. git diff is clean *)
@@ -72,16 +74,20 @@ let run dir worktree json quiet =
 
 open Cmdliner
 
+(* exempt doc *)
 let dir =
   Arg.(value & pos 0 dir "." & info [] ~docv:"DIR"
     ~doc:"Directory to scan for .borg files")
 
+(* exempt doc *)
 let worktree =
   Arg.(value & flag & info ["worktree"] ~doc:"Deterministic check: clean diff, balance, check, build, test")
 
+(* exempt doc *)
 let json =
   Arg.(value & flag & info ["json"] ~doc:"Output as JSON")
 
+(* exempt doc *)
 let quiet =
   Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
 

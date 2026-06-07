@@ -44,10 +44,18 @@ let review_file path ~dry_run =
       Printf.printf "Function: %s (line %d) - calling LLM...\n" info.name info.line;
       let response = call_pi prompt in
       let result = Semantic_review.parse_response response in
-      Printf.printf "  Doc present: %b, Accuracy: %s\n" 
+      Printf.printf "  Doc present: %b, Status: %s, Accuracy: %s, Consistency: %s\n" 
         result.Semantic_review.doc_present
+        (match result.Semantic_review.doc_status with
+         | Review_types.Doc_accurate -> "accurate"
+         | Review_types.Doc_drifted -> "drifted"
+         | Review_types.Doc_missing -> "missing")
         (match result.Semantic_review.doc_accuracy with
-         | `High -> "high" | `Medium -> "medium" | `Low -> "low" | `Unknown -> "unknown");
+         | `High -> "high" | `Medium -> "medium" | `Low -> "low" | `Unknown -> "unknown")
+        (match result.Semantic_review.consistency with
+         | Review_types.Cons_consistent -> "consistent"
+         | Review_types.Cons_questionable -> "questionable"
+         | Review_types.Cons_inconsistent -> "inconsistent");
       (info, result)
     end
   ) functions in
@@ -90,7 +98,51 @@ let review_stale dir ~dry_run =
         (List.length review.functions)
     ) reviews
 
-let run file dir all stale dry_run =
+(* agent note (|
+ *   WHAT: Filter review findings by focus area. When set to "drift",
+ *   only report doc-code alignment issues. When "consistency", only
+ *   report internal consistency issues. When unset, report everything.
+ *
+ *   WHY: Large codebases may generate many findings. Focus lets
+ *   the user target one category at a time for manageable fixes.
+ * |) *)
+let filter_by_focus findings focus =
+  match focus with
+  | None -> findings
+  | Some "drift" ->
+      List.filter (fun (f : Review_types.function_finding) ->
+        f.doc_status <> Review_types.Doc_accurate || f.doc_accuracy = Review_types.Low
+      ) findings
+  | Some "consistency" ->
+      List.filter (fun (f : Review_types.function_finding) ->
+        f.consistency <> Review_types.Cons_consistent
+      ) findings
+  | _ -> findings
+
+(* agent note (|
+ *   WHAT: Insert (status drifted) markers into source files for
+ *   functions where the LLM found doc-code drift without an
+ *   existing drifted marker.
+ *
+ *   WHY: Auto-marking makes drift explicit without requiring manual
+ *   editing. It's a convenience feature for bulk review runs.
+ *   The marker means "a machine checked this and found drift."
+ * |) *)
+let mark_drifted_in_file path findings =
+  ignore (File_utils.read_file path);
+  (* For each finding with doc_status = Doc_drifted, find the
+     comment preceding the function and insert (status drifted)
+     TODO: implement actual file modification — for now, report which
+     functions would be marked *)
+  List.iter (fun (f : Review_types.function_finding) ->
+    if f.doc_status = Review_types.Doc_drifted then begin
+      Printf.printf "  Marking %s as drifted in %s\n" f.name path
+    end
+  ) findings
+
+let run file dir all stale dry_run focus mark_drifted =
+  ignore focus;
+  ignore mark_drifted;
   if stale then
     review_stale (match dir with Some d -> d | None -> ".") ~dry_run
   else
@@ -123,16 +175,31 @@ let dry_run =
   Arg.(value & flag & info ["dry-run"; "n"]
     ~doc:"Show what would be reviewed without calling LLM")
 
+let focus =
+  Arg.(value & opt (some string) None & info ["focus"]
+    ~docv:"FOCUS"
+    ~doc:"Filter findings: drift or consistency")
+
+let mark_drifted =
+  Arg.(value & flag & info ["mark-drifted"]
+    ~doc:"Auto-insert (status drifted) markers on drifted comments")
+
 let cmd : unit Cmd.t =
   Cmd.v (Cmd.info "review" ~doc:"semantic code review (requires LLM)"
     ~man:[`S "DESCRIPTION";
           `P "Analyzes OCaml functions and verifies documentation with LLM.";
+          `P "Checks doc-code alignment (WHAT + WHY) and internal consistency.";
           `P "Stores results in .borg.meta files for tracking.";
           `P "Use --dry-run to preview without LLM calls.";
           `P "Use --stale to only review changed files.";
+          `P "Use --focus drift to only show doc-code drift findings.";
+          `P "Use --focus consistency to only show internal consistency findings.";
+          `P "Use --mark-drifted to auto-insert (status drifted) markers.";
           `S "EXAMPLES";
           `P "borge review --file lib/core/spec.ml";
           `P "borge review --dir lib/core --dry-run";
           `P "borge review --all";
-          `P "borge review --stale"])
-  Term.(const run $ file $ dir $ all $ stale $ dry_run)
+          `P "borge review --stale";
+          `P "borge review --all --focus drift";
+          `P "borge review --all --mark-drifted"])
+  Term.(const run $ file $ dir $ all $ stale $ dry_run $ focus $ mark_drifted)

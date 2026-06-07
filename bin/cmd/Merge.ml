@@ -114,20 +114,24 @@ let merge_all ~strategy ~dry_run () =
 
 open Cmdliner
 
+(* exempt doc *)
 let strategy =
   Arg.(value & opt string "fast-forward"
     & info ["strategy"; "s"]
     ~docv:"STRATEGY"
     ~doc:"Merge strategy: fast-forward, rebase, merge, or squash")
 
+(* exempt doc *)
 let dry_run =
   Arg.(value & flag & info ["dry-run"; "n"]
     ~doc:"Show what would be merged without executing")
 
+(* exempt doc *)
 let next =
   Arg.(value & flag & info ["next"]
     ~doc:"Merge the first ready item")
 
+(* exempt doc *)
 let all =
   Arg.(value & flag & info ["all"; "a"]
     ~doc:"Merge all ready items")

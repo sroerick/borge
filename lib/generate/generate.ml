@@ -29,6 +29,13 @@ let build_spec_prompt todo_text project_name convention =
   Buffer.add_string buf "\n\nProduce a .borg section:\n";
   Buffer.contents buf
 
+(* agent note (|
+ *   WHAT: Generate a .borg spec section from a todo description
+ *   using the LLM. Parses the result and returns it as a string.
+ *
+ *   WHY: The borge spec --spec command uses this to turn a human
+ *   todo into structured borg specification.
+ * |) *)
 let generate_spec todo_text dir =
   let project_name =
     let roots = Project.find_roots dir in
@@ -41,7 +48,7 @@ let generate_spec todo_text dir =
       with _ -> "unknown")
     | _ -> "unknown"
   in
-  let prompt = build_spec_prompt todo_text project_name None in
+  let prompt = build_spec_prompt todo_text project_name (Some (Convention.name (Convention.resolve dir))) in
   let response = Agent.run_pi_print prompt in
   match response with
   | None ->
@@ -59,6 +66,14 @@ let generate_spec todo_text dir =
       Some text
 
 (** {1 Generate code: spec → implementation} *)
+
+(* agent note (|
+ *   WHAT: Generate implementation code from a spec section using LLM.
+ *   Takes the section name, path to borg file, spec text, and surfaces.
+ *
+ *   WHY: The borge spec --code command uses this to have an agent
+ *   implement a planned section.
+ * |) *)
 
 let build_code_prompt section_name borg_path spec_text surfaces =
   let buf = Buffer.create 1024 in

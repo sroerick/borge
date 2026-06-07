@@ -26,9 +26,11 @@ type binding_doc = {
 let borg_note_pattern =
   Str.regexp "(*\\s*\\([a-z]+\\)\\s+note\\s+(|\\([^)]*\\)|)\\s*\\*)"
 
+(** Regex pattern for short borg comments: open-pipe-content-pipe-close *)
 let borg_short_pattern =
   Str.regexp "(*|\\s*\\([^|]*\\)|\\s*\\*)"
 
+(** Regex pattern for exemption markers in comments *)
 let exempt_pattern =
   Str.regexp "(*\\s*exempt\\s+doc\\s*\\*)"
 

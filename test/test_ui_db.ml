@@ -161,7 +161,7 @@ let test_ui_parse_nested_elements () =
     | [el] ->
       Alcotest.(check int) "outer has 2 children" 2 (List.length el.Ui_ast.children);
       (match el.Ui_ast.children with
-      | [_left; right] ->
+      | [_; El right] ->
         Alcotest.(check int) "right has 2 children" 2 (List.length right.Ui_ast.children)
       | _ -> Alcotest.fail "wrong children count")
     | _ -> Alcotest.fail "wrong element count")

@@ -37,13 +37,16 @@ let run dir quiet =
 
 open Cmdliner
 
+(* exempt doc *)
 let dir =
   Arg.(value & pos 0 dir "." & info [] ~docv:"DIR"
     ~doc:"Path to git repository (default: current directory)")
 
+(* exempt doc *)
 let quiet =
   Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
 
+(* exempt doc *)
 let cmd : unit Cmd.t =
   Cmd.v (Cmd.info "diff" ~doc:"git diff for .borg files with status annotations"
     ~man:[`S "DESCRIPTION";

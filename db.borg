@@ -5,13 +5,13 @@
        borge does NOT generate SQL or code. Use borge make to have an
        agent edit the spec interactively. Postgres-first semantics.")
  (no-inline)
- (status planned)
+ (status implemented)
  (exports parse_table validate_table
           parse_schema db_to_json validate_schema)
 
  (section relationship-to-borge
   (doc "DB is an extension of the borge language, not a separate language")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      Borge DB is NOT a new language. It is a set of new sexp forms
@@ -77,7 +77,7 @@
 
  (section schema
   (doc "Table and column definitions")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      Tables are declared inside a (db ...) form:
@@ -118,7 +118,7 @@
 
   (subsection column-types
    (doc "Supported PostgreSQL column types")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
       The (type ...) form accepts PostgreSQL type names directly:
@@ -140,7 +140,7 @@
 
   (subsection indexes
    (doc "Index declarations for performance")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
       Indexes are declared on tables:
@@ -166,7 +166,7 @@
 
  (section operations
   (doc "What you can do with the data — CRUD and queries")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      Operations declare what actions are available on a table:
@@ -205,7 +205,7 @@
 
  (section relations
   (doc "Joins and cross-table queries")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      Relations describe queries that span multiple tables:
@@ -244,7 +244,7 @@
 
  (section ownership
   (doc "Row-level ownership — who owns a row")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      (ownership column-name) declares which column determines
@@ -280,7 +280,7 @@
 
  (section groups
   (doc "Access control groups and their capabilities")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      Groups define who can do what, at the row level. The generator
@@ -487,41 +487,217 @@
  )
 
  (section convention-targets
-  (doc "How the DSL maps to different targets")
-  (status planned)
+  (doc "Code generators: walk the typed DB AST and emit target source")
+  (status in-progress)
   (details
    (doc (|
-     The generator reads the (db ...) spec and a target convention,
-     then produces code. Each convention knows how to translate:
+     Generators are consumers of db_ast — the same relationship
+     as db_json (which emits JSON) and db_validate (which emits
+     issues). A generator walks the db_app tree and produces
+     source code for a specific target.
 
-     postgres-sql target:
-       (table ...)  → CREATE TABLE with constraints, defaults, indexes
-       (crud)       → no code (RLS handles it)
-       (query ...)  → named SQL function or view
-       (relation ...) → CREATE VIEW or SQL function
-       (ownership ...) → RLS policy using column = current_user_id
-       (groups ...) → RLS policies per group
+     Module layout:
+       lib/db/db_sql.ml    — postgres-sql generator (DDL)
 
-     ocaml-dream target:
-       (table ...)  → SQL migration file in migrations/
-       (crud)       → route handlers: GET/POST/PUT/DELETE
-       (query ...)  → Dream route handler with parameterized query
-       (relation ...) → Dream route handler with join query
-       (ownership ...) → RLS migration + session role setting
-       (groups ...) → RLS migration + role middleware
+     CLI:
+       borge generate --target postgres-sql  DB_SPEC.borg
 
-     The convention handles:
-       - How current-user is resolved (session, JWT, etc.)
-       - Migration file naming (sequential, timestamped)
-       - SQL dialect specifics (Postgres version, extensions)
-       - Connection pool and transaction management
+     The generator exposes:
+       val generate : db_app -> string
+
+     The string is the complete output: a .sql file containing
+     all CREATE TABLE, CREATE INDEX, CREATE POLICY, and ALTER
+     TABLE statements. The caller writes it to disk.
+
+     Event emission:
+     Each successful generation prints a structured event to stderr:
+       (generated db-APP-NAME postgres-sql at PATH)
+     This provides the audit trail for future drift detection
+     and the cybernetic loop.
+
+     Idempotency:
+     The generated SQL uses IF NOT EXISTS for tables and indexes
+     so the script can be re-run safely. RLS policies are DROP
+     and re-CREATE since they have no IF NOT EXISTS in PostgreSQL.
+     The script is ordered: tables first (respecting foreign keys),
+     then indexes, then RLS enablement, then policies, then groups.
    |))
+  )
+
+  (subsection postgres-sql-target
+   (doc "Generate PostgreSQL DDL from a DB spec")
+   (status planned)
+   (details
+    (doc (|
+       Target: PostgreSQL DDL. Produces a single .sql file that
+       creates the complete schema: tables with constraints and
+       defaults, indexes, row-level security, and group policies.
+       The output can be run as a migration or as a complete
+       schema bootstrap.
+
+       Mapping table — DB AST → PostgreSQL DDL:
+
+       Tables:
+         (table users
+           (column id (type uuid) (primary-key) (default gen_random_uuid))
+           (column email (type text) (unique) (not-null)))
+         →
+           CREATE TABLE IF NOT EXISTS users (
+             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+             email TEXT UNIQUE NOT NULL
+           );
+
+       Column types are passed through verbatim since the DSL
+       uses PostgreSQL type names directly. No translation needed.
+
+       Column constraints:
+         (primary-key)    → PRIMARY KEY
+         (unique)         → UNIQUE
+         (not-null)       → NOT NULL
+         (default EXPR)   → DEFAULT EXPR
+                            gen_random_uuid → gen_random_uuid()
+                            now             → now()
+                            false           → FALSE
+                            true            → TRUE
+                            Other values   → passed through as-is
+
+       Foreign keys:
+         (references TABLE.COLUMN) → REFERENCES TABLE (COLUMN)
+         Foreign key columns are implicitly NOT NULL if (not-null)
+         is present, or nullable otherwise. ON DELETE CASCADE is
+         NOT added by default — the spec must declare cascade
+         behavior explicitly when needed (future extension).
+
+       Indexes:
+         (index email-idx (columns email))
+         →
+           CREATE INDEX IF NOT EXISTS email-idx ON users (email);
+
+         (index name-idx (columns name) (method gin))
+         →
+           CREATE INDEX IF NOT EXISTS name-idx ON users USING gin (name);
+
+         (unique) flag:
+         →
+           CREATE UNIQUE INDEX IF NOT EXISTS name-idx ON users (name);
+
+       Ownership:
+         (ownership author-id)
+         →
+           ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
+           CREATE POLICY posts_author_select ON posts
+             FOR SELECT USING (author_id = current_user_id());
+           CREATE POLICY posts_author_insert ON posts
+             FOR INSERT WITH CHECK (author_id = current_user_id());
+           CREATE POLICY posts_author_update ON posts
+             FOR UPDATE USING (author_id = current_user_id())
+             WITH CHECK (author_id = current_user_id());
+           CREATE POLICY posts_author_delete ON posts
+             FOR DELETE USING (author_id = current_user_id());
+
+       The ownership shorthand generates four policies (SELECT,
+       INSERT, UPDATE, DELETE) all scoped to the ownership column
+       matching the current user. The current_user_id() function
+       is convention-specific — the generator emits a comment
+       noting that this function must be defined by the application.
+
+       Groups:
+         (group admin (can-all))
+         →
+           CREATE POLICY admin_all ON posts FOR ALL
+             USING (true) WITH CHECK (true);
+
+         (group author
+           (can posts (create read update) (where author-id = current-user)))
+         →
+           CREATE POLICY author_posts_select ON posts FOR SELECT
+             USING (author_id = current_user_id());
+           CREATE POLICY author_posts_insert ON posts FOR INSERT
+             WITH CHECK (author_id = current_user_id());
+           CREATE POLICY author_posts_update ON posts FOR UPDATE
+             USING (author_id = current_user_id())
+             WITH CHECK (author_id = current_user_id());
+
+         (group reader
+           (can posts (read (where published = true))))
+         →
+           CREATE POLICY reader_posts_select ON posts FOR SELECT
+             USING (published = true);
+
+       Group policy naming convention:
+         GROUPNAME_TABLE_OPERATION
+         e.g. author_posts_select, reader_posts_select
+         This avoids collisions when multiple groups access the same table.
+
+       (can-all) generates a single policy for ALL operations with
+       USING (true) and WITH CHECK (true) — effectively bypasses RLS.
+       Used for admin/superuser roles.
+
+       The (where ...) clause:
+         (where author-id = current-user) → author_id = current_user_id()
+         (where published = true)         → published = true
+         (where id = current-user)        → id = current_user_id()
+         The (current-user) token is the only special token in
+         where clauses. It translates to current_user_id() in SQL.
+         All other values are passed through as SQL literals.
+         Boolean: true → TRUE, false → FALSE.
+         String: passed as-is (caller must ensure SQL safety).
+
+       Operations and queries:
+         (crud)            → No DDL generated. CRUD is handled by RLS.
+                             The (crud) form is for application-layer routing,
+                             not schema definition.
+         (query by-email)  → Comment in the SQL file:
+                             -- TODO: query by_email for table users
+                             Named queries are application-level concerns.
+                             The generator emits them as comments for
+                             documentation, not as SQL functions.
+                             Future: optional --create-views flag to
+                             generate views from (relation ...) forms.
+
+       Relations:
+         (relation feed-with-authors ...) →
+           -- TODO: relation feed_with_authors
+           -- FROM posts JOIN users ON users.id = posts.author_id
+           -- WHERE posts.published = true
+           -- SELECT users.name, posts.title, posts.created_at
+         Same as queries: relations are documented as comments,
+         not generated as views by default. The --create-views
+         flag (future) would generate CREATE VIEW statements.
+
+       Generation order:
+       1. CREATE TABLE statements (topologically sorted by foreign
+          key dependencies — referenced tables before referencing)
+       2. CREATE INDEX statements
+       3. ALTER TABLE ... ENABLE ROW LEVEL SECURITY
+       4. CREATE POLICY statements (ownership shorthand first,
+          then explicit group policies)
+       5. Comments for operations, queries, and relations
+
+       Topological sort for foreign keys:
+       The generator builds a dependency graph from (references)
+       clauses and emits tables in an order where no table is
+       created before the table it references. Circular references
+       are an error (detected at generation time). Self-references
+       are allowed (the column is nullable or deferrable).
+
+       Schema header:
+       The generated file begins with a comment header:
+         -- Generated by borge generate --target postgres-sql
+         -- Source: path/to/spec.borg
+         -- Generated at: ISO-8601 timestamp
+         -- DO NOT EDIT: regenerate from spec
+       This makes it clear the file is derived, not handwritten.
+       Drift detection (borge drift) can check if the live
+       schema matches this generated DDL.
+     |))
+   )
   )
  )
 
  (section agentic-editing
   (doc "How agents edit DB specs using borge make")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      borge make

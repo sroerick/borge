@@ -1,5 +1,6 @@
 open Borge_lib
 
+(** Generate a .borg section from a todo description using LLM *)
 let run_spec todo dir quiet =
   match Generate.generate_spec todo dir with
   | Some sexp ->
@@ -9,6 +10,7 @@ let run_spec todo dir quiet =
     Printf.eprintf "Failed to generate spec.\n";
     exit 1
 
+(** Generate code to implement a planned section *)
 let run_code section dir quiet =
   ignore quiet;
   match Generate.generate_code section dir with
@@ -18,6 +20,7 @@ let run_code section dir quiet =
     Printf.eprintf "Failed to generate code for section '%s'.\n" section;
     exit 1
 
+(** Inspect a UI spec: parse, validate, summarize *)
 let run_ui section dir json quiet =
   let borg_files = File_utils.find_borg_files dir in
   let matching_borg = List.filter (fun p ->
@@ -79,6 +82,7 @@ let run_ui section dir json quiet =
       Printf.eprintf "Failed to parse UI spec from %s\n" borg_path;
       exit 1)
 
+(** Inspect a DB spec: parse, validate, summarize *)
 let run_db section dir json quiet =
   let borg_files = File_utils.find_borg_files dir in
   let matching_borg = List.filter (fun p ->
@@ -143,6 +147,7 @@ let run_db section dir json quiet =
 
 open Cmdliner
 
+(* exempt doc *)
 let spec_cmd : unit Cmd.t =
   let todo =
     Arg.(value & pos 0 string "" & info [] ~docv:"TODO"
@@ -161,6 +166,7 @@ let spec_cmd : unit Cmd.t =
               a structured .borg section with (status planned)."])
   Term.(const run_spec $ todo $ dir $ quiet)
 
+(* exempt doc *)
 let code_cmd : unit Cmd.t =
   let section =
     Arg.(value & pos 0 string "" & info [] ~docv:"SECTION"
@@ -180,6 +186,7 @@ let code_cmd : unit Cmd.t =
               marked (status planned) in a .borg file."])
   Term.(const run_code $ section $ dir $ quiet)
 
+(* exempt doc *)
 let ui_cmd : unit Cmd.t =
   let section =
     Arg.(value & pos 0 string "" & info [] ~docv:"SECTION"
@@ -195,13 +202,15 @@ let ui_cmd : unit Cmd.t =
   let quiet =
     Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
   in
-  Cmd.v (Cmd.info "ui" ~doc:"generate code from a UI spec section"
+  Cmd.v (Cmd.info "ui" ~doc:"inspect a UI spec section"
     ~man:[`S "DESCRIPTION";
-          `P "Reads a (ui ...) spec from a .borg file and generates \
-              target code. The convention determines the output format \
-              (HTML+CSS, React, Clay, etc.)."])
+          `P "Reads a (ui ...) spec from a .borg file, parses it, \
+              validates it, and prints a summary. The UI spec IS the \
+              artifact — no code is generated. Use borge make to edit \
+              UI specs interactively."])
   Term.(const run_ui $ section $ dir $ json $ quiet)
 
+(* exempt doc *)
 let db_cmd : unit Cmd.t =
   let section =
     Arg.(value & pos 0 string "" & info [] ~docv:"TABLE"
@@ -217,22 +226,98 @@ let db_cmd : unit Cmd.t =
   let quiet =
     Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
   in
-  Cmd.v (Cmd.info "db" ~doc:"generate code from a DB spec section"
+  Cmd.v (Cmd.info "db" ~doc:"inspect a DB spec section"
     ~man:[`S "DESCRIPTION";
-          `P "Reads a (db ...) spec from a .borg file and generates \
-              SQL migrations and/or application code. The convention \
-              determines the output format."])
+          `P "Reads a (db ...) spec from a .borg file, parses it, \
+              validates it, and prints a summary. The DB spec IS the \
+              artifact — no code is generated. Use borge make to edit \
+              DB specs interactively."])
   Term.(const run_db $ section $ dir $ json $ quiet)
+
+(** Generate target source code from a .borg spec file *)
+let run_target target borg_path quiet =
+  if target = "" then begin
+    Printf.eprintf "Error: TARGET is required (postgres-sql, ocaml-dream, clay-c)\n";
+    exit 1
+  end;
+  if borg_path = "" then begin
+    Printf.eprintf "Error: SPEC path is required\n";
+    exit 1
+  end;
+  let input = File_utils.read_file borg_path in
+  let file = Borge_lang.Parse.parse_file input in
+  match target with
+  | "postgres-sql" ->
+    (match Db_parse.parse_file file with
+    | Some app ->
+      let sql = Db_sql.generate ~source_path:borg_path app in
+      Printf.printf "%s\n" sql;
+      if not quiet then
+        Printf.eprintf "(generated db postgres-sql at %s)\n" borg_path
+    | None ->
+      Printf.eprintf "Failed to parse DB spec from %s\n" borg_path;
+      exit 1)
+  | "ocaml-dream" ->
+    (match Ui_parse.parse_file file with
+    | Some app ->
+      let ml = Ui_dream.generate ~source_path:borg_path app in
+      Printf.printf "%s\n" ml;
+      if not quiet then
+        Printf.eprintf "(generated ui ocaml-dream at %s)\n" borg_path
+    | None ->
+      Printf.eprintf "Failed to parse UI spec from %s\n" borg_path;
+      exit 1)
+  | "clay-c" ->
+    (match Ui_parse.parse_file file with
+    | Some app ->
+      let c_code = Ui_clay.generate ~source_path:borg_path app in
+      let h_code = Ui_clay.generate_header_file app in
+      Printf.printf "/* --- ui_app.h --- */\n%s\n/* --- ui_app.c --- */\n%s\n" h_code c_code;
+      if not quiet then
+        Printf.eprintf "(generated ui clay-c at %s)\n" borg_path
+    | None ->
+      Printf.eprintf "Failed to parse UI spec from %s\n" borg_path;
+      exit 1)
+  | _ ->
+    Printf.eprintf "Unknown target '%s'. Supported: postgres-sql, ocaml-dream, clay-c\n" target;
+    exit 1
+
+(* exempt doc *)
+let target_cmd : unit Cmd.t =
+  let target =
+    Arg.(value & pos 0 string "" & info [] ~docv:"TARGET"
+      ~doc:"Code generation target: postgres-sql, ocaml-dream, or clay-c")
+  in
+  let borg_path =
+    Arg.(value & pos 1 file "" & info [] ~docv:"SPEC"
+      ~doc:"Path to .borg spec file")
+  in
+  let quiet =
+    Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress event emission on stderr")
+  in
+  Cmd.v (Cmd.info "target" ~doc:"generate target source code from a spec"
+    ~man:[`S "DESCRIPTION";
+          `P "Reads a .borg spec file and generates target source code \
+              from the typed AST. Supports three targets:";
+          `I ("postgres-sql", "PostgreSQL DDL (CREATE TABLE, indexes, RLS policies)");
+          `I ("ocaml-dream", "OCaml dream_html code (components, layouts, routes)");
+          `I ("clay-c", "C code using Clay layout API (for raylib/pico)")])
+  Term.(const run_target $ target $ borg_path $ quiet)
 
 let cmd : unit Cmd.t =
   let info = Cmd.info "generate" ~doc:"generate spec sections or code from specs"
     ~man:[`S "DESCRIPTION";
-          `P "Two-step pipeline: generate spec (todo -> .borg section), \
-              then generate code (spec -> implementation).";
+          `P "Generate spec sections, inspect DB/UI specs, or implement \
+              code from specs.";
           `S "SUBCOMMANDS";
           `I ("spec", "Turn a todo into a structured .borg section");
           `I ("code", "Implement a planned section from its spec");
-          `I ("ui", "Generate code from a UI spec section");
-          `I ("db", "Generate code from a DB spec section")]
+          `I ("ui", "Inspect a UI spec section");
+          `I ("db", "Inspect a DB spec section");
+          `I ("target", "Generate target source code from a spec")]
   in
-  Cmd.group info [spec_cmd; code_cmd; ui_cmd; db_cmd]
+  Cmd.group info [spec_cmd; code_cmd; ui_cmd; db_cmd; target_cmd]
+
+(** Note: ui_cmd and db_cmd inspect specs (parse, validate, summarize).
+    They do NOT generate code. The spec IS the artifact.
+    Use 'borge make' for agent-driven spec editing. *)

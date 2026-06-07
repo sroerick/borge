@@ -36,7 +36,10 @@ let review_function (info : Extract_functions.function_info) : function_finding 
           Some {
             name = info.name;
             doc_present = info.docstring <> None;
+            doc_status = if info.docstring = None then Doc_missing else Doc_drifted;
             doc_accuracy = if info.docstring = None then Low else Medium;
+            consistency = Cons_consistent;
+            internal_issues = None;
             signature_match = Unknown;
             behavior_coverage = if info.docstring = None then Missing else Partial;
             structural_issues = None;

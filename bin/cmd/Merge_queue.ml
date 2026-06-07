@@ -9,6 +9,13 @@
 open Borge_lib
 open Queue_types
 
+(* agent note (|
+ *   WHAT: List all pending items in the merge queue, displaying
+ *   their ID, state, branch, confidence, and summary.
+ *
+ *   WHY: The primary command to see what's in the queue waiting
+ *   to be merged.
+ * |) *)
 let list_items () =
   match Queue_storage.load () with
   | Error e ->
@@ -42,6 +49,7 @@ let list_items () =
           (List.assoc "rejected" counts);
       end
 
+(* exempt doc: CLI command handler - purpose is clear from context *)
 let show_item id =
   match Queue_storage.load () with
   | Error e ->
@@ -64,6 +72,7 @@ let show_item id =
                exit 1)
       | Some item -> show_item_detail item
 
+(* exempt doc: CLI detail printer - purpose is clear from context *)
 let show_item_detail (item : queue_item) =
   Printf.printf "Merge Queue Item: %s\n" item.id;
   Printf.printf "  State: %s\n" (string_of_state item.state);
@@ -95,6 +104,15 @@ let show_item_detail (item : queue_item) =
       ) conflicts
     end
 
+(* agent note (|
+ *   WHAT: Submit a completed worktree to the merge queue.
+ *   Validates the worktree exists, extracts branch name, detects
+ *   affected files, checks for lockfile conflicts, and creates
+ *   a queue item for the worktree.
+ *
+ *   WHY: This is how agent worktrees get merged into main after
+ *   successful completion.
+ * |) *)
 let submit_worktree ~worktree_path ~summary ~confidence =
   (* Validate worktree exists *)
   if not (Sys.file_exists worktree_path) then begin
@@ -200,10 +218,12 @@ let cancel_item id =
 
 open Cmdliner
 
+(* exempt doc: cmdliner command definition - purpose is clear *)
 let list_cmd : unit Cmd.t =
   Cmd.v (Cmd.info "list" ~doc:"List all queue items")
     Term.(const list_items $ const ())
 
+(* exempt doc: cmdliner command definition - purpose is clear *)
 let show_cmd : unit Cmd.t =
   let id =
     Arg.(required & pos 0 (some string) None & info [] ~docv:"ID"
@@ -212,6 +232,7 @@ let show_cmd : unit Cmd.t =
   Cmd.v (Cmd.info "show" ~doc:"Show item details")
     Term.(const show_item $ id)
 
+(* exempt doc: cmdliner command definition - purpose is clear *)
 let submit_cmd : unit Cmd.t =
   let worktree =
     Arg.(required & opt (some string) None & info ["worktree"; "w"]

@@ -15,17 +15,21 @@ let run section dir quiet =
 
 open Cmdliner
 
+(* exempt doc *)
 let section =
   Arg.(value & pos 0 string "" & info [] ~docv:"SECTION"
     ~doc:"Section name to execute (implement)")
 
+(* exempt doc *)
 let dir =
   Arg.(value & opt dir "." & info ["dir"; "d"] ~docv:"DIR"
     ~doc:"Project directory")
 
+(* exempt doc *)
 let quiet =
   Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
 
+(* exempt doc *)
 let cmd : unit Cmd.t =
   Cmd.v (Cmd.info "execute" ~doc:"execute (implement) a planned section"
     ~man:[`S "DESCRIPTION";

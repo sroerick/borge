@@ -5,13 +5,13 @@
        The spec is the artifact — borge does NOT generate code. Renderer-agnostic
        semantics for human interpretation and implementation.")
  (no-inline)
- (status planned)
+ (status implemented)
  (exports parse_ui validate_ui ui_to_json
           parse_component parse_layout parse_page)
 
  (section relationship-to-borge
   (doc "UI is an extension of the borge language, not a separate language")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      Borge UI is NOT a new language. It is a set of new sexp forms
@@ -93,7 +93,7 @@
 
  (section theme
   (doc "Theme variables — shared values referenced by all UI elements")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      The (theme ...) form defines named variables for colors, spacing,
@@ -163,7 +163,7 @@
 
  (section ui-form
   (doc "The (ui ...) form — the core building block")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      A ui element is declared with the (ui name ...) form. Name is
@@ -192,7 +192,7 @@
 
  (section layout-properties
   (doc "How elements are arranged inside their parent")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      (layout direction)
@@ -206,7 +206,7 @@
 
   (subsection sizing
    (doc "How elements size themselves within their parent")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
       (width N)        — N fractional parts of parent (flex: N)
@@ -242,7 +242,7 @@
 
   (subsection spacing
    (doc "Padding, gaps, and alignment between children")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
       (padding N)          — equal padding on all sides
@@ -269,7 +269,7 @@
 
  (section style-properties
   (doc "Visual appearance — colors, borders, corners")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      (bg COLOR)            — background color
@@ -320,7 +320,7 @@
 
  (section interactive
   (doc "Capability declarations — what the user can do to an element")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      (interactive click)   — this element responds to clicks/taps
@@ -352,7 +352,7 @@
 
  (section scroll
   (doc "Scrollable containers")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      (scroll vertical)    — scroll content vertically
@@ -364,7 +364,7 @@
 
  (section floating
   (doc "Elements that float above the normal layout flow")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      (float)               — float above siblings, absolute positioned
@@ -394,7 +394,7 @@
 
  (section variants
   (doc "Named variants for responsive design")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      An element can have named variants. Each variant overlays
@@ -437,7 +437,7 @@
 
  (section children
   (doc "Declaring child elements")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      Children are declared explicitly with (children ...):
@@ -467,7 +467,7 @@
 
  (section components
   (doc "Reusable UI pieces — defined once, used anywhere")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      A component is a reusable UI element defined with the
@@ -549,7 +549,7 @@
 
  (section layouts
   (doc "Page-level compositions with slots — structural templates for pages")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      A layout is a structural template that defines the shape of a
@@ -636,7 +636,7 @@
 
  (section pages
   (doc "Concrete pages — fill layout slots with specific content")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      A page is a concrete screen in the application. It picks a
@@ -692,7 +692,7 @@
 
  (section routes
   (doc "URL-to-page mapping for multi-page applications")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      The (routes ...) form maps URLs to pages. The generator
@@ -720,7 +720,7 @@
 
  (section app-structure
   (doc "How a complete multi-page UI spec is organized")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      A complete application spec has one top-level (ui app-name ...)
@@ -891,56 +891,391 @@
  )
 
  (section convention-targets
-  (doc "How the DSL maps to different rendering targets")
-  (status planned)
+  (doc "Code generators: walk the typed UI AST and emit target source")
+  (status in-progress)
   (details
    (doc (|
-     The generator reads the (ui ...) spec and a target convention,
-     then produces code. Each convention knows how to translate:
+     Generators are consumers of ui_ast — the same relationship
+     as ui_json (which emits JSON) and ui_validate (which emits
+     issues). A generator walks the ui_app tree and produces
+     source code for a specific target.
 
-     ocaml-dream target:
-       (layout vertical)  → div with flex-direction: column
-       (width 1)         → flex: 1
-       (bg (palette bg-primary)) → background-color: var(--bg-primary)
-       (interactive click) → htmx attribute or onclick
-       (variant wide)    → @media (min-width: 768px) { ... }
-       (component ...)   → shared template include or sub-view
-       (layout ...)      → layout template that pages extend
-       (page ...)        → route handler that renders filled layout
-       (routes ...)      → Dream router registration
+     Module layout:
+       lib/ui/ui_dream.ml  — ocaml-dream generator (dream_html)
+       lib/ui/ui_clay.ml   — clay-c generator (C structs + Clay API calls)
 
-     clay-c target:
-       (layout vertical)  → CLAY_TOP_TO_BOTTOM
-       (width 1)          → CLAY_SIZING_GROW(0)
-       (bg "#e0d7d2")     → .backgroundColor = { 224, 215, 210, 255 }
-       (interactive click) → Clay_OnHover callback
-       (variant wide)     → conditional in layout loop
-       (component ...)    → C function returning Clay tree
-       (layout ...)       → C function wrapping page content
-       (page ...)         → C function with page-specific content
-       (routes ...)       → page switch function
+     CLI:
+       borge generate --target ocaml-dream  UI_SPEC.borg
+       borge generate --target clay-c        UI_SPEC.borg
 
-     react target:
-       (layout vertical)  → className with flex-col
-       (width 1)          → style={{ flex: 1 }}
-       (bg (palette bg-primary)) → style={{ backgroundColor: theme.bgPrimary }}
-       (interactive click) → onClick prop
-       (variant wide)     → useMediaQuery hook + conditional class
-       (component ...)   → React component
-       (layout ...)      → layout component with slot props
-       (page ...)        → page component
-       (routes ...)      → React Router config
+     Each generator exposes:
+       val generate : ui_app -> string
 
-     The convention also handles breakpoint selection: what screen
-     width maps to "narrow" vs "wide", what the default layout is
-     when no variant matches, etc.
+     The string is the complete output: a .ml file for ocaml-dream,
+     a .c file + .h pair for clay-c. The caller writes it to disk.
+
+     Theme resolution:
+     Before generation, all Palette/Spacing_var/Font_var/Radius_var
+     references are resolved against the theme. If no theme exists,
+     palette references are an error. Keyword colors (blue, dark, etc.)
+     are resolved to hex defaults inside the generator.
+
+     Event emission:
+     Each successful generation prints a structured event to stderr:
+       (generated ui-APP-NAME TARGET at PATH)
+     This provides the audit trail for future drift detection
+     and the cybernetic loop.
    |))
+  )
+
+  (subsection ocaml-dream-target
+   (doc "Generate dream_html OCaml code from a UI spec")
+   (status planned)
+   (details
+    (doc (|
+       Target: Victor's actual stack. Produces an OCaml module
+       that opens Dream_html and constructs the full UI as
+       dream_html nodes. The output is a .ml file that can be
+       compiled into any Dream application.
+
+       Module structure of generated code:
+         let render_PAGE_NAME () : Html.node = ...
+         let render_COMPONENT_NAME ~(content : Html.node list) () : Html.node = ...
+         let register_routes () = Dream.router [...]
+
+       Mapping table — UI AST → dream_html:
+
+       Layout:
+         Horizontal           → Html.div ~a:[Html.a_class ["flex-row"]] [children]
+         Vertical             → Html.div ~a:[Html.a_class ["flex-col"]] [children]
+
+       Sizing:
+         (width N)            → Html.a_style "flex: N"
+         (width grow)         → Html.a_style "flex: 1 1 0%"
+         (width full)         → Html.a_style "width: 100%"
+         (width auto)         → no style (natural sizing)
+         (width (px 300))     → Html.a_style "width: 300px"
+         (width (rem 2))      → Html.a_style "width: 2rem"
+         (width (pct 25))     → Html.a_style "width: 25%"
+         (height ...)         → same as width with height property
+
+       Colors:
+         (bg (palette X))     → resolve from theme, emit Html.a_style "background-color: #hex"
+         (bg "#a8421c")       → Html.a_style "background-color: #a8421c"
+         (bg blue)            → resolve keyword to hex default
+         (color ...)          → same pattern with "color" CSS property
+
+       Spacing:
+         (padding N)          → Html.a_style "padding: Npx"
+                                (all sides when uniform)
+         (padding (top N) (right N) (bottom N) (left N))
+                              → Html.a_style "padding: Tpx Rpx Bpx Lpx"
+         (gap N)              → Html.a_style "gap: Npx"
+                                (flex gap property)
+
+       Border:
+         (border (width N) (color C))
+                              → Html.a_style "border: Npx solid #hex"
+         (border (bottom (width N) (color C)))
+                              → Html.a_style "border-bottom: Npx solid #hex"
+
+       Corner:
+         (corner N)           → Html.a_style "border-radius: Npx"
+         (corner (top-left N) (top-right N) ...)
+                              → Html.a_style "border-radius: TLpx TRpx BLpx BRpx"
+
+       Alignment:
+         (align-x left)       → Html.a_class ["items-start"]
+         (align-x center)     → Html.a_class ["items-center"]
+         (align-x right)      → Html.a_class ["items-end"]
+         (align-y top)        → Html.a_class ["justify-start"]
+         (align-y center)     → Html.a_class ["justify-center"]
+         (align-y bottom)     → Html.a_class ["justify-end"]
+
+       Scroll:
+         (scroll vertical)    → Html.a_style "overflow-y: auto"
+         (scroll horizontal)  → Html.a_style "overflow-x: auto"
+         (scroll both)        → Html.a_style "overflow: auto"
+
+       Interaction:
+         (interactive click)   → Html.a_on_click handler or Hx.hx_post 
+                                (convention-dependent; default: htmx)
+         (interactive type)   → input element with type attribute
+         (interactive hover)  → CSS :hover (no code generated)
+
+       Float:
+         (float)              → Html.a_style "position: absolute"
+         (float (attach parent)) → Html.a_style "position: relative" on parent
+         (float (offset (top 8))) → Html.a_style "top: 8px"
+
+       Variants:
+         (variant wide ...)   → @media (min-width: 768px) { ... }
+                                emitted as a <style> block at the top of
+                                the page, or as a Tailwind responsive class
+                                if the convention specifies Tailwind.
+                                Default breakpoint: narrow=0-767, wide=768+
+
+       Components:
+         (component X ...)    → let render_x ~(content : Html.node list) () : Html.node = ...
+                                The function takes slot content as parameters.
+                                Default slot is ~content. Named slots are
+                                additional labeled parameters.
+
+       Layouts:
+         (layout X ...)       → let render_x_layout ~(slots) () : Html.node = ...
+                                Slots are labeled parameters matching the
+                                slot names. Default slot is ~content.
+
+       Pages:
+         (page X (use-layout Y) (fill ...))
+                              → let render_x () : Html.node =
+                                  render_y_layout ~slot_name:content ()
+                                Where content is the filled-in elements.
+
+       Routes:
+         (route "/" home)    → Dream.get "/" (fun _ ->
+                                  Dream_html.respond (render_home ()))
+
+       Style merging:
+       Multiple (a_style ...) attributes on the same element are
+       merged into a single attribute with semicolons. Multiple
+       (a_class ...) lists are concatenated. This avoids invalid
+       HTML from duplicate attributes.
+
+       Theme as CSS custom properties:
+       When the spec has a theme, the generator emits a <style> block
+       at the top of the first page root:
+         :root {
+           --bg-primary: #e0d7d2;
+           --bg-surface: #f5f0eb;
+           --spacing-md: 16px;
+           --font-size-lg: 18px;
+           --radius-md: 8px;
+         }
+       Then (bg (palette bg-primary)) can emit either the resolved
+       value directly or var(--bg-primary). The default is to
+       resolve inline for simplicity. A --css-vars flag forces
+       var() references.
+     |))
+   )
+  )
+
+  (subsection clay-c-target
+   (doc "Generate Clay C code from a UI spec — for raylib/pico rendering")
+   (status planned)
+   (details
+    (doc (|
+       Target: Clay layout library rendered via raylib. Produces
+       a pair of .c/.h files that construct Clay layout trees
+       callable from a raylib render loop. Primary use: pico
+       firmware screens, but also any C application using Clay.
+
+       Assumes:
+         - Clay is initialized (Clay_CreateArena, Clay_Initialize)
+         - raylib or equivalent renders the Clay output
+         - The generated code is called once per frame inside
+           the render loop
+
+       Module structure of generated code:
+         // ui_app_name.h — declarations
+         void layout_app_name(void);
+         void layout_PAGE_NAME(void);
+         Clay_Children render_COMPONENT_NAME(void);
+
+         // ui_app_name.c — definitions
+         Clay_Children render_COMPONENT_NAME(void) { ... }
+         void layout_PAGE_NAME(void) { ... }
+         void layout_app_name(int screen_width, int screen_height) { ... }
+
+       The top-level layout function selects the active page
+       based on application state (page switch function from
+       the routes section). The caller sets a global variable
+       or passes a page enum to select which page to render.
+
+       Mapping table — UI AST → Clay C:
+
+       Layout:
+         Horizontal       → .layoutDirection = CLAY_LEFT_TO_RIGHT
+         Vertical         → .layoutDirection = CLAY_TOP_TO_BOTTOM
+
+       Sizing:
+         (width N)        → .sizing.width = { CLAY_SIZING_GROW(N), CLAY_SIZING_GROW(N) }
+                            Clay's grow takes {min, max}. (width 1) emits
+                            grow with weight 1. (width 3) emits grow with
+                            weight 3. Clay distributes space proportionally.
+         (width grow)     → .sizing.width = { CLAY_SIZING_GROW(0), CLAY_SIZING_GROW(0) }
+         (width full)     → .sizing.width = CLAY_SIZING_PERCENT(1.0f)
+                            (100% of parent; Clay uses percent for this)
+         (width auto)     → .sizing.width = { CLAY_SIZING_FIT, CLAY_SIZING_FIT }
+         (width (px 300)) → .sizing.width = { CLAY_SIZING_FIXED(300), CLAY_SIZING_FIXED(300) }
+                            Clay uses FIXED for pixel values.
+         (height ...)     → same as width with .sizing.height
+
+       Colors:
+         (bg "#e0d7d2")   → .backgroundColor = { 224, 215, 210, 255 }
+                            Hex → RGBA. Alpha defaults to 255.
+         (bg (palette X)) → resolve from theme, then hex→RGBA
+         (bg blue)        → resolve keyword to default hex, then hex→RGBA
+                            Default keyword map:
+                              red={220,60,60,255} blue={60,120,220,255}
+                              green={60,180,80,255} dark={40,40,40,255}
+                              white={255,255,255,255} black={0,0,0,255}
+                              gray={128,128,128,255} light={230,230,230,255}
+                              transparent={0,0,0,0}
+         (color ...)      → .textColor = { r, g, b, a }
+                            Same hex→RGBA conversion.
+
+       Spacing:
+         (padding N)      → .padding = { N, N, N, N }
+                            Uniform padding: { top, right, bottom, left }
+         (padding (top T) (right R) (bottom B) (left L))
+                          → .padding = { T, R, B, L }
+         (gap N)          → .childGap = N
+
+       Border:
+         (border (width N) (color C))
+                          → Element rendered as CLAY_RECTANGLE with border:
+                            .border = { N, N, N, N }
+                            .borderColor = { r, g, b, a }
+         (border (bottom (width N) (color C)))
+                          → .border = { 0, 0, N, 0 }
+                            .borderColor = { r, g, b, a, 0, 0, r, g, b, a, 0, 0, ... }
+                            Clay uses per-side border widths.
+
+       Corner:
+         (corner N)       → .cornerRadius = { N, N, N, N }
+                            Uniform: { topLeft, topRight, bottomLeft, bottomRight }
+         (corner (top-left TL) (top-right TR) (bottom-left BL) (bottom-right BR))
+                          → .cornerRadius = { TL, TR, BL, BR }
+
+       Alignment:
+         (align-x left)   → .childAlignment.x = CLAY_ALIGN_X_LEFT
+         (align-x center) → .childAlignment.x = CLAY_ALIGN_X_CENTER
+         (align-x right)  → .childAlignment.x = CLAY_ALIGN_X_RIGHT
+         (align-y top)    → .childAlignment.y = CLAY_ALIGN_Y_TOP
+         (align-y center) → .childAlignment.y = CLAY_ALIGN_Y_CENTER
+         (align-y bottom) → .childAlignment.y = CLAY_ALIGN_Y_BOTTOM
+
+       Scroll:
+         (scroll vertical)   → .scroll = { .vertical = true }
+         (scroll horizontal) → .scroll = { .horizontal = true }
+         (scroll both)       → .scroll = { .vertical = true, .horizontal = true }
+
+       Interaction:
+         (interactive click)  → .onHover = handle_ELEMENT_NAME_hover
+                                 The generator emits a stub handler:
+                                   void handle_ELEMENT_NAME_hover(Clay_HoverState state) {
+                                     // TODO: implement click handling
+                                   }
+                                 The stub is a placeholder. The application
+                                 fills in the actual click behavior.
+         (interactive hover)  → same as click (Clay uses OnHover for both)
+         (interactive type)   → Not directly mappable. Clay doesn't have
+                                 built-in text input. The generator emits
+                                 a comment: /* TODO: text input for ELEMENT_NAME */
+                                 and renders the element as a rectangle
+                                 with a border to indicate an input field.
+
+       Float:
+         (float)             → .position = { .x = 0, .y = 0 }
+                               .elementIsFloating = true
+         (float (attach parent)) → .position = { .x = 0, .y = 0 } (relative)
+         (float (offset (top 8))) → .position = { .x = offsetX, .y = 8 }
+
+       Text:
+         Text elements are rendered via CLAY_TEXT:
+           CLAY_TEXT(CLAY_STRING("Hello"),
+             (Clay_TextElementConfig) {
+               .fontSize = 14,
+               .textColor = { 26, 26, 26, 255 }
+             });
+         (text STRING)                    → CLAY_TEXT with default size/color
+         (text STRING (size N))           → .fontSize = N
+         (text STRING (size (font-size X))) → resolve from theme, .fontSize = N
+         (text STRING (color C))          → .textColor = resolved RGBA
+         (text STRING (bold))             → .fontSize = N, bold is noted in comment
+                                            (Clay doesn't have a bold flag;
+                                            the application loads a bold font
+                                            and the generator emits a TODO)
+
+       Variants:
+         (variant wide ...)   → The generator emits conditional layout:
+                                  if (screen_width >= 768) {
+                                    // wide variant properties
+                                  } else {
+                                    // base or narrow variant properties
+                                  }
+                                Screen dimensions are passed to the
+                                top-level layout function.
+                                Default breakpoint: 768px.
+         (variant narrow ...) → The else branch of the wide variant,
+                                or the conditional for screen_width < 768.
+                                If only one variant exists, the base
+                                properties are used when the variant
+                                condition is false.
+
+       Components:
+         (component X ...)   → Clay_Children render_X(void) { ... }
+                                The function returns a Clay_Children
+                                that the caller can attach to a CLAY_CONTAINER.
+                                Slots are handled by having the caller
+                                provide child content between the
+                                CLAY_CONTAINER open and close.
+
+       Layouts:
+         (layout X ...)      → void layout_X(int screen_width, int screen_height) { ... }
+                                Emits the full Clay element tree for this layout.
+                                Slot positions are marked with comments:
+                                  /* SLOT: slot-name */
+                                The application inserts content at these points.
+
+       Pages:
+         (page X (use-layout Y) (fill ...))
+                              → void layout_page_X(int screen_width, int screen_height) {
+                                    layout_Y(screen_width, screen_height);
+                                    /* fill slot-name with page content */
+                                  }
+                                Page fills are inlined at the slot positions.
+
+       Routes:
+         (routes ...)        → void layout_app(int screen_width, int screen_height) {
+                                  switch (current_page) {
+                                    case PAGE_HOME: layout_page_home(w, h); break;
+                                    case PAGE_DASHBOARD: layout_page_dashboard(w, h); break;
+                                  }
+                                }
+                                + enum page { PAGE_HOME, PAGE_DASHBOARD, ... };
+                                + global: enum page current_page = PAGE_HOME;
+                                The application sets current_page to switch screens.
+
+       Resolving theme variables for Clay:
+       Clay has no CSS variables. All references must be resolved
+       to literal values at generation time. The generator:
+         1. Collects all Palette/Spacing_var/Font_var/Radius_var references
+         2. Looks up each in the theme
+         3. Substitutes the resolved value inline
+         4. Errors on unresolved references (no theme = error)
+       This is stricter than the HTML target (which can use CSS vars)
+       but necessary for C — there are no runtime style lookups.
+
+       C identifier sanitization:
+       Element and component names are sanitized into valid C identifiers:
+         sidebar       → sidebar
+         nav-bar       → nav_bar
+         bg-primary    → bg_primary
+         ..content     → (slot, not an identifier)
+       Prefixes to avoid C keyword collisions:
+         render_ for component functions
+         layout_ for page functions
+         handle_ for event handlers
+     |))
+   )
   )
  )
 
  (section agentic-editing
   (doc "How agents edit UI specs using borge make")
-  (status planned)
+  (status implemented)
   (details
    (doc (|
      borge make

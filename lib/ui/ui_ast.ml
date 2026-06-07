@@ -142,11 +142,17 @@ and ui_property =
   | P_align_x of alignment
   | P_align_y of alignment
 
+(** A child of a UI element — either a sub-element or a slot reference *)
+and ui_child =
+  | El of ui_element            (** a concrete child element *)
+  | Slot_ref of string          (** ..name — a named slot reference *)
+
 (** A UI element — the core building block *)
 and ui_element = {
   name : string option;        (** None for anonymous elements *)
   properties : ui_property list;
-  children : ui_element list;  (** empty if no (children ...) *)
+  children : ui_child list;    (** empty if no (children ...) *)
+  text : string option;        (** Some "text" for inline text nodes *)
   variants : variant list;
 }
 
@@ -160,7 +166,7 @@ type component = {
   name : string;
   properties : ui_property list;
   slots : slot list;
-  children : ui_element list;
+  children : ui_child list;
   variants : variant list;
 }
 

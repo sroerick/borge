@@ -14,6 +14,13 @@ type result = {
   failed : int;
 }
 
+(* agent note (|
+ *   WHAT: Parse a .borg file and validate its structure.
+ *   Returns Ok with project name and form count, or Error with
+ *   a descriptive message if parsing fails.
+ *   WHY: Used by borge check to validate individual .borg files
+ *   and ensure they have valid syntax and a project node.
+ * |) *)
 let check_file path =
   let input = File_utils.read_file path in
   try
@@ -26,6 +33,13 @@ let check_file path =
   with Error.Parse_error e ->
     Error { path; message = Printf.sprintf "parse error at %d:%d - %s" e.Error.line e.Error.column e.Error.message }
 
+(* agent note (|
+ *   WHAT: Check all .borg files in a directory for validity.
+ *   Parses each file, validates structure, counts forms, and
+ *   detects orphaned files.
+ *   WHY: The main entry point for borge check command, providing
+ *   a pass/fail validation of the project's spec files.
+ * |) *)
 let run dir =
   let files = File_utils.find_borg_files dir in
   let results = List.map check_file files in

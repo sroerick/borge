@@ -47,9 +47,11 @@ let test_doc_coverage () =
     total_bindings = 5;
     documented = 3;
     exempt = 1;
+    drifted = 0;
     undocumented = 1;
     coverage_percent = 75.0;
     undocumented_names = ["helper"];
+    drifted_names = [];
   }
   in
   Alcotest.(check (float 0.01)) "Coverage calc" 75.0 fc.coverage_percent;

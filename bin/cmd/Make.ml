@@ -91,14 +91,17 @@ let run no_commit dir quiet =
 
 open Cmdliner
 
+(* exempt doc *)
 let no_commit =
   Arg.(value & flag & info ["no-commit"]
     ~doc:"Leave changes in working tree; do not auto-commit")
 
+(* exempt doc *)
 let dir =
   Arg.(value & opt dir "." & info ["dir"; "d"] ~docv:"DIR"
     ~doc:"Project directory")
 
+(* exempt doc *)
 let quiet =
   Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
 

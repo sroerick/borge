@@ -90,4 +90,183 @@
       |))
   )
  )
-)
+ (section session-reports
+  (doc "Structured HTML output for every agent session")
+  (status planned)
+  (details
+   (doc (|
+        Every borge command that opens a harness (make, plan,
+        drift --agent) generates a structured HTML session report
+        on commit. The report is a committed artifact in the repo,
+        not a separate database. This makes agent sessions:
+        - Auditable without digging through .borge.lock/ before deletion
+        - Browsable by clicking through .borge-history/
+        - Renderable by victor (iframe or hx-get) and brochure
+          (as part of the public site)
+        - Persistent — they live in git, not in a database
+
+        The report replaces the need for victor's job queue output
+        storage. Instead of streaming agent output to a PostgreSQL
+        table, borge commits the report as HTML. Victor reads it.
+        This is a major architectural simplification: borge owns
+        the content, victor and brochure are just viewers.
+      |))
+  )
+  (subsection report-generation
+   (doc "How session reports are generated during Lock.teardown")
+   (status planned)
+   (details
+    (doc (|
+         On borge commit, before removing .borge.lock/:
+
+         1. Read .borge.lock/prompt.md — what was the agent asked
+         2. Read .borge.lock/journal — what the agent claimed to do
+         3. Read .borge.lock/role — implementer / spec-writer / observer
+         4. Read .borge.lock/state — completed / failed
+         5. Run git diff HEAD — what actually changed in code
+         6. Parse .borg status transitions (planned → implemented)
+         7. Generate .borge-history/session-{timestamp}.html
+         8. Generate/update .borge-history/index.html
+            (reverse chronological, newest first)
+         9. Git add .borge-history/ with the rest of the commit
+        10. THEN remove .borge.lock/
+
+         The report is pure static HTML with embedded CSS.
+         No JavaScript framework. No external dependencies.
+         The CSS uses the same variable set as victor so the
+         visual language is consistent.
+
+         lib/lock/session_report.ml is the generator module.
+         Called from Lock.teardown after integrity check passes.
+        |))))
+  (subsection report-structure
+   (doc "What each session report HTML page contains")
+   (status planned)
+   (details
+    (doc (|
+         Each session-{timestamp}.html contains two views,
+         switchable via a tab or toggle:
+
+         VIEW 1: DIFF (default)
+         Shows what changed in the codebase:
+         - File list with +/- line counts
+         - Expandable per-file diffs
+         - Semantic highlights for .borg files:
+           Status transitions (planned → implemented) in green
+           New spec sections in blue
+           Deleted human comments in red
+           New agent comments in yellow
+         - Standard diff coloring for code files
+         - Summary: N files changed, N insertions, N deletions
+
+         VIEW 2: FULL SESSION
+         Shows the complete agent session:
+         - Role badge (Implementer / Spec-writer / Observer)
+         - Prompt summary (first N lines, click to expand full)
+         - Full journal entries (timestamped, structured)
+         - State: Completed / Failed
+         - Time elapsed (from lock creation to teardown)
+         - Files touched summary table
+         - Confirmed: integrity check passed / failed
+
+         Both views are in a single HTML file with CSS-driven
+         tab switching. No JS required for basic functionality.
+        |))))
+  (subsection report-index
+   (doc "The .borge-history/index.html session browser")
+   (status planned)
+   (details
+    (doc (|
+         .borge-history/index.html lists all sessions in reverse
+         chronological order. Each entry shows:
+         - Timestamp
+         - Role badge
+         - Session summary (first line of journal or prompt)
+         - File count and +/- summary
+         - Status (completed / failed)
+
+         Clicking an entry navigates to session-{timestamp}.html.
+         The index defaults to highlighting the latest session.
+
+         borge history:
+           Opens file:// or launches a simple HTTP server
+           pointing at .borge-history/index.html.
+           If $BROWSER is set, opens in browser.
+           Otherwise, prints the path.
+
+         borge history --serve [--port 8080]:
+           Starts python3 -m http.server (or similar) at
+           .borge-history/ for interactive browsing.
+        |))))
+  (subsection diff-rendering
+   (doc "Semantic diff rendering for .borg files")
+   (status planned)
+   (details
+    (doc (|
+         The diff view in session reports uses the same semantic
+         awareness as borge diff:
+         - Status transitions: (status planned) → (status implemented)
+           rendered as highlighted green with a transition arrow
+         - New sections: (section ...) additions in blue
+         - Deleted human comments: red with warning icon
+         - New agent comments: yellow with agent icon
+         - Plain text diff: standard +/- coloring
+
+         The diff renderer is a function:
+           git_diff_output → structured_html
+
+         It does NOT use x-ocaml (which is for embedding
+         executable OCaml in web pages). Diff rendering is
+         pure server-side HTML generation. x-ocaml could be
+         used later for interactive code examples in reports,
+         but is NOT needed for diff rendering.
+
+         For code file diffs (.ml, .go, .c, etc.), the renderer
+         provides standard unified diff format with line numbers
+         and syntax-aware highlighting where available.
+        |))))
+  (subsection victor-integration
+   (doc "How victor consumes session reports instead of job queue output")
+   (status planned)
+   (details
+    (doc (|
+         With session reports in borge, victor's architecture
+         simplifies dramatically:
+
+         BEFORE (current):
+           Victor job panel → PostgreSQL job queue → Worker process
+           → Stream output → Store in DB → Render in panel
+
+         AFTER (with session reports):
+           Victor job panel → Read .borge-history/session-{id}.html
+
+         The job panel becomes a list of links to session reports.
+         No job queue table. No output streaming. No worker
+         polling. No DB writes for content. Victor is a VIEWER
+         for borge's committed output, not a storage engine.
+
+         The PostgreSQL table for jobs shrinks to:
+           id, session_path, status, started_at, completed_at
+         The actual content lives in the repo.
+
+         Victor can still trigger borge make / plan / drift via
+         htmx POST, but it no longer needs to store the output.
+         It waits for the commit, then reads the session report.
+
+         See victor.borg section session-reports-consumption for
+         the full victor-side spec.
+        |))))
+  (subsection brochure-integration
+   (doc "How brochure renders build history as part of the public site")
+   (status planned)
+   (details
+    (doc (|
+         Brochure walks .borge-history/ and includes it in the
+         generated static site. The public gets a Build History
+         page linked from the landing page. Each session is
+         browsable with the same visual treatment as the rest
+         of the brochure site.
+
+         See brochure.borg section build-history for the full
+         brochure-side spec.
+        |))))))

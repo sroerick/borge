@@ -119,10 +119,39 @@ let parse_function_block sexp_str =
       else Low
     in
     
+    let doc_status =
+      if Str.string_match (Str.regexp "(doc-status[ \t]+accurate") sexp_str 0 then Doc_accurate
+      else if Str.string_match (Str.regexp "(doc-status[ \t]+drifted") sexp_str 0 then Doc_drifted
+      else if Str.string_match (Str.regexp "(doc-status[ \t]+missing") sexp_str 0 then Doc_missing
+      else if doc_present then Doc_accurate else Doc_missing
+    in
+    
+    let (consistency : consistency) =
+      if Str.string_match (Str.regexp "(consistency[ \t]+consistent") sexp_str 0 then Cons_consistent
+      else if Str.string_match (Str.regexp "(consistency[ \t]+questionable") sexp_str 0 then Cons_questionable
+      else if Str.string_match (Str.regexp "(consistency[ \t]+inconsistent") sexp_str 0 then Cons_inconsistent
+      else Cons_consistent
+    in
+    
+    let internal_issues =
+      if Str.string_match (Str.regexp "(internal-issues[\t ]+\"") sexp_str 0 then
+        let issues_start = Str.match_end () in
+        match String.index_from sexp_str issues_start '"' with
+        | exception Not_found -> None
+        | issues_end ->
+            let issues = String.sub sexp_str issues_start (issues_end - issues_start) in
+            if issues = "none" || issues = "" then None else Some issues
+      else
+        None
+    in
+    
     Ok {
       name;
       doc_present;
+      doc_status;
       doc_accuracy;
+      consistency;
+      internal_issues;
       signature_match;
       behavior_coverage;
       structural_issues;

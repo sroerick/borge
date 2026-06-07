@@ -72,10 +72,18 @@ let string_of_confidence = function
   | Medium -> "medium"
   | Low -> "low"
 
+(* agent note (|
+ *   WHAT: Convert a source variant to string for display.
+ *   WHY: Used when formatting meta file content.
+ * |) *)
 let string_of_source = function
   | Static -> "static"
   | Agent -> "agent"
 
+(* agent note (|
+ *   WHAT: Convert a source variant to string for display.
+ *   WHY: Used when formatting meta file content.
+ * |) *)
 let string_of_finding_type = function
   | Unspecified_module -> "unspecified-module"
   | Phantom_spec -> "phantom-spec"

@@ -56,5 +56,12 @@ let parse_file input =
       Error.error ~line:pos.Lexing.pos_lnum ~column:(pos.Lexing.pos_cnum - pos.Lexing.pos_bol)
         "Parse error"
 
+(* agent note (|
+ *   WHAT: Parse a borge file from a string input, returning the
+ *   AST or raising a parse error.
+ *
+ *   WHY: Convenience wrapper around parse_file for when input is
+ *   already in memory as a string.
+ * |) *)
 let parse input =
   parse_file input

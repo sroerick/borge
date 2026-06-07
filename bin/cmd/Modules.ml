@@ -5,6 +5,7 @@
 
 open Borge_lib
 
+(** Check all module specs for referential integrity *)
 let run_check ~dir ~json =
   let specs = Module_spec.load_all_specs dir in
 
@@ -42,6 +43,7 @@ let run_check ~dir ~json =
     if !total_issues > 0 then exit 1 else exit 0
   end
 
+(** List all discovered module specs without checking *)
 let run_list ~dir =
   let specs = Module_spec.load_all_specs dir in
   if specs = [] then
@@ -53,6 +55,7 @@ let run_list ~dir =
     ) specs
   end
 
+(** Main entry point: route to check/list/function-names *)
 let run function_names path dir list json =
   if list then run_list ~dir
   else if function_names then begin
@@ -69,20 +72,25 @@ let run function_names path dir list json =
 
 open Cmdliner
 
+(* exempt doc *)
 let function_names_flag =
   Arg.(value & flag & info ["functions"] ~doc:"List functions in a file")
 
+(* exempt doc *)
 let path =
   Arg.(value & opt (some string) None & info ["path"] ~docv:"FILE"
     ~doc:"Path to OCaml file")
 
+(* exempt doc *)
 let dir =
   Arg.(value & opt string "." & info ["dir"; "d"] ~docv:"DIR"
     ~doc:"Project directory")
 
+(* exempt doc *)
 let list_flag =
   Arg.(value & flag & info ["list"; "l"] ~doc:"List discovered module specs")
 
+(* exempt doc *)
 let json =
   Arg.(value & flag & info ["json"] ~doc:"Output as JSON")
 

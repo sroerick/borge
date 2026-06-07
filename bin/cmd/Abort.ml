@@ -29,9 +29,11 @@ let run quiet =
 
 open Cmdliner
 
+(* exempt doc *)
 let quiet =
   Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
 
+(* exempt doc *)
 let cmd : unit Cmd.t =
   Cmd.v (Cmd.info "abort" ~doc:"abort the current agent session and restore .borg files"
     ~man:[`S "DESCRIPTION";

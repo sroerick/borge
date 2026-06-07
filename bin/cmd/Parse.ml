@@ -1,3 +1,4 @@
+(** Read entire file contents into a string *)
 let parse_file path =
   let ic = open_in path in
   let n = in_channel_length ic in
@@ -6,6 +7,7 @@ let parse_file path =
   close_in ic;
   Bytes.to_string input
 
+(** Parse a .borg file and optionally print diagnostics *)
 let run path json diagnostics quiet =
   let input = parse_file path in
   try
@@ -38,16 +40,20 @@ let run path json diagnostics quiet =
 
 open Cmdliner
 
+(* exempt doc *)
 let path =
   Arg.(required & pos 0 (some file) None & info [] ~docv:"FILE"
     ~doc:"The .borg file to parse")
 
+(* exempt doc *)
 let json =
   Arg.(value & flag & info ["json"] ~doc:"Output AST as JSON")
 
+(* exempt doc *)
 let diagnostics =
   Arg.(value & flag & info ["diagnostics"] ~doc:"Output LSP-compatible diagnostics")
 
+(* exempt doc *)
 let quiet =
   Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
 

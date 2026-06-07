@@ -37,7 +37,7 @@ let gather_prompt_data () =
 
 let write_prompt role =
   let spec_files, module_surfaces = gather_prompt_data () in
-  let prompt = Lock_prompt.make_prompt role ~convention:"ocaml-dune" ~spec_files ~module_surfaces in
+  let prompt = Lock_prompt.make_prompt role ~convention:(Convention.name (Convention.resolve ".")) ~spec_files ~module_surfaces in
   let path = Lock.prompt_file () in
   let oc = open_out path in
   output_string oc prompt;
@@ -91,14 +91,17 @@ let run no_commit dir quiet =
 
 open Cmdliner
 
+(* exempt doc *)
 let no_commit =
   Arg.(value & flag & info ["no-commit"]
     ~doc:"Leave changes in working tree; do not auto-commit")
 
+(* exempt doc *)
 let dir =
   Arg.(value & opt dir "." & info ["dir"; "d"] ~docv:"DIR"
     ~doc:"Project directory")
 
+(* exempt doc *)
 let quiet =
   Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
 

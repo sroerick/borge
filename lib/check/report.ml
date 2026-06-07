@@ -20,6 +20,13 @@ type result = {
   orphans : string list;  (** .borg files not in the inline tree *)
 }
 
+(* agent note (|
+ *   WHAT: Parse a .borg file and extract status counts.
+ *   Returns file_stats with path, project name, and counts of
+ *   implemented, in_progress, and planned sections.
+ *   WHY: Used by borge report to compute per-file and aggregate
+ *   statistics about spec completion.
+ * |) *)
 let stats_of_file path =
   let input = File_utils.read_file path in
   try

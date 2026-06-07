@@ -14,13 +14,25 @@ type module_surface = {
   source : [ `Mli of string | `Ml_inferred of string ];
 }
 
-(** Check if a character is valid in an OCaml identifier *)
+(* agent note (|
+ *   WHAT: Check if a character is valid in an OCaml identifier.
+ *   Includes letters, digits, underscore, and prime.
+ *
+ *   WHY: Used by name extraction functions to properly parse
+ *   OCaml identifiers.
+ * |) *)
 let is_ident_char c =
   (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
   (c >= '0' && c <= '9') || c = '_' || c = '\''
 
-(** Extract the name after 'let' in a top-level binding.
-    Returns None if it's 'let ()', 'let _', or not at column 0. *)
+(* agent note (|
+ *   WHAT: Extract the binding name from a top-level let expression.
+ *   Handles "let name", "let rec name", "let name : type", etc.
+ *   Returns None for let (), let _, let open, or non-let lines.
+ *
+ *   WHY: The core extraction function for inferring module surface
+ *   from .ml files without .mli.
+ * |) *)
 let extract_toplevel_let_name line =
   let len = String.length line in
   if len < 4 then None
@@ -49,7 +61,13 @@ let extract_toplevel_let_name line =
     end
   end
 
-(** Extract the name from 'type t = ...' or 'type name = ...' *)
+(* agent note (|
+ *   WHAT: Extract type name from a type definition line.
+ *   Handles "type t", "type name", "type 'a t", "type nonrec t", etc.
+ *
+ *   WHY: Part of surface inference - extracts type definitions from
+ *   .ml files to build the module's export list.
+ * |) *)
 let extract_type_name line =
   let len = String.length line in
   if len < 5 then None
@@ -83,7 +101,12 @@ let extract_type_name line =
     end
   end
 
-(** Extract the name from 'exception E ...' *)
+(* agent note (|
+ *   WHAT: Extract exception name from an exception definition.
+ *   Handles "exception E" and "exception E of type".
+ *
+ *   WHY: Exceptions are part of the public module surface.
+ * |) *)
 let extract_exception_name line =
   let len = String.length line in
   if len < 10 then None
@@ -102,7 +125,12 @@ let extract_exception_name line =
     end
   end
 
-(** Extract the name from 'module M ...' *)
+(* agent note (|
+ *   WHAT: Extract module name from a module declaration.
+ *   Handles "module M = ..." and "module type T = ...".
+ *
+ *   WHY: Module declarations are part of the public surface.
+ * |) *)
 let extract_module_name line =
   let len = String.length line in
   if len < 7 then None
@@ -130,8 +158,12 @@ let extract_module_name line =
     end
   end
 
-(** Extract all exports from an .ml or .mli file.
-    Only looks at column 0 (top-level) declarations. *)
+(* agent note (|
+ *   WHAT: Extract all exports from an .ml or .mli file.
+ *   Only looks at column 0 (top-level) declarations.
+ *
+ *   WHY: The main surface extraction function for source files.
+ * |) *)
 let extract_exports content =
   let lines = String.split_on_char '\n' content in
   let names = ref [] in
@@ -151,8 +183,13 @@ let extract_exports content =
   ) lines;
   List.sort String.compare (List.sort_uniq String.compare !names)
 
-(** Extract the surface of a single module given its .ml path.
-    If a .mli exists, use that instead (it's authoritative). *)
+(* agent note (|
+ *   WHAT: Extract the surface of a single module given its .ml path.
+ *   If a .mli exists, use that instead (it's authoritative).
+ *
+ *   WHY: The main entry point for getting a module's public interface
+ *   for drift checking.
+ * |) *)
 let extract_surface ml_path =
   let mli_path = Filename.chop_extension ml_path ^ ".mli" in
   let module_name = String.capitalize_ascii
@@ -166,7 +203,12 @@ let extract_surface ml_path =
     { path = ml_path; module_name; exports = extract_exports content;
       source = `Ml_inferred ml_path }
 
-(** Find .ml files in a directory *)
+(* agent note (|
+ *   WHAT: Find .ml files in a directory recursively.
+ *   Excludes _build and .git directories.
+ *
+ *   WHY: Need to enumerate source files for surface extraction.
+ * |) *)
 let find_ml_files dir =
   let rec find path =
     try
@@ -183,7 +225,12 @@ let find_ml_files dir =
   in
   List.sort String.compare (find dir)
 
-(** Extract surfaces for all modules listed in a dune library. *)
+(* agent note (|
+ *   WHAT: Extract surfaces for all modules listed in a dune library.
+ *   Matches .ml files to library module names and extracts each.
+ *
+ *   WHY: Used to build complete library surface for drift checking.
+ * |) *)
 let surfaces_for_library ml_files lib_modules =
   List.filter_map (fun mod_name ->
     let capitalized = String.capitalize_ascii mod_name in

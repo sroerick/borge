@@ -1,17 +1,21 @@
 (* Detect documentation comments and exempt markers in OCaml code
  *
- * roerick note (|
- *   Identifies various documentation formats and exempt markers:
- *   - Standard docstrings: (** ... *)
- *   - Borg annotated: (* author note (|...|) *)
- *   - Short borg: (*| ... |*)
- *   - Exempt: (* exempt doc *)
+ * agent note (|
+ *   WHAT: Identifies documentation formats, exempt markers, and drift
+ *   status markers preceding let bindings in OCaml source files.
+ *   Supports docstrings, borg-annotated comments, short borg comments,
+ *   exempt markers, and (status drifted) detection.
+ *
+ *   WHY: Downstream tools (doc_coverage, lint) need to know whether
+ *   a binding is documented, exempt, or has a known-stale comment.
+ *   The drifted status lets us distinguish between "no comment" and
+ *   "comment exists but is known to be inaccurate."
  * |) *)
 
 (** Types of documentation found *)
 type doc_kind =
   | Docstring of string     (** (** ... *) *)
-  | Borg_note of string * string  (** (* author note (|...|) *) *)
+  | Borg_note of string * string  (** borg-annotated comment *)
   | Borg_short of string    (** (*| ... |*) *)
   | Exempt_marker           (** (* exempt doc *) *)
 
@@ -21,18 +25,63 @@ type doc_position =
   | Inline                  (** Same line as binding - rare *)
   | None_found
 
+(* agent note (|
+ *   WHAT: Check whether a comment string contains a (status drifted) marker.
+ *   Scans the entire text for the literal substring "(status drifted)".
+ *
+ *   WHY: The (status drifted) marker signals that a comment is known
+ *   to be out of date with its function's implementation. This is
+ *   better than silently inaccurate documentation — it makes the
+ *   lie explicit and actionable.
+ * |) *)
+let has_drifted_marker text =
+  let rec loop i =
+    if i + 15 > String.length text then false
+    else if String.sub text i 15 = "(status drifted)" then true
+    else loop (i + 1)
+  in
+  loop 0
+
+(* agent note (|
+ *   WHAT: Check whether any doc_kind variant contains a drifted marker.
+ *
+ *   WHY: When extracting docs, we need to know if the comment is
+ *   drifted so we can classify it separately in coverage reports —
+ *   drifted comments count as documented but are flagged for update.
+ * |) *)
+let doc_kind_is_drifted = function
+  | Docstring content -> has_drifted_marker content
+  | Borg_note (_, content) -> has_drifted_marker content
+  | Borg_short content -> has_drifted_marker content
+  | Exempt_marker -> false
+
 (** Documentation info for a binding *)
 type binding_doc = {
   binding_line : int;
   doc : (doc_kind * doc_position) option;
+  is_drifted : bool;  (** True when comment has (status drifted) marker *)
 }
 
-(** Check if a line is a docstring start *)
+(* agent note (|
+ *   WHAT: Check if a line starts a standard OCaml docstring: open-paren-star-star.
+ *   Excludes three-star which is a documentation-comment escape.
+ *
+ *   WHY: Standard docstrings are the most common OCaml documentation
+ *   format and must be recognized to calculate accurate coverage.
+ * |) *)
 let is_docstring_start line =
   String.starts_with ~prefix:"(**" (String.trim line) &&
   not (String.starts_with ~prefix:"(***)" (String.trim line))
 
-(** Check if a line is a borg note *)
+(* agent note (|
+ *   WHAT: Check if a line is a borg-annotated comment in the form
+ *   open-paren-star author note verbatim-content close-paren-star.
+ *   Validates the structure: open-paren-star then author name then
+ *   "note" then content.
+ *
+ *   WHY: Borg-annotated comments are the preferred documentation format
+ *   in borge projects because they carry authorship and can be integrity-checked.
+ * |) *)
 let is_borg_note line =
   let trimmed = String.trim line in
   if String.length trimmed < 4 then false
@@ -49,22 +98,44 @@ let is_borg_note line =
     with _ -> false)
   else false
 
-(** Check if a line is a borg short comment *)
+(* agent note (|
+ *   WHAT: Check if a line is a short borg comment using the
+ *   open-paren-pipe / close-pipe-paren format.
+ *
+ *   WHY: Short borg comments provide a lighter-weight alternative
+ *   to full borg-annotated comments when authorship tracking isn't needed.
+ * |) *)
 let is_borg_short line =
   let trimmed = String.trim line in
   String.starts_with ~prefix:"(*|" trimmed
 
-(** Check if a line is an exempt marker *)
+(* agent note (|
+ *   WHAT: Check if a line is an exemption marker using the
+ *   exempt-doc comment convention.
+ *
+ *   WHY: Some bindings are internal helpers whose purpose is obvious
+ *   from their call site. The exemption marker lets the author
+ *   explicitly opt out of documentation enforcement.
+ * |) *)
 let is_exempt_marker line =
   let trimmed = String.trim line in
   if String.length trimmed >= 4 &&
      String.sub trimmed 0 2 = "(*" &&
      String.sub trimmed (String.length trimmed - 2) 2 = "*)" then
     let inner = String.sub trimmed 2 (String.length trimmed - 4) |> String.trim in
-    inner = "exempt" || inner = "exempt doc"
+    inner = "exempt" ||
+    inner = "exempt doc" ||
+    String.starts_with ~prefix:"exempt doc " inner ||
+    String.starts_with ~prefix:"exempt doc:" inner
   else false
 
-(** Extract content from a comment *)
+(* agent note (|
+ *   WHAT: Strip the (* and *) delimiters from a comment line,
+ *   returning the inner content.
+ *
+ *   WHY: Used by parse_borg_note and parse_doc_line to extract
+ *   the meaningful content from within comment delimiters.
+ * |) *)
 let extract_comment_content line =
   let trimmed = String.trim line in
   if String.length trimmed < 4 then None
@@ -72,7 +143,16 @@ let extract_comment_content line =
     let inner = String.sub trimmed 2 (String.length trimmed - 4) |> String.trim in
     Some inner
 
-(** Extract author and content from borg note *)
+(* agent note (|
+ *   WHAT: Parse a borg-annotated comment line to extract author and
+ *   content. Handles the borg-note format with author and
+ *   verbatim-wrapped content,
+ *   stripping the (|...|) wrapper if present.
+ *
+ *   WHY: Borg-annotated comments carry structured authorship data
+ *   that the linter uses for integrity checks. Parsing out the
+ *   author and content separately enables both lint and review.
+ * |) *)
 let parse_borg_note line =
   match extract_comment_content line with
   | None -> None
@@ -96,7 +176,15 @@ let parse_borg_note line =
         else None
       with _ -> None
 
-(** Parse a line to determine doc kind *)
+(* agent note (|
+ *   WHAT: Classify a single line as one of the four doc kinds
+ *   (Docstring, Borg_note, Borg_short, Exempt_marker) or return
+ *   None if the line is not a documentation comment.
+ *
+ *   WHY: The doc detection pipeline needs to identify what kind
+ *   of documentation precedes each binding so coverage and lint
+ *   can apply the right rules.
+ * |) *)
 let parse_doc_line line =
   if is_exempt_marker line then Some Exempt_marker
   else if is_docstring_start line then
@@ -109,7 +197,13 @@ let parse_doc_line line =
     parse_borg_note line |> Option.map (fun (a, c) -> Borg_note (a, c))
   else None
 
-(** Find doc for a binding at a specific line *)
+(* agent note (|
+ *   WHAT: Find documentation for a binding at a specific line number
+ *   by scanning backward from the binding line through preceding lines.
+ *
+ *   WHY: Used for targeted lookups when we know a binding's line
+ *   number and just need its associated doc comment.
+ * |) *)
 let find_binding_doc lines binding_line =
   let rec scan prev_lines remaining prev_line_no =
     match remaining with
@@ -131,7 +225,18 @@ let find_binding_doc lines binding_line =
   in
   scan [] lines 0
 
-(** Extract all binding docs from a file *)
+(* agent note (|
+ *   WHAT: Extract all binding docs from a .ml file by scanning
+ *   for let bindings and their preceding doc comments. Handles
+ *   both single-line and multi-line comments by tracking comment
+ *   open/close state. For each binding found, records whether
+ *   its comment has drifted status.
+ *
+ *   WHY: The primary entry point for doc detection. Returns one
+ *   binding_doc per binding with the closest preceding doc comment,
+ *   used by Doc_coverage for coverage calculation and by Lint for
+ *   code-doc checks.
+ * |) *)
 let extract_file_docs path =
   try
     let lines =
@@ -144,50 +249,127 @@ let extract_file_docs path =
       result
     in
     
-    (* Find all let bindings and their docs *)
-    let rec scan line_no prev_docs acc = function
+    (* Find all let bindings and their docs.
+       We track multi-line comment state: when we encounter a (*
+       that doesn't close on the same line, we note whether it
+       started as a doc comment. When *) closes it, we treat the
+       whole block as a doc line at the position of the closing paren-star. *)
+    let rec scan line_no prev_docs acc in_ml_comment ml_comment_is_doc = function
       | [] -> List.rev acc
       | line :: rest ->
           let line_no = line_no + 1 in
           let trimmed = String.trim line in
-          if String.starts_with ~prefix:"let" trimmed then
+          
+          if in_ml_comment then begin
+            (* Inside a multi-line comment: look for closing delimiter *)
+            let closes_here = String.length trimmed >= 2 &&
+              String.sub trimmed (String.length trimmed - 2) 2 = "*)" in
+            if closes_here then
+              (* End of multi-line comment — record it as a doc line
+                 if it started as a doc comment *)
+              let prev_docs' =
+                if ml_comment_is_doc then
+                  (line_no, "doc-comment") :: prev_docs
+                else
+                  (line_no, line) :: prev_docs
+              in
+              scan line_no prev_docs' acc false false
+                (if String.starts_with ~prefix:"let" (String.trim (String.sub trimmed 0 (String.length trimmed - 2))) then [line] else rest)
+            else
+              scan line_no prev_docs acc true ml_comment_is_doc rest
+          end
+          
+          else if String.starts_with ~prefix:"let" trimmed then
             if String.starts_with ~prefix:"let open " trimmed ||
                String.starts_with ~prefix:"let module " trimmed then
-              scan line_no ((line_no, line) :: prev_docs) acc rest
+              scan line_no ((line_no, line) :: prev_docs) acc false false rest
             else
-              (* Found a binding - check for preceding doc *)
+              (* Found a binding — check for preceding doc *)
               let doc =
                 let rec find_doc = function
                   | [] -> None
                   | (doc_line, doc_content) :: prev ->
-                      match parse_doc_line doc_content with
-                      | Some doc_kind -> Some (doc_kind, Preceding (line_no - doc_line))
-                      | None ->
-                          (* Stop if we hit a non-comment, non-empty line *)
-                          let tc = String.trim doc_content in
-                          if tc = "" then find_doc prev
-                          else None
+                      (* "doc-comment" is our marker for a recognized
+                         multi-line doc comment *)
+                      if doc_content = "doc-comment" then
+                        Some (Docstring "", Preceding (line_no - doc_line))
+                      else
+                        match parse_doc_line doc_content with
+                        | Some doc_kind -> Some (doc_kind, Preceding (line_no - doc_line))
+                        | None ->
+                            let tc = String.trim doc_content in
+                            if tc = "" then find_doc prev
+                            else None
                 in
                 find_doc prev_docs
               in
-              scan line_no [] ({ binding_line = line_no; doc } :: acc) rest
+              let is_drifted = match doc with
+                | None -> false
+                | Some (kind, _) -> doc_kind_is_drifted kind
+              in
+              scan line_no [] ({ binding_line = line_no; doc; is_drifted } :: acc) false false rest
           else
-            scan line_no ((line_no, line) :: prev_docs) acc rest
+            (* Check if this line starts a multi-line comment that
+               doesn't close on the same line *)
+            let starts_ml_doc =
+              String.starts_with ~prefix:"(*" trimmed &&
+              not (String.length trimmed >= 4 &&
+                   String.sub trimmed (String.length trimmed - 2) 2 = "*)") &&
+              (is_docstring_start trimmed || is_borg_note trimmed ||
+               String.starts_with ~prefix:"(* agent note" trimmed ||
+               String.starts_with ~prefix:"(* roerick note" trimmed ||
+               String.starts_with ~prefix:"(* (fn" trimmed)
+            in
+            let starts_ml_nondoc =
+              String.starts_with ~prefix:"(*" trimmed &&
+              not (String.length trimmed >= 4 &&
+                   String.sub trimmed (String.length trimmed - 2) 2 = "*)") &&
+              not starts_ml_doc
+            in
+            if starts_ml_doc then
+              scan line_no prev_docs acc true true rest
+            else if starts_ml_nondoc then
+              scan line_no prev_docs acc true false rest
+            else
+              scan line_no ((line_no, line) :: prev_docs) acc false false rest
     in
-    scan 0 [] [] lines
+    scan 0 [] [] false false lines
   with e ->
     Printf.eprintf "Error extracting docs from %s: %s\n" path (Printexc.to_string e);
     []
 
-(** Check if a binding has documentation *)
+(* agent note (|
+ *   WHAT: Check if a binding has documentation (not exempt, not missing).
+ *   Drifted comments still count as documented — the gap is acknowledged,
+ *   which is better than having no comment at all.
+ *
+ *   WHY: Coverage calculation needs to distinguish documented from
+ *   undocumented. Drifted comments are still "there" even if stale.
+ * |) *)
 let binding_has_doc (bd : binding_doc) =
   match bd.doc with
   | None -> false
-  | Some (Exempt_marker, _) -> false  (* Exempt is not documentation *)
+  | Some (Exempt_marker, _) -> false
   | Some _ -> true
 
-(** Check if a binding is exempt from documentation requirement *)
+(* agent note (|
+ *   WHAT: Check if a binding is exempt from documentation requirement
+ *   (has the (* exempt doc *) marker).
+ *
+ *   WHY: Exempted bindings are excluded from coverage enforcement.
+ *   They don't count against the author — they're explicitly opted out.
+ * |) *)
 let binding_is_exempt (bd : binding_doc) =
   match bd.doc with
   | Some (Exempt_marker, _) -> true
   | _ -> false
+
+(* agent note (|
+ *   WHAT: Check if a binding has a drifted comment — one marked
+ *   with (status drifted), indicating it's known to be stale.
+ *
+ *   WHY: Drifted comments get special treatment in reports: they're
+ *   documented (not missing) but flagged for update. This is the
+ *   middle ground between accurate and absent documentation.
+ * |) *)
+let binding_is_drifted (bd : binding_doc) = bd.is_drifted

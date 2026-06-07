@@ -5,7 +5,11 @@
  *   to return structured sexp output. This is critical for parseability.
  * |) *)
 
-(** Build a prompt for reviewing a single function *)
+(** Build a prompt for reviewing a single function.
+    The prompt asks the LLM to evaluate three dimensions:
+    1. Doc-code alignment (WHAT and WHY)
+    2. Internal consistency (dead branches, unused params, contradictions)
+    3. Overall review quality *)
 let build_function_prompt (info : Extract_functions.function_info) =
   let doc_section = match info.docstring with
     | Some d -> Printf.sprintf "Documentation:\n%s\n\n" d
@@ -26,19 +30,39 @@ Evaluate the following and return ONLY a sexp response in this exact format:
 
 (function name:"%s"
   (doc-present %s)
+  (doc-status accurate|drifted|missing)
   (doc-accuracy high|medium|low)
+  (consistency consistent|questionable|inconsistent)
+  (internal-issues "description or none")
   (signature-match accurate|mismatch|unknown)
   (behavior-coverage complete|partial|missing)
   (structural-issues "description or none")
   (confidence high|medium|low))
 
-Guidelines:
-- doc-present: Does the documentation exist and describe the function?
-- doc-accuracy: If doc exists, does it accurately describe behavior?
-- signature-match: Does the implementation match the claimed signature?
-- behavior-coverage: Does the doc cover all behaviors including edge cases?
-- structural-issues: Note any code smells, complexity issues, or unclear flow
-- confidence: Your confidence in this assessment (be honest about uncertainty)
+Evaluation criteria:
+
+Doc-code alignment — check both WHAT and WHY:
+- doc-present: Does any documentation exist for this function?
+- doc-status: Is the doc accurate (matches code), drifted (has
+  (status drifted) marker or clearly stale), or missing?
+- doc-accuracy: Does the documentation answer:
+  1. WHAT does this function do? (inputs, outputs, side effects)
+  2. WHY does this function exist? (design reason, constraint)
+  A doc that only restates the signature scores medium at best.
+
+Internal consistency — check for code problems:
+- consistency: Is the function internally consistent?
+  - consistent: no issues detected
+  - questionable: minor issues (unused parameter, redundant check)
+  - inconsistent: major issues (unreachable branch, parameter
+    always passed the same value, logic contradicts the doc)
+- internal-issues: Describe any problems found, or "none"
+
+Other checks:
+- signature-match: Does the implementation match the signature?
+- behavior-coverage: Does the doc cover all behaviors and edge cases?
+- structural-issues: Code smells, complexity, unclear flow
+- confidence: Your confidence in this assessment
 |}
     info.name
     info.signature
@@ -71,7 +95,10 @@ let build_batch_prompt (functions : Extract_functions.function_info list) =
 
 (function name:"FUNCTION_NAME"
   (doc-present true|false)
+  (doc-status accurate|drifted|missing)
   (doc-accuracy high|medium|low)
+  (consistency consistent|questionable|inconsistent)
+  (internal-issues "description or none")
   (signature-match accurate|mismatch|unknown)
   (behavior-coverage complete|partial|missing)
   (structural-issues "description or none")
@@ -84,6 +111,10 @@ Return all findings wrapped in a (findings ...) block:
   ...)
 
 If no findings for a function, omit it from the response.
+For doc-status: accurate = doc matches code, drifted = doc is
+stale or has (status drifted) marker, missing = no doc.
+For consistency: consistent = no issues, questionable = minor
+(unused param), inconsistent = major (dead branch, logic error).
 |};
   
   Buffer.contents buf

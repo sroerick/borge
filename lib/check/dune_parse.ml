@@ -28,6 +28,12 @@ type dune_file = {
   stanzas : dune_stanza list;
 }
 
+(* agent note (|
+ *   WHAT: Dummy position value used when constructing AST nodes
+ *   that don't have real source locations.
+ *   WHY: Needed when building synthetic sexps from dune file parsing
+ *   where we don't have real line/column info.
+ * |) *)
 let dummy_pos = { Ast.line = 0; col = 0; offset = 0 }
 
 (** Extract a string list from a sexp list like (modules a b c) *)

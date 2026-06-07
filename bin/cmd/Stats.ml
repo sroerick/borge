@@ -1,9 +1,11 @@
 open Borge_lib
 
+(** Pad a string to the right with spaces to reach length n *)
 let pad_right n s =
   let len = String.length s in
   if len >= n then s else s ^ String.make (n - len) ' '
 
+(** Run documentation coverage analysis and print results *)
 let run_coverage dir =
   Printf.printf "Documentation Coverage — %s\n\n" dir;
   let coverage = Doc_coverage.calculate_dir_coverage dir in
@@ -74,16 +76,20 @@ let run dir json quiet coverage =
 
 open Cmdliner
 
+(* exempt doc *)
 let dir =
   Arg.(value & pos 0 dir "." & info [] ~docv:"DIR"
     ~doc:"Directory to scan for .ml files")
 
+(* exempt doc *)
 let json =
   Arg.(value & flag & info ["json"] ~doc:"Output as JSON")
 
+(* exempt doc *)
 let quiet =
   Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
 
+(* exempt doc *)
 let coverage =
   Arg.(value & flag & info ["coverage"; "c"] ~doc:"Show documentation coverage analysis")
 
