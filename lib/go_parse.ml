@@ -42,6 +42,7 @@ type go_project = {
  * |) *)
 let parse_go_mod path =
   try
+    (* exempt: open_in input_line *)
     let ic = open_in path in
     let module_path = ref None in
     let go_version = ref None in

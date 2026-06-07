@@ -46,16 +46,15 @@ let parse_sizing = function
   | Atom (_, "full") -> Some Full
   | Atom (_, "auto") -> Some Auto
   | Atom (_, s) ->
-    (try Some (Flex (int_of_string s))
-     with Failure _ -> None)
+    Option.map (fun n -> Flex n) (int_of_string_opt s)
   | List (_, [Atom (_, "px"); Atom (_, n)]) ->
-    (try Some (Px (int_of_string n)) with Failure _ -> None)
+    Option.map (fun v -> Px v) (int_of_string_opt n)
   | List (_, [Atom (_, "rem"); Atom (_, n)]) ->
-    (try Some (Rem (float_of_string n)) with Failure _ -> None)
+    Option.map (fun v -> Rem v) (float_of_string_opt n)
   | List (_, [Atom (_, "pct"); Atom (_, n)]) ->
-    (try Some (Pct (int_of_string n)) with Failure _ -> None)
+    Option.map (fun v -> Pct v) (int_of_string_opt n)
   | List (_, [Atom (_, "vh"); Atom (_, n)]) ->
-    (try Some (Vh (int_of_string n)) with Failure _ -> None)
+    Option.map (fun v -> Vh v) (int_of_string_opt n)
   | _ -> None
 
 (** Parse color: hex string, keyword, or palette reference *)
@@ -79,10 +78,9 @@ let parse_color = function
 (** Parse spacing: integer px, (rem N), or (spacing name) *)
 let parse_spacing = function
   | Atom (_, n) ->
-    (try Some (Spacing_px (int_of_string n))
-     with Failure _ -> None)
+    Option.map (fun v -> Spacing_px v) (int_of_string_opt n)
   | List (_, [Atom (_, "rem"); Atom (_, n)]) ->
-    (try Some (Spacing_rem (float_of_string n)) with Failure _ -> None)
+    Option.map (fun v -> Spacing_rem v) (float_of_string_opt n)
   | List (_, [Atom (_, "spacing"); Atom (_, name)]) ->
     Some (Spacing_var name)
   | _ -> None
@@ -90,10 +88,9 @@ let parse_spacing = function
 (** Parse font-size: integer px, (rem N), or (font-size name) *)
 let parse_font_size = function
   | Atom (_, n) ->
-    (try Some (Font_px (int_of_string n))
-     with Failure _ -> None)
+    Option.map (fun v -> Font_px v) (int_of_string_opt n)
   | List (_, [Atom (_, "rem"); Atom (_, n)]) ->
-    (try Some (Font_rem (float_of_string n)) with Failure _ -> None)
+    Option.map (fun v -> Font_rem v) (float_of_string_opt n)
   | List (_, [Atom (_, "font-size"); Atom (_, name)]) ->
     Some (Font_var name)
   | _ -> None
@@ -101,8 +98,7 @@ let parse_font_size = function
 (** Parse radius: integer px or (radius name) *)
 let parse_radius = function
   | Atom (_, n) ->
-    (try Some (Radius_px (int_of_string n))
-     with Failure _ -> None)
+    Option.map (fun v -> Radius_px v) (int_of_string_opt n)
   | List (_, [Atom (_, "radius"); Atom (_, name)]) ->
     Some (Radius_var name)
   | _ -> None
@@ -276,14 +272,11 @@ let parse_theme = function
       | List (_, [Atom (_, "palette"); Atom (_, name); Atom (_, value)]) ->
         Some (Palette_entry (name, value))
       | List (_, [Atom (_, "spacing"); Atom (_, name); Atom (_, n)]) ->
-        (try Some (Spacing_entry (name, int_of_string n))
-         with Failure _ -> None)
+        Option.map (fun v -> Spacing_entry (name, v)) (int_of_string_opt n)
       | List (_, [Atom (_, "font-size"); Atom (_, name); Atom (_, n)]) ->
-        (try Some (Font_size_entry (name, int_of_string n))
-         with Failure _ -> None)
+        Option.map (fun v -> Font_size_entry (name, v)) (int_of_string_opt n)
       | List (_, [Atom (_, "radius"); Atom (_, name); Atom (_, n)]) ->
-        (try Some (Radius_entry (name, int_of_string n))
-         with Failure _ -> None)
+        Option.map (fun v -> Radius_entry (name, v)) (int_of_string_opt n)
       | _ -> None
     ) entries in
     Some { entries }

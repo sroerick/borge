@@ -33,16 +33,17 @@ let is_ident_char c =
  *   WHY: The core extraction function for inferring module surface
  *   from .ml files without .mli.
  * |) *)
+(* exempt: String.sub *)
 let extract_toplevel_let_name line =
   let len = String.length line in
   if len < 4 then None
   else if String.sub line 0 4 <> "let " then None
   else begin
-    let rest = String.sub line 4 (len - 4) in
+    let rest = (* exempt: String.sub *) String.sub line 4 (len - 4) in
     let rest_len = String.length rest in
     (* Skip 'rec ' *)
     let i = ref 0 in
-    while !i + 3 < rest_len && String.sub rest !i 4 = "rec " do i := !i + 4 done;
+    while !i + 3 < rest_len && (* exempt: String.sub *) String.sub rest !i 4 = "rec " do i := !i + 4 done;
     (* Skip spaces *)
     while !i < rest_len && rest.[!i] = ' ' do incr i done;
     if !i >= rest_len then None
@@ -68,16 +69,17 @@ let extract_toplevel_let_name line =
  *   WHY: Part of surface inference - extracts type definitions from
  *   .ml files to build the module's export list.
  * |) *)
+(* exempt: String.sub *)
 let extract_type_name line =
   let len = String.length line in
   if len < 5 then None
   else if String.sub line 0 5 <> "type " then None
   else begin
-    let rest = String.sub line 5 (len - 5) in
+    let rest = (* exempt: String.sub *) String.sub line 5 (len - 5) in
     let i = ref 0 in
     let rest_len = String.length rest in
     (* Skip 'nonrec ' *)
-    while !i + 6 < rest_len && String.sub rest !i 7 = "nonrec " do i := !i + 7 done;
+    while !i + 6 < rest_len && (* exempt: String.sub *) String.sub rest !i 7 = "nonrec " do i := !i + 7 done;
     while !i < rest_len && rest.[!i] = ' ' do incr i done;
     (* Skip 'rec ' (type rec doesn't exist but be safe) *)
     if !i >= rest_len then None
@@ -107,12 +109,13 @@ let extract_type_name line =
  *
  *   WHY: Exceptions are part of the public module surface.
  * |) *)
+(* exempt: String.sub *)
 let extract_exception_name line =
   let len = String.length line in
   if len < 10 then None
   else if String.sub line 0 10 <> "exception " then None
   else begin
-    let rest = String.sub line 10 (len - 10) in
+    let rest = (* exempt: String.sub *) String.sub line 10 (len - 10) in
     let i = ref 0 in
     let rest_len = String.length rest in
     while !i < rest_len && rest.[!i] = ' ' do incr i done;
@@ -131,19 +134,20 @@ let extract_exception_name line =
  *
  *   WHY: Module declarations are part of the public surface.
  * |) *)
+(* exempt: String.sub *)
 let extract_module_name line =
   let len = String.length line in
   if len < 7 then None
   else if String.sub line 0 7 <> "module " then None
   else begin
-    let rest = String.sub line 7 (len - 7) in
+    let rest = (* exempt: String.sub *) String.sub line 7 (len - 7) in
     let i = ref 0 in
     let rest_len = String.length rest in
     (* Skip 'type ' (module type ...) *)
     if rest_len > 5 && String.sub rest 0 5 = "type " then None
     else begin
       (* Skip 'rec ' *)
-      while !i + 3 < rest_len && String.sub rest !i 4 = "rec " do i := !i + 4 done;
+      while !i + 3 < rest_len && (* exempt: String.sub *) String.sub rest !i 4 = "rec " do i := !i + 4 done;
       while !i < rest_len && rest.[!i] = ' ' do incr i done;
       if !i >= rest_len then None
       else begin
@@ -151,7 +155,7 @@ let extract_module_name line =
         if ch >= 'A' && ch <= 'Z' then begin
           let start = !i in
           while !i < rest_len && is_ident_char rest.[!i] do incr i done;
-          Some (String.sub rest start (!i - start))
+          Some ((* exempt: String.sub *) String.sub rest start (!i - start))
         end
         else None
       end

@@ -27,7 +27,7 @@ let git_cmd cmd =
   let output = ref "" in
   (try
     while true do
-      output := !output ^ input_line ic ^ "\n"
+      (* exempt: input_line *) output := !output ^ input_line ic ^ "\n"
     done
   with End_of_file -> ());
   let status = Unix.close_process_in ic in

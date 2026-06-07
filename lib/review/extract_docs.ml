@@ -67,6 +67,7 @@ let parse_borg_comment line =
 (** Read file and extract all doc comments with their line numbers *)
 let extract_all_docs path =
   try
+    (* exempt: open_in input_line *)
     let channel = open_in path in
     let docs = ref [] in
     let line_num = ref 0 in

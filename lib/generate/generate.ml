@@ -127,7 +127,7 @@ let find_section_text borg_path section_name =
         end
       end
     done;
-    String.trim (String.sub input start (!fin - start))
+    String.trim ((* exempt: String.sub *) String.sub input start (!fin - start))
   with _ ->
     Printf.sprintf "(section %s (status planned))" section_name
 

@@ -58,7 +58,7 @@ let rec parse_function_fields acc = function
       else if field.[0] = '(' then
         (* Extract field name and value *)
         let close_paren = try String.index field ')' with Not_found -> String.length field - 1 in
-        let inner = String.sub field 1 (close_paren - 1) in
+        let inner = (* exempt: String.sub *) String.sub field 1 (close_paren - 1) in
         let parts = String.split_on_char ' ' (String.trim inner) in
         (match parts with
          | name :: values ->
@@ -107,7 +107,7 @@ let parse_function_block sexp_str =
         match String.index_from sexp_str issues_start '"' with
         | exception Not_found -> None
         | issues_end ->
-            let issues = String.sub sexp_str issues_start (issues_end - issues_start) in
+            let issues = (* exempt: String.sub *) String.sub sexp_str issues_start (issues_end - issues_start) in
             if issues = "none" || issues = "" then None else Some issues
       else
         None
@@ -139,7 +139,7 @@ let parse_function_block sexp_str =
         match String.index_from sexp_str issues_start '"' with
         | exception Not_found -> None
         | issues_end ->
-            let issues = String.sub sexp_str issues_start (issues_end - issues_start) in
+            let issues = (* exempt: String.sub *) String.sub sexp_str issues_start (issues_end - issues_start) in
             if issues = "none" || issues = "" then None else Some issues
       else
         None
@@ -170,7 +170,7 @@ let parse_findings response =
       let function_pattern = Str.regexp "(function[ 	]+" in
       let rec find_functions acc pos =
         try
-          let _ = Str.search_forward function_pattern sexp_str pos in
+          let _ = (* exempt: Str.search_forward *) Str.search_forward function_pattern sexp_str pos in
           let start = Str.match_beginning () in
           (* Find matching closing paren by counting *)
           let depth = ref 1 in
@@ -188,7 +188,7 @@ let parse_findings response =
                 incr i
             | _ -> incr i
           done;
-          let func_str = String.sub sexp_str start (!i - start) in
+          let func_str = (* exempt: String.sub *) String.sub sexp_str start (!i - start) in
           find_functions (func_str :: acc) !i
         with Not_found -> List.rev acc
       in

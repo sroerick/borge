@@ -35,6 +35,7 @@ let test_meta_write () =
   Alcotest.(check bool) __LOC__ true
     (let s = "DO NOT EDIT" in
      String.length content >= String.length s &&
+     (* exempt: Str.search_forward *)
      try ignore (Str.search_forward (Str.regexp_string s) content 0); true
      with Not_found -> false);
   Alcotest.(check bool) __LOC__ true (String.contains content '(')

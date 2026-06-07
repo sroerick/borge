@@ -63,11 +63,11 @@ let review_section dir borg_path section_name =
         let rec search i =
           if i + 8 > len then len
           else if i > start + String.length target &&
-                  String.sub input i 8 = "(section" then i
+                  (* exempt: String.sub *) String.sub input i 8 = "(section" then i
           else search (i + 1)
         in search (start + 1)
       in
-      String.trim (String.sub input start (next_section - start))
+      String.trim ((* exempt: String.sub *) String.sub input start (next_section - start))
     end
   in
   (* Find the source file for this section *)

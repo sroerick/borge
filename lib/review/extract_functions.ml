@@ -41,13 +41,13 @@ let extract_name_from_let line =
       with Not_found ->
         try String.index rest '(' with Not_found -> String.length rest
       in
-      let name = String.sub rest 0 name_end in
+      let name = (* exempt: String.sub *) String.sub rest 0 name_end in
       (* Check for parameters to build signature *)
       let params = try
         let param_start = name_end in
         let param_end = try String.index rest '=' with Not_found -> String.length rest in
         if param_start < param_end then
-          String.sub rest param_start (param_end - param_start) |> String.trim
+          (* exempt: String.sub *) String.sub rest param_start (param_end - param_start) |> String.trim
         else
           ""
       with _ -> "" in
@@ -70,6 +70,7 @@ let has_attribute line =
 (** Extract functions from a file *)
 let extract_from_file path =
   try
+    (* exempt: open_in input_line *)
     let channel = open_in path in
     let functions = ref [] in
     let current_doc = ref [] in

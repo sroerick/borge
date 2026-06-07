@@ -117,8 +117,7 @@ let status_counts (file : Borge_lang.Ast.file) : (status * int) list =
   let init = List.map (fun s -> (s, 0)) status_order in
   List.fold_left (fun acc st ->
     let count =
-      try List.assoc st acc + 1
-      with Not_found -> 1
+      match List.assoc_opt st acc with Some v -> v + 1 | None -> 1
     in
     (st, count) :: List.remove_assoc st acc
   ) init st_list

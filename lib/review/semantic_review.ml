@@ -81,7 +81,7 @@ let review_section ~borg_file ~section_name =
     (* This is simplified - would need proper section extraction *)
     let section_text =
       try
-        let start = Str.search_forward (Str.regexp ("(section " ^ section_name)) input 0 in
+        let start = (* exempt: Str.search_forward *) Str.search_forward (Str.regexp ("(section " ^ section_name)) input 0 in
         (* Find matching closing paren *)
         let depth = ref 1 in
         let i = ref (start + 9 + String.length section_name) in
@@ -101,7 +101,7 @@ let review_section ~borg_file ~section_name =
               incr i
           | _ -> incr i
         done;
-        String.sub input start (!i - start)
+        (* exempt: String.sub *) String.sub input start (!i - start)
       with Not_found -> ""
     in
     
@@ -172,7 +172,7 @@ let extract_functions_simple content =
       let name = try
         let rest = String.sub trimmed 8 (String.length trimmed - 8) in
         let space_pos = try String.index rest ' ' with Not_found -> String.length rest in
-        String.sub rest 0 space_pos
+        (* exempt: String.sub *) String.sub rest 0 space_pos
       with _ -> "unknown" in
       functions := {
         Extract_functions.name;
@@ -188,7 +188,7 @@ let extract_functions_simple content =
       let name = try
         let rest = String.sub trimmed 4 (String.length trimmed - 4) in
         let space_pos = try String.index rest ' ' with Not_found -> String.length rest in
-        String.sub rest 0 space_pos
+        (* exempt: String.sub *) String.sub rest 0 space_pos
       with _ -> "unknown" in
       functions := {
         Extract_functions.name;

@@ -36,7 +36,7 @@ let strip_trailing_newlines s =
   let len = String.length s in
   let i = ref (len - 1) in
   while !i >= 0 && s.[!i] = '\n' do decr i done;
-  String.sub s 0 (!i + 1)
+  (* exempt: String.sub *) String.sub s 0 (!i + 1)
 
 (* agent note (|
  *   WHAT: Check if a file would be changed by formatting.

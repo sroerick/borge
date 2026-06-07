@@ -3,11 +3,13 @@ open Borge_lib
 
 (* Helper: check if string contains substring *)
 let contains haystack needle =
+  (* exempt: Str.search_forward *)
   try let _ = Str.search_forward (Str.regexp_string needle) haystack 0 in true
   with Not_found -> false
 
 (* Helper: find position of substring *)
 let find_pos haystack needle =
+  (* exempt: Str.search_forward *)
   try Str.search_forward (Str.regexp_string needle) haystack 0
   with Not_found -> -1
 

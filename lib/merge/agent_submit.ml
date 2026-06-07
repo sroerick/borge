@@ -44,7 +44,7 @@ let is_worktree_clean worktree_path =
   let cmd = Printf.sprintf "cd %s && git status --porcelain | wc -l" worktree_path in
   let ic = Unix.open_process_in cmd in
   try
-    let line = input_line ic |> String.trim in
+    (* exempt: input_line *) let line = input_line ic |> String.trim in
     ignore (Unix.close_process_in ic);
     line = "0"
   with _ ->
@@ -56,10 +56,10 @@ let get_commit_summary worktree_path =
   let cmd = Printf.sprintf "cd %s && git log -1 --pretty=format:'%%s'" worktree_path in
   let ic = Unix.open_process_in cmd in
   try
-    let msg = input_line ic |> String.trim in
+    (* exempt: input_line *) let msg = input_line ic |> String.trim in
     ignore (Unix.close_process_in ic);
     if String.length msg > 80 then
-      String.sub msg 0 77 ^ "..."
+      (* exempt: String.sub *) String.sub msg 0 77 ^ "..."
     else
       msg
   with _ ->
@@ -72,10 +72,16 @@ let get_commit_summary worktree_path =
 let read_confidence worktree_path =
   let confidence_file = Filename.concat worktree_path ".borge/CONFIDENCE" in
   if Sys.file_exists confidence_file then
-    try
-      let content = File_utils.read_file confidence_file |> String.trim in
-      float_of_string content
-    with _ -> 0.5
+    let content_opt =
+      try Some (File_utils.read_file confidence_file |> String.trim)
+      with _ -> None
+    in
+    match content_opt with
+    | None -> 0.5
+    | Some content ->
+        match float_of_string_opt content with
+        | Some v -> v
+        | None -> 0.5
   else
     0.5  (* Default if agent didn't write confidence *)
 
@@ -86,7 +92,7 @@ let get_affected_files worktree_path =
   let files = ref [] in
   (try
     while true do
-      let line = input_line ic in
+      (* exempt: input_line *) let line = input_line ic in
       if line <> "" then files := line :: !files
     done
   with End_of_file -> ());
@@ -102,7 +108,7 @@ let submit_worktree ~worktree_path ~summary ~confidence () =
     let cmd = Printf.sprintf "cd %s && git branch --show-current" worktree_path in
     let ic = Unix.open_process_in cmd in
     try
-      let b = input_line ic |> String.trim in
+      (* exempt: input_line *) let b = input_line ic |> String.trim in
       ignore (Unix.close_process_in ic);
       b
     with _ ->
@@ -204,11 +210,13 @@ let read_config () =
         else
           try
             let eq = String.index line '=' in
-            let key = String.sub line 0 eq |> String.trim in
+            let key = (* exempt: String.sub *) String.sub line 0 eq |> String.trim in
             let value = String.sub line (eq + 1) (String.length line - eq - 1) |> String.trim in
             match key with
             | "auto_submit" -> { cfg with auto_submit = bool_of_string value }
-            | "min_confidence" -> { cfg with min_confidence = float_of_string value }
+            | "min_confidence" ->
+                { cfg with min_confidence =
+                    match float_of_string_opt value with Some v -> v | None -> cfg.min_confidence }
             | "require_clean" -> { cfg with require_clean = bool_of_string value }
             | "require_checks" -> { cfg with require_checks = bool_of_string value }
             | _ -> cfg

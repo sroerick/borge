@@ -33,9 +33,9 @@ let stats_of_file path =
     let file = Parse.parse_file input in
     let name = Spec.project_name file in
     let counts = Spec.status_counts file in
-    let impl = try List.assoc Spec.Implemented counts with Not_found -> 0 in
-    let plan = try List.assoc Spec.Planned counts with Not_found -> 0 in
-    let prog = try List.assoc Spec.In_progress counts with Not_found -> 0 in
+    let impl = match List.assoc_opt Spec.Implemented counts with Some v -> v | None -> 0 in
+    let plan = match List.assoc_opt Spec.Planned counts with Some v -> v | None -> 0 in
+    let prog = match List.assoc_opt Spec.In_progress counts with Some v -> v | None -> 0 in
     Some { path; project_name = name; implemented = impl; in_progress = prog; planned = plan }
   with _ -> None
 

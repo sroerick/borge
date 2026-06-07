@@ -111,9 +111,9 @@ let tree_status_counts node =
       let input = File_utils.read_file path in
       let file = Borge_lang.Parse.parse_file input in
       let counts = Spec.status_counts file in
-      impl := !impl + (try List.assoc Spec.Implemented counts with Not_found -> 0);
-      prog := !prog + (try List.assoc Spec.In_progress counts with Not_found -> 0);
-      plan := !plan + (try List.assoc Spec.Planned counts with Not_found -> 0);
+      impl := !impl + (match List.assoc_opt Spec.Implemented counts with Some v -> v | None -> 0);
+      prog := !prog + (match List.assoc_opt Spec.In_progress counts with Some v -> v | None -> 0);
+      plan := !plan + (match List.assoc_opt Spec.Planned counts with Some v -> v | None -> 0);
     with _ -> ()
   ) all_files;
   (!impl, !prog, !plan)

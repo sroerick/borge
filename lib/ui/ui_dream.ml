@@ -64,16 +64,18 @@ let rec resolve_color (tm : theme_map) = function
   | Hex h -> h
   | Keyword k -> keyword_to_hex k
   | Palette name ->
-    (try Hashtbl.find tm.palette name
-     with Not_found -> Printf.sprintf "/* UNRESOLVED PALETTE: %s */" name)
+    (match Hashtbl.find_opt tm.palette name with
+     | Some v -> v
+     | None -> Printf.sprintf "/* UNRESOLVED PALETTE: %s */" name)
   | With_alpha (c, a) ->
     let hex = resolve_color tm c in
     (* Convert hex + alpha to rgba *)
     if String.length hex >= 7 then
-      let r = int_of_string ("0x" ^ String.sub hex 1 2) in
-      let g = int_of_string ("0x" ^ String.sub hex 3 2) in
-      let b = int_of_string ("0x" ^ String.sub hex 5 2) in
-      Printf.sprintf "rgba(%d, %d, %d, %g)" r g b a
+      match int_of_string_opt ("0x" ^ (* exempt: String.sub *) String.sub hex 1 2),
+            int_of_string_opt ("0x" ^ (* exempt: String.sub *) String.sub hex 3 2),
+            int_of_string_opt ("0x" ^ (* exempt: String.sub *) String.sub hex 5 2) with
+      | Some r, Some g, Some b -> Printf.sprintf "rgba(%d, %d, %d, %g)" r g b a
+      | _ -> hex
     else hex
 
 (* Resolve a spacing value to a CSS string *)
@@ -81,23 +83,26 @@ let resolve_spacing (tm : theme_map) = function
   | Spacing_px n -> Printf.sprintf "%dpx" n
   | Spacing_rem n -> Printf.sprintf "%grem" n
   | Spacing_var name ->
-    (try Printf.sprintf "%dpx" (Hashtbl.find tm.spacing name)
-     with Not_found -> Printf.sprintf "/* UNRESOLVED SPACING: %s */" name)
+    (match Hashtbl.find_opt tm.spacing name with
+     | Some v -> Printf.sprintf "%dpx" v
+     | None -> Printf.sprintf "/* UNRESOLVED SPACING: %s */" name)
 
 (* Resolve a font size to a CSS string *)
 let resolve_font_size (tm : theme_map) = function
   | Font_px n -> Printf.sprintf "%dpx" n
   | Font_rem n -> Printf.sprintf "%grem" n
   | Font_var name ->
-    (try Printf.sprintf "%dpx" (Hashtbl.find tm.font_size name)
-     with Not_found -> Printf.sprintf "/* UNRESOLVED FONT-SIZE: %s */" name)
+    (match Hashtbl.find_opt tm.font_size name with
+     | Some v -> Printf.sprintf "%dpx" v
+     | None -> Printf.sprintf "/* UNRESOLVED FONT-SIZE: %s */" name)
 
 (* Resolve a radius value to a CSS string *)
 let resolve_radius (tm : theme_map) = function
   | Radius_px n -> Printf.sprintf "%dpx" n
   | Radius_var name ->
-    (try Printf.sprintf "%dpx" (Hashtbl.find tm.radius name)
-     with Not_found -> Printf.sprintf "/* UNRESOLVED RADIUS: %s */" name)
+    (match Hashtbl.find_opt tm.radius name with
+     | Some v -> Printf.sprintf "%dpx" v
+     | None -> Printf.sprintf "/* UNRESOLVED RADIUS: %s */" name)
 
 (* --- CSS property generation --- *)
 

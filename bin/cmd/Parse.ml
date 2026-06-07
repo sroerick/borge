@@ -1,11 +1,7 @@
+open Borge_lib
+
 (** Read entire file contents into a string *)
-let parse_file path =
-  let ic = open_in path in
-  let n = in_channel_length ic in
-  let input = Bytes.create n in
-  really_input ic input 0 n;
-  close_in ic;
-  Bytes.to_string input
+let parse_file path = File_utils.read_file path
 
 (** Parse a .borg file and optionally print diagnostics *)
 let run path json diagnostics quiet =
@@ -26,7 +22,7 @@ let run path json diagnostics quiet =
        | None -> ());
       Printf.printf "  Sections: %d\n" sections;
       let by_status = List.fold_left (fun acc st ->
-        let count = try List.assoc st acc + 1 with Not_found -> 1 in
+        let count = match List.assoc_opt st acc with Some v -> v + 1 | None -> 1 in
         List.sort (fun (a, _) (b, _) -> compare a b) ((st, count) :: List.remove_assoc st acc)
       ) [] statuses in
       List.iter (fun (st, count) ->

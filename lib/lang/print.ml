@@ -73,7 +73,7 @@ let rec print_sexp indent buf sexp =
         if has_keyword then begin
           Buffer.add_char buf '(';
           Buffer.add_string buf keyword;
-          let rest = List.tl children in
+          let rest = match children with _ :: tl -> tl | [] -> [] in
           (* First child is the name — keep it inline *)
           (* Only keep Atom names inline; lists go on their own line *)
           let further = match rest with

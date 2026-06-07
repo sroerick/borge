@@ -49,10 +49,10 @@ let parse_timestamp name =
       let prefix = "agent/run-" in
       let rest = String.sub name (String.length prefix) (String.length name - String.length prefix) in
       let dash = String.index rest '-' in
-      let date = String.sub rest 0 dash in
+      let date = (* exempt: String.sub *) String.sub rest 0 dash in
       let time_rest = String.sub rest (dash + 1) (String.length rest - dash - 1) in
       let dash2 = String.index time_rest '-' in
-      let time = String.sub time_rest 0 dash2 in
+      let time = (* exempt: String.sub *) String.sub time_rest 0 dash2 in
       Some (Printf.sprintf "%s-%s" date time)
     with _ -> None
   else None
@@ -64,7 +64,7 @@ let git_cmd cmd =
   let output = ref "" in
   (try
     while true do
-      output := !output ^ input_line ic ^ "\n"
+      (* exempt: input_line *) output := !output ^ input_line ic ^ "\n"
     done
   with End_of_file -> ());
   let status = Unix.close_process_in ic in

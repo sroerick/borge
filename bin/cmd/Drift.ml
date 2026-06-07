@@ -230,7 +230,7 @@ let read_coverage_threshold dir =
           let re = Str.regexp "doc-coverage-threshold[ \t]+\\([0-9.]+\\)" in
           if Str.string_match re input 0 then
             let v = Str.matched_group 1 input in
-            float_of_string v
+            (match float_of_string_opt v with Some f -> f | None -> try_files rest)
           else
             try_files rest
         with _ -> try_files rest

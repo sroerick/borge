@@ -176,10 +176,15 @@ let test_db_parse_minimal () =
   | None -> Alcotest.fail "parse returned None"
   | Some a ->
     Alcotest.(check int) "1 table" 1 (List.length a.Db_ast.tables);
-    let t = List.hd a.Db_ast.tables in
-    Alcotest.(check string) "table name" "items" t.Db_ast.name;
-    Alcotest.(check int) "1 column" 1 (List.length t.Db_ast.columns);
-    Alcotest.(check string) "column name" "id" (List.hd t.Db_ast.columns).Db_ast.name)
+    (match a.Db_ast.tables with
+    | t :: _ ->
+        Alcotest.(check string) "table name" "items" t.Db_ast.name;
+        Alcotest.(check int) "1 column" 1 (List.length t.Db_ast.columns);
+        (match t.Db_ast.columns with
+        | col :: _ ->
+            Alcotest.(check string) "column name" "id" col.Db_ast.name
+        | [] -> Alcotest.fail "expected at least 1 column")
+    | [] -> Alcotest.fail "expected at least 1 table"))
 
 let test_db_parse_crud_variants () =
   let input = {|(db crud-test

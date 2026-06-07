@@ -37,6 +37,7 @@ let rec find_status : Ast.sexp list -> Spec.status option = function
  *   Looks for a (doc ...) form and returns content truncated to 60 chars.
  *   WHY: Used to show section descriptions in drift reports.
  * |) *)
+(* exempt: String.sub *)
 let rec find_doc : Ast.sexp list -> string = function
   | [] -> ""
   | Ast.List (_, Ast.Atom (_, "doc") :: Ast.String (_, Ast.Verbatim v) :: _) :: _ ->

@@ -1,12 +1,31 @@
-(** Shared file utilities used by all borge commands *)
+(*| Shared file utilities used by all borge commands.
 
+    All functions are exception-safe: channels are closed even on error.
+  |*)
+
+(** Read an entire file into a single string.
+    Raises Sys_error if the file cannot be opened. *)
 let read_file path =
-  let ic = open_in path in
-  let n = in_channel_length ic in
-  let buf = Bytes.create n in
-  really_input ic buf 0 n;
-  close_in ic;
-  Bytes.to_string buf
+  (* exempt: open_in *)
+  In_channel.with_open_text path (fun ic ->
+    let len = in_channel_length ic in
+    let buf = Bytes.create len in
+    really_input ic buf 0 len;
+    Bytes.to_string buf)
+
+(** Read a file into a list of lines (without trailing newlines).
+    Returns [] if the file cannot be read. *)
+let read_lines path =
+  try
+    (* exempt: input_line *)
+    In_channel.with_open_text path (fun ic ->
+      let rec loop acc =
+        match In_channel.input_line ic with
+        | Some line -> loop (line :: acc)
+        | None -> List.rev acc
+      in
+      loop [])
+  with Sys_error _ -> []
 
 (* agent note (|
  *   WHAT: Recursively find all .borg files under a directory,

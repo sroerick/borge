@@ -26,7 +26,7 @@ let parse_resolution = function
         | List (_, [Atom (_, "by"); Atom (_, v)]) -> Some ("by", v)
         | _ -> None
       ) sexps in
-      let find f = try Some (List.assoc f fields) with Not_found -> None in
+      let find f = List.assoc_opt f fields in
       (match find "when", find "how", find "by" with
        | Some when_, Some how, Some by -> Some { when_; how; by }
        | _ -> None)

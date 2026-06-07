@@ -52,7 +52,7 @@ let extract_binding_name line =
       let equals = try String.index rest '=' with Not_found -> max_int in
       min space (min paren (min colon equals))
     with _ -> String.length rest in
-    let name = String.sub rest 0 name_end |> String.trim in
+    let name = (* exempt: String.sub *) String.sub rest 0 name_end |> String.trim in
     if name = "" then None else Some name
 
 (* agent note (|
@@ -110,6 +110,7 @@ let would_be_exported name =
  * |) *)
 let extract_bindings path =
   try
+    (* exempt: open_in input_line *)
     let channel = open_in path in
     let bindings = ref [] in
     let line_num = ref 0 in

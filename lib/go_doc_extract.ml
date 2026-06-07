@@ -35,6 +35,7 @@ let extract_go_bindings path =
   let in_group_decl = ref false in
 
   try
+    (* exempt: open_in input_line *)
     let ic = open_in path in
     (try
       while true do

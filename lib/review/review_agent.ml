@@ -52,12 +52,13 @@ let review_function (info : Extract_functions.function_info) : function_finding 
 
 (** Run semantic review on a batch of functions *)
 let review_batch (functions : Extract_functions.function_info list) : function_finding list =
-  if functions = [] then []
-  else if List.length functions = 1 then
-    match review_function (List.hd functions) with
-    | Some f -> [f]
-    | None -> []
-  else
+  match functions with
+  | [] -> []
+  | [f] ->
+      (match review_function f with
+      | Some r -> [r]
+      | None -> [])
+  | _ ->
     (* Batch review *)
     let prompt = Review_prompt.build_batch_prompt functions in
     match Agent.run_pi_print prompt with

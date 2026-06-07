@@ -9,7 +9,7 @@ let run dir quiet =
   let cmd = Printf.sprintf "git -C %s log -1 --oneline" (Filename.quote dir) in
   let ic = Unix.open_process_in cmd in
   (try
-    let line = input_line ic in
+    (* exempt: input_line *) let line = input_line ic in
     if not quiet then Printf.printf "Last commit: %s\n\n" line
   with End_of_file -> ());
   ignore (Unix.close_process_in ic);

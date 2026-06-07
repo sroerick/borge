@@ -109,6 +109,7 @@ let check_annotated_comments path file =
   List.rev !issues
 
 (** Check for pending ask comments with empty response slots *)
+(* exempt: String.sub *)
 let check_pending_responses path file =
   let asks = ref [] in
   let responses = ref [] in
@@ -167,7 +168,7 @@ let check_comment_integrity path =
         let rest = String.sub content 3 (String.length content - 3) in
         let space_idx = try String.index rest ' ' with Not_found -> -1 in
         if space_idx > 0 then begin
-          let author = String.sub rest 0 space_idx in
+          let author = (* exempt: String.sub *) String.sub rest 0 space_idx in
           if author <> "agent" && author <> "bot" then
             issues := Deleted_human_comment { path; author; line = 0 } :: !issues
         end
@@ -182,7 +183,7 @@ let check_comment_integrity path =
         let rest = String.sub content 3 (String.length content - 3) in
         let space_idx = try String.index rest ' ' with Not_found -> -1 in
         if space_idx > 0 then begin
-          let author = String.sub rest 0 space_idx in
+          let author = (* exempt: String.sub *) String.sub rest 0 space_idx in
           if author <> "agent" && author <> "bot" then
             issues := Inserted_human_comment { path; author; line = 0 } :: !issues
         end

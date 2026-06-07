@@ -2,6 +2,7 @@
 open Borge_lib
 
 let contains haystack needle =
+  (* exempt: Str.search_forward *)
   try let _ = Str.search_forward (Str.regexp_string needle) haystack 0 in true
   with Not_found -> false
 

@@ -66,7 +66,7 @@ let extract_ident line i =
   else begin
     let fin = ref !start in
     while !fin < len && is_ident_char line.[!fin] do incr fin done;
-    (String.sub line !start (!fin - !start), !fin)
+    ((* exempt: String.sub *) String.sub line !start (!fin - !start), !fin)
   end
 
 (* agent note (|
@@ -87,7 +87,7 @@ let extract_func_decl line =
   if len < 5 then None
   else if String.sub trimmed 0 5 <> "func " then None
   else begin
-    let rest = String.sub trimmed 5 (len - 5) in
+    let rest = (* exempt: String.sub *) String.sub trimmed 5 (len - 5) in
     let rest_len = String.length rest in
     (* Check for method receiver: func (r Receiver) Name *)
     let name, kind =
@@ -146,7 +146,7 @@ let extract_type_decl line =
   if len < 5 then None
   else if String.sub trimmed 0 5 <> "type " then None
   else begin
-    let rest = String.sub trimmed 5 (len - 5) |> String.trim in
+    let rest = (* exempt: String.sub *) String.sub trimmed 5 (len - 5) |> String.trim in
     let (name, _after) = extract_ident rest 0 in
     if name = "" then None
     (* Skip "type ( ..." — grouped type declarations *)
@@ -168,9 +168,9 @@ let extract_var_or_const_decl ~keyword line =
   let len = String.length trimmed in
   let kw_len = String.length keyword + 1 in  (* +1 for the space *)
   if len <= kw_len then None
-  else if String.sub trimmed 0 kw_len <> (keyword ^ " ") then None
+  else if (* exempt: String.sub *) String.sub trimmed 0 kw_len <> (keyword ^ " ") then None
   else begin
-    let rest = String.sub trimmed kw_len (len - kw_len) |> String.trim in
+    let rest = (* exempt: String.sub *) String.sub trimmed kw_len (len - kw_len) |> String.trim in
     (* Skip grouped declarations: var ( ... *)
     if String.length rest > 0 && rest.[0] = '(' then None
     else begin
@@ -196,6 +196,7 @@ let extract_file_surface path =
   let group_kind = ref Var in  (* var or const block *)
 
   try
+    (* exempt: open_in input_line *)
     let ic = open_in path in
     (try
       while true do

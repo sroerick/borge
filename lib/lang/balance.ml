@@ -53,9 +53,12 @@ let string_of_error = function
         p.line p.col open_p.line open_p.col
   | Unclosed_parens frames ->
       let count = List.length frames in
-      let first = List.hd (List.rev frames) in
-      Printf.sprintf "End of file: %d unclosed `(` — first opened at line %d, col %d"
-        count first.open_pos.line first.open_pos.col
+      begin match List.rev frames with
+      | first :: _ ->
+          Printf.sprintf "End of file: %d unclosed `(` — first opened at line %d, col %d"
+            count first.open_pos.line first.open_pos.col
+      | [] -> "End of file: unclosed `(`"
+      end
   | Unclosed_context (p, ctx) ->
       Printf.sprintf "End of file: unclosed %s (opened at line %d, col %d)"
         ctx p.line p.col
@@ -549,12 +552,14 @@ let excerpt text start_line end_line =
 
 (** Print detailed report for a file *)
 let report_file ?(verbose=false) path =
+  (* exempt: open_in *)
   let ic = open_in path in
-  let n = in_channel_length ic in
-  let buf = Bytes.create n in
-  really_input ic buf 0 n;
-  close_in ic;
-  let text = Bytes.to_string buf in
+  try
+    let n = in_channel_length ic in
+    let buf = Bytes.create n in
+    really_input ic buf 0 n;
+    close_in ic;
+    let text = Bytes.to_string buf in
   let analysis = analyze text in
   match analysis.result with
   | Balanced { max_depth } ->
@@ -597,8 +602,10 @@ let report_file ?(verbose=false) path =
           | Unexpected_close (p, _) ->
               excerpt text (p.line - 1) (p.line + 1)
           | Unclosed_parens frames ->
-              let first = List.hd (List.rev frames) in
-              excerpt text (first.open_pos.line - 1) (first.open_pos.line + 1)
+              (match List.rev frames with
+              | first :: _ ->
+                  excerpt text (first.open_pos.line - 1) (first.open_pos.line + 1)
+              | [] -> [])
           | Unclosed_context (p, _) ->
               excerpt text (p.line - 1) (p.line + 1)
         in
@@ -611,3 +618,6 @@ let report_file ?(verbose=false) path =
         end;
       ) errs;
       false
+  with e ->
+    close_in ic;
+    raise e

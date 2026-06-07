@@ -43,10 +43,11 @@ let build_theme_map (t : theme option) =
 (* Convert hex "#RRGGBB" to { R, G, B, 255 } *)
 let hex_to_rgba hex =
   if String.length hex >= 7 then
-    let r = int_of_string ("0x" ^ String.sub hex 1 2) in
-    let g = int_of_string ("0x" ^ String.sub hex 3 2) in
-    let b = int_of_string ("0x" ^ String.sub hex 5 2) in
-    Printf.sprintf "{ %d, %d, %d, 255 }" r g b
+    match int_of_string_opt ("0x" ^ (* exempt: String.sub *) String.sub hex 1 2),
+          int_of_string_opt ("0x" ^ (* exempt: String.sub *) String.sub hex 3 2),
+          int_of_string_opt ("0x" ^ (* exempt: String.sub *) String.sub hex 5 2) with
+    | Some r, Some g, Some b -> Printf.sprintf "{ %d, %d, %d, 255 }" r g b
+    | _ -> "{ 128, 128, 128, 255 }"
   else "{ 128, 128, 128, 255 }"
 
 (* Keyword color defaults in RGBA *)
@@ -71,8 +72,9 @@ let rec resolve_color_rgba (tm : theme_map) = function
   | Hex h -> hex_to_rgba h
   | Keyword k -> keyword_to_rgba k
   | Palette name ->
-    (try hex_to_rgba (Hashtbl.find tm.palette name)
-     with Not_found -> "/* UNRESOLVED_PALETTE */ { 0, 0, 0, 255 }")
+    (match Hashtbl.find_opt tm.palette name with
+     | Some v -> hex_to_rgba v
+     | None -> "/* UNRESOLVED_PALETTE */ { 0, 0, 0, 255 }")
   | With_alpha (c, a) ->
     let base = resolve_color_rgba tm c in
     (* For alpha, we'd need to parse the struct — just emit the base with a comment *)
@@ -122,8 +124,9 @@ let resolve_spacing_c (tm : theme_map) = function
   | Spacing_px n -> n
   | Spacing_rem n -> int_of_float (n *. 16.0)
   | Spacing_var name ->
-    (try Hashtbl.find tm.spacing name
-     with Not_found -> 0)
+    (match Hashtbl.find_opt tm.spacing name with
+     | Some v -> v
+     | None -> 0)
 
 let padding_to_clay (tm : theme_map) = function
   | Padding_uniform s ->
@@ -139,8 +142,9 @@ let padding_to_clay (tm : theme_map) = function
 let resolve_radius_c (tm : theme_map) = function
   | Radius_px n -> n
   | Radius_var name ->
-    (try Hashtbl.find tm.radius name
-     with Not_found -> 0)
+    (match Hashtbl.find_opt tm.radius name with
+     | Some v -> v
+     | None -> 0)
 
 let corner_to_clay (tm : theme_map) = function
   | Corner_uniform r ->

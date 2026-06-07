@@ -41,12 +41,12 @@ let list_items () =
         ) queue.items;
         let counts = count_by_state queue in
         Printf.printf "\nSummary: %d pending, %d ready, %d blocked, %d merging, %d merged, %d rejected\n"
-          (List.assoc "pending" counts)
-          (List.assoc "ready" counts)
-          (List.assoc "blocked" counts)
-          (List.assoc "merging" counts)
-          (List.assoc "merged" counts)
-          (List.assoc "rejected" counts);
+          (List.assoc_opt "pending" counts |> Option.value ~default:0)
+          (List.assoc_opt "ready" counts |> Option.value ~default:0)
+          (List.assoc_opt "blocked" counts |> Option.value ~default:0)
+          (List.assoc_opt "merging" counts |> Option.value ~default:0)
+          (List.assoc_opt "merged" counts |> Option.value ~default:0)
+          (List.assoc_opt "rejected" counts |> Option.value ~default:0);
       end
 
 (* exempt doc: CLI command handler - purpose is clear from context *)
@@ -125,7 +125,7 @@ let submit_worktree ~worktree_path ~summary ~confidence =
     let cmd = Printf.sprintf "cd %s && git branch --show-current 2>/dev/null" worktree_path in
     let ic = Unix.open_process_in cmd in
     try
-      let b = input_line ic |> String.trim in
+      (* exempt: input_line *) let b = input_line ic |> String.trim in
       ignore (Unix.close_process_in ic);
       b
     with End_of_file ->

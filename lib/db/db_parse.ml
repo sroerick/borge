@@ -96,7 +96,7 @@ let parse_query = function
   | List (_, Atom (_, "query") :: Atom (_, name) :: rest) ->
     let limit = List.find_map (function
       | List (_, [Atom (_, "limit"); Atom (_, n)]) ->
-        (try Some (int_of_string n) with Failure _ -> None)
+        int_of_string_opt n
       | _ -> None
     ) rest in
     Some { name; limit }

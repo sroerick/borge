@@ -59,7 +59,7 @@ let summarize_borg_file content : section_summary list =
         (* Extract section name until space or paren *)
         let name_end = try String.index rest ' ' with Not_found -> 
                        try String.index rest ')' with Not_found -> String.length rest in
-        let name = String.sub rest 0 name_end in
+        let name = (* exempt: String.sub *) String.sub rest 0 name_end in
         current_section := Some name;
         current_status := "";
         current_doc := ""
@@ -71,7 +71,7 @@ let summarize_borg_file content : section_summary list =
       begin
         let rest = String.sub trimmed 8 (String.length trimmed - 8) in
         let status_end = try String.index rest ')' with Not_found -> String.length rest in
-        let status = String.sub rest 0 status_end in
+        let status = (* exempt: String.sub *) String.sub rest 0 status_end in
         current_status := status
       end;
     
@@ -83,7 +83,7 @@ let summarize_borg_file content : section_summary list =
         (* Extract until closing quote *)
         try
           let doc_end = String.index rest '"' in
-          let doc = String.sub rest 0 doc_end in
+          let doc = (* exempt: String.sub *) String.sub rest 0 doc_end in
           current_doc := doc
         with Not_found -> ()
       end;

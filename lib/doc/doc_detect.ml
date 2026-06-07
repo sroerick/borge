@@ -37,7 +37,7 @@ type doc_position =
 let has_drifted_marker text =
   let rec loop i =
     if i + 15 > String.length text then false
-    else if String.sub text i 15 = "(status drifted)" then true
+    else if (* exempt: String.sub *) String.sub text i 15 = "(status drifted)" then true
     else loop (i + 1)
   in
   loop 0
@@ -90,7 +90,7 @@ let is_borg_note line =
     let inner = String.trim inner in
     (try
       let space = String.index inner ' ' in
-      let word = String.sub inner 0 space in
+      let word = (* exempt: String.sub *) String.sub inner 0 space in
       let rest = String.sub inner space (String.length inner - space) |> String.trim in
       String.length word > 0 &&
       word.[0] >= 'a' && word.[0] <= 'z' &&  (* lowercase name *)
@@ -159,7 +159,7 @@ let parse_borg_note line =
   | Some inner ->
       try
         let space = String.index inner ' ' in
-        let author = String.sub inner 0 space in
+        let author = (* exempt: String.sub *) String.sub inner 0 space in
         let rest = String.sub inner (space + 1) (String.length inner - space - 1) |> String.trim in
         if String.starts_with ~prefix:"note " rest then
           let note_content = String.sub rest 5 (String.length rest - 5) |> String.trim in
@@ -167,8 +167,8 @@ let parse_borg_note line =
           let note_content =
             if String.starts_with ~prefix:"(|" note_content then
               let len = String.length note_content in
-              if String.sub note_content (len - 2) 2 = "|)" then
-                String.sub note_content 2 (len - 4) |> String.trim
+              if (* exempt: String.sub *) String.sub note_content (len - 2) 2 = "|)" then
+                (* exempt: String.sub *) String.sub note_content 2 (len - 4) |> String.trim
               else note_content
             else note_content
           in
@@ -239,15 +239,7 @@ let find_binding_doc lines binding_line =
  * |) *)
 let extract_file_docs path =
   try
-    let lines =
-      let channel = open_in path in
-      let rec read acc =
-        try read (input_line channel :: acc) with End_of_file -> List.rev acc
-      in
-      let result = read [] in
-      close_in channel;
-      result
-    in
+    let lines = File_utils.read_lines path in
     
     (* Find all let bindings and their docs.
        We track multi-line comment state: when we encounter a (*

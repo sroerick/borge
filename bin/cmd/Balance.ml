@@ -3,12 +3,7 @@ open Borge_lib
 open Cmdliner
 
 let run path verbose json quiet =
-  let ic = open_in path in
-  let n = in_channel_length ic in
-  let buf = Bytes.create n in
-  really_input ic buf 0 n;
-  close_in ic;
-  let text = Bytes.to_string buf in
+  let text = File_utils.read_file path in
   let result = check text in
   if json then begin
     Printf.printf "%s\n" (Yojson.Basic.to_string (Json_out.balance path result));

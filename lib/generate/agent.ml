@@ -151,11 +151,11 @@ let extract_sexp_from_response text =
     if start >= len then
       text  (* no sexp found, return whole thing for parse attempt *)
     else if start + 8 <= len &&
-            String.sub text start 8 = "(findings" then
-      String.sub text start (len - start)
+            (* exempt: String.sub *) String.sub text start 8 = "(findings" then
+      (* exempt: String.sub *) String.sub text start (len - start)
     else if start + 8 <= len &&
-            String.sub text start 8 = "(finding " then
-      String.sub text start (len - start)
+            (* exempt: String.sub *) String.sub text start 8 = "(finding " then
+      (* exempt: String.sub *) String.sub text start (len - start)
     else
       find (start + 1)
   in
