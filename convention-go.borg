@@ -1,0 +1,278 @@
+(project convention-go
+ (doc "go-standard convention: structural rules and code intelligence
+       for Go projects using borge. Analogous to how ocaml-dune is
+       the implicit convention for borge's own codebase.")
+ (status planned)
+ (no-inline)
+ (section convention-definition
+  (doc "What (convention go-standard) declares about project structure")
+  (status planned)
+  (details
+   (doc (|
+        When a root .borg file declares (convention go-standard), the
+        following structural rules apply:
+
+        DIRECTORY LAYOUT:
+        - cmd/ owns executable entrypoints (one dir per binary)
+        - internal/ owns private packages (not importable externally)
+        - pkg/ owns public library packages (importable by external)
+        - api/ owns API definitions (protobuf, OpenAPI, etc.)
+        - configs/ owns configuration files
+        - test/ or *_test.go files own integration tests
+        - go.mod at project root defines the module path
+
+        PACKAGE BOUNDARIES:
+        - Each directory is a package; package name = dir name
+        - Capitalized identifiers are exported (Go convention)
+        - internal/ packages enforce privacy at compile time
+
+        BUILD:
+        - go build ./... — compile all packages
+        - go test ./... — run all tests
+        - go vet ./... — static analysis
+        - No dune files, no separate build system
+
+        DOC COMMENTS:
+        - Go's // and /* */ doc comments above declarations are
+          the native format. golint / go vet enforce doc on exported
+          declarations.
+        - Borge annotated comments in Go nest the standard (* *)
+          grammar inside Go's /* */ block comment delimiters:
+            OCaml:  (* author note (|description|) *)
+            Go:     /* (* author note (|description|) *) */
+          The inner (* *) is the same borge grammar that Doc_detect,
+          Borg_comment, and all existing code already understands.
+          No new parsing code needed for comment content.
+
+        DRIFT DETECTION:
+        - Spec drift: same as OCaml — .borg section claims implemented
+          but no corresponding code exists
+        - Code drift: packages discovered from go.mod + directory
+          structure vs sections in .borg files
+        - Structural drift: domain logic in cmd/ when go-standard
+          says pkg/ or internal/ owns it
+        - Export drift: Go exported symbols (capitalized) vs what
+          the spec describes
+
+        COMMENT INTEGRITY:
+        - Same rules as OCaml: agent-authored comments can be modified
+          by agents; human-authored comments cannot be silently
+          deleted. The nested delimiters do not affect semantics.
+      |))
+  )
+ )
+ (section comment-format
+  (doc "Borge comment grammar in Go source files")
+  (status planned)
+  (details
+   (doc (|
+        THE KEY INSIGHT: Borge comments in Go nest the standard (* *)
+        grammar inside Go's /* */ block comment delimiters. This means
+        the existing Doc_detect, Borg_comment, and Doc_extract modules
+        work unchanged — they already know how to find (* *) and parse
+        the borge grammar inside. The outer /* */ is invisible to them.
+
+        Why not /* */ as the borge delimiter? Because that would
+        require duplicating the entire comment parsing pipeline:
+        is_borg_note, parse_borg_note, is_borg_short, is_exempt_marker,
+        extract_comment_content, the multi-line comment tracker in
+        Doc_detect, etc. The nested approach trades a small visual
+        cost for a large code savings: zero new comment parsing code.
+
+        Supported forms in Go files:
+
+        1. Annotated comment (full borge style):
+           /* (* agent note (|
+              WHAT: Parse incoming HTTP requests.
+              WHY: Handlers need structured access to request data.
+            |) *) */
+           func ParseRequest(r *http.Request) (*Request, error) { ... }
+
+           The outer /* */ is Go's block comment. The inner (* *) is
+           the standard borge grammar. Doc_detect finds the (* *) and
+           processes it exactly as it would in an OCaml file.
+
+        2. Short borg comment:
+           /* (*| Parse incoming HTTP requests. |*) */
+           func ParseRequest(r *http.Request) (*Request, error) { ... }
+
+        3. Exempt marker:
+           /* (* exempt doc *) */
+           func internalHelper(x int) int { ... }
+
+        4. Drift marker inside a borge comment:
+           /* (* agent note (|
+              WHAT: Parse incoming HTTP requests.
+              WHY: Handlers need structured access to request data.
+            |) (status drifted) *) */
+
+        5. Function-level borg form:
+           /* (* (fn ParseRequest
+                (doc "Parse incoming HTTP requests")
+                (since "v0.1")) *) */
+           func ParseRequest(r *http.Request) (*Request, error) { ... }
+
+        6. Go doc comments (standard // above declaration):
+           // ParseRequest parses an incoming HTTP request.
+           func ParseRequest(r *http.Request) (*Request, error) { ... }
+
+           These are standard Go doc comments. They are NOT borge
+           comments — they cannot carry authorship or verbatim
+           content. For doc coverage, they count as documented
+           (GoDocstring) but lack the structured metadata that
+           borge comments provide.
+
+        What does NOT work in Go:
+        - Line comments (//) cannot carry borge annotations because
+          they are single-line and cannot span the (* *) delimiters
+          or (|...|) verbatim syntax required for borge comments.
+        - A bare /* (* ... */) */ without the outer /* */ is also
+          valid (Go allows nested appearances in comments) but the
+          convention is to always use the outer wrapper for clarity.
+
+        NO NEW COMMENT PARSING MODULES NEEDED:
+        Because borge comments use the same (* *) delimiters inside
+        Go's /* */ wrapper, the following modules work unchanged:
+        - Doc_detect — finds (* *) and classifies borge comments
+        - Borg_comment — extracts (fn ...) forms from (* *)
+        - Doc_extract — counts bindings for coverage
+        - Doc_coverage — computes coverage the same way
+
+        The only new modules are Go-specific:
+        - Go_parse — discovers packages from go.mod + directories
+        - Go_surface — extracts exported symbols from .go files
+        - Go_doc_extract — extracts Go func/type/var/const bindings
+      |))
+  )
+ )
+ (section modules
+  (doc "New modules needed for go-standard convention support")
+  (subsection go-parse
+   (doc "Parse go.mod and directory structure for package discovery")
+   (status implemented)
+   (details
+    (doc (|
+         Analogous to Dune_parse. Discovers Go project structure by
+         parsing go.mod and walking the directory tree.
+
+         Types:
+         - go_module: module path from go.mod (e.g. "github.com/foo/bar")
+         - go_package: directory path, package name, whether internal
+         - go_executable: cmd/ subdirectory name
+         - go_test: *_test.go files or test/ directory
+
+         Functions:
+         - parse_go_mod : string -> go_module option
+         - discover_packages : string -> go_package list
+         - discover_executables : string -> go_executable list
+         - parse_all : string -> go_project
+         - all_package_names : go_project -> string list
+         - library_packages : go_project -> go_package list
+         - executable_packages : go_project -> go_package list
+       |))
+   )
+  )
+  (subsection go-surface
+   (doc "Extract exported symbols from .go files")
+   (status implemented)
+   (details
+    (doc (|
+         Analogous to Surface. Extracts the public interface of a
+         Go package by scanning .go files for exported declarations.
+
+         Go export rule: a name starting with an uppercase letter
+         is exported. This is enforced by the compiler — no .mli
+         equivalent needed.
+
+         Types:
+         - go_symbol_kind: Func | Method | Type | Var | Const
+         - go_symbol: { name; kind; file; line; is_exported }
+         - go_package_surface: { path; package_name; symbols; source }
+
+         Functions:
+         - is_exported_name : string -> bool
+         - extract_func_decl : string -> (string * go_symbol_kind) option
+         - is_test_or_benchmark : string -> bool
+         - extract_type_decl : string -> string option
+         - extract_var_or_const_decl -> string option
+         - extract_file_surface : string -> go_symbol list
+         - find_go_files : string -> string list
+         - extract_package_surface : string -> go_package_surface
+         - exported_names : go_package_surface -> string list
+         - all_names : go_package_surface -> string list
+       |))
+   )
+  )
+  (subsection go-doc-extract
+   (doc "Extract Go bindings for documentation coverage")
+   (status implemented)
+   (details
+    (doc (|
+         Analogous to Doc_extract. Extracts Go declaration bindings
+         (func, type, var, const) for documentation coverage analysis.
+
+         Types:
+         - go_binding_info: { name; line; is_exported; is_test; is_internal }
+
+         Functions:
+         - extract_go_bindings : string -> go_binding_info list
+         - find_go_files : string -> string list
+         - extract_project_go_bindings : string -> (string * go_binding_info) list
+         - count_stats : go_binding_info list -> int * int * int * int
+
+         NOTE: Doc detection for Go files uses the EXISTING Doc_detect
+         module unchanged. Because borge comments in Go nest the
+         standard (* *) grammar inside Go's /* */ block comments,
+         Doc_detect already knows how to find and classify them.
+         There is no go_doc_detect module — it is not needed.
+
+         Similarly, borge comments in Go files are extracted by the
+         EXISTING Borg_comment module. There is no go_comment module.
+       |))
+   )
+  )
+ )
+ (section convention-dispatch
+  (doc "How borge selects the right convention at runtime")
+  (status implemented)
+  (details
+   (doc (|
+        Borge dispatches to the appropriate module set based on the
+        convention declared in the root .borg file.
+
+        Convention resolution:
+        1. Read the root .borg file
+        2. Extract the (convention NAME) form
+        3. Dispatch to the appropriate module set:
+
+        | Feature         | ocaml-dune        | go-standard         |
+        |----------------|-------------------|---------------------|
+        | Package parse  | Dune_parse        | Go_parse            |
+        | Surface extr.  | Surface           | Go_surface           |
+        | Binding extr.  | Doc_extract       | Go_doc_extract       |
+        | Doc detection  | Doc_detect        | Doc_detect (same!)   |
+        | Borg comments  | Borg_comment      | Borg_comment (same!) |
+        | Code drift     | Drift (dune-aw.)  | Drift (go-mod-aware) |
+        | Borge comment  | (* ... *) inside   (* ... *) inside     |
+        |                | .ml file          | /* */ wrapper in .go |
+        | Docstring      | (** ... *)        | // above decl        |
+        | Exempt mark   | (* exempt doc *)   | /* (* exempt doc *) */|
+        | File extension | .ml / .mli        | .go                  |
+        | Excl. dirs    | _build/           | vendor/              |
+
+        Notice: Doc_detect and Borg_comment are SHARED between
+        conventions. This is the benefit of the nested comment
+        approach — no duplicate parsing code.
+
+        Implementation:
+        - Convention.t type (variant: Ocaml_dune | Go_standard)
+        - Convention.resolve : string -> t
+        - Each command dispatches via Convention
+
+        Fallback:
+        - If no (convention ...) form exists, assume ocaml-dune.
+        - If convention is unknown, warn and use ocaml-dune as default.
+       |))
+  )
+ )
+)

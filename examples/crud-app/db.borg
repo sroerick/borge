@@ -1,0 +1,60 @@
+(db task-tracker
+  (table users
+    (column id (type uuid) (primary-key) (default gen_random_uuid))
+    (column email (type text) (unique) (not-null))
+    (column display-name (type text) (not-null))
+    (column role (type text) (not-null) (default "member"))
+    (column created-at (type timestamptz) (default now)))
+  (table projects
+    (column id (type uuid) (primary-key) (default gen_random_uuid))
+    (column name (type text) (not-null))
+    (column description (type text))
+    (column owner-id (type uuid) (references users.id) (not-null))
+    (column created-at (type timestamptz) (default now))
+    (ownership owner-id))
+  (table tasks
+    (column id (type uuid) (primary-key) (default gen_random_uuid))
+    (column title (type text) (not-null))
+    (column description (type text))
+    (column status (type text) (not-null) (default "todo"))
+    (column priority (type integer) (default 0))
+    (column project-id (type uuid) (references projects.id) (not-null))
+    (column assignee-id (type uuid) (references users.id))
+    (column due-date (type date))
+    (column created-at (type timestamptz) (default now))
+    (ownership assignee-id))
+  (table comments
+    (column id (type uuid) (primary-key) (default gen_random_uuid))
+    (column body (type text) (not-null))
+    (column task-id (type uuid) (references tasks.id) (not-null))
+    (column author-id (type uuid) (references users.id) (not-null))
+    (column created-at (type timestamptz) (default now))
+    (ownership author-id))
+  (operations tasks
+    (crud)
+    (query by-project)
+    (query by-assignee)
+    (query overdue))
+  (operations projects
+    (crud (except delete))
+    (query by-owner))
+  (operations comments
+    (crud))
+  (relation task-with-project
+    (from tasks)
+    (join projects (on projects.id = tasks.project-id))
+    (select projects.name tasks.title tasks.status))
+  (relation task-with-assignee
+    (from tasks)
+    (join users (on users.id = tasks.assignee-id))
+    (select users.display-name tasks.title tasks.priority tasks.due-date))
+  (groups
+    (group admin (can-all))
+    (group member
+      (can tasks (create read update) (where assignee-id = current-user))
+      (can projects (read))
+      (can comments (create read)))
+    (group viewer
+      (can tasks (read))
+      (can projects (read))
+      (can comments (read)))))
