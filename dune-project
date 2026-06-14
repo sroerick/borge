@@ -14,4 +14,7 @@
     (dune (>= 3.17))
     (cmdliner (>= 1.3))
     (yojson (>= 2.2))
-    (ppx_deriving (>= 6.0))))
+    (ppx_deriving (>= 6.0))
+    sedlex
+    menhir
+    menhirLib))
