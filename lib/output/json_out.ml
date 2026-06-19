@@ -12,6 +12,7 @@ let file_stats (r : Report.file_stats) =
     "path", `String r.path;
     "project_name", (match r.project_name with Some n -> `String n | None -> `Null);
     "implemented", `Int r.implemented;
+    "verified", `Int r.verified;
     "in_progress", `Int r.in_progress;
     "planned", `Int r.planned;
   ]
@@ -20,6 +21,7 @@ let file_stats (r : Report.file_stats) =
 let totals (t : Report.totals) =
   `Assoc [
     "implemented", `Int t.implemented;
+    "verified", `Int t.verified;
     "in_progress", `Int t.in_progress;
     "planned", `Int t.planned;
   ]
@@ -86,6 +88,14 @@ let lint_issue = function
       "type", `String "orphaned_file";
       "severity", `String "error";
       "path", `String path;
+    ]
+  | Lint.Invalid_verify_method { path; method_; line } ->
+    `Assoc [
+      "type", `String "invalid_verify_method";
+      "severity", `String "error";
+      "path", `String path;
+      "method", `String method_;
+      "line", `Int line;
     ]
   | Lint.No_inline_on_root { path } ->
     `Assoc [
@@ -244,6 +254,7 @@ let file_metrics (m : Stats.file_metrics) =
     "avg_length", `Float m.avg_length;
     "exports", `Int m.exports;
     "documented", `Int m.documented;
+    "verified_count", `Int m.verified_count;
     "doc_coverage", `Float m.doc_coverage;
     "has_mli", `Bool m.has_mli;
     "literacy", (match m.literacy with
@@ -264,6 +275,7 @@ let stats (r : Stats.project_metrics) =
     "total_functions", `Int r.total_functions;
     "total_exports", `Int r.total_exports;
     "total_documented", `Int r.total_documented;
+    "total_verified", `Int r.total_verified;
     "doc_coverage", `Float r.doc_coverage;
     "avg_func_length", `Float r.avg_func_length;
     "avg_literacy", (match r.avg_literacy with

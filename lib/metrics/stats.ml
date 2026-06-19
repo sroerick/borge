@@ -12,6 +12,7 @@ type file_metrics = {
   avg_length : float;
   exports : int;
   documented : int;  (** exports with doc comments *)
+  verified_count : int;  (** bindings with verified agent note *)
   doc_coverage : float;  (** documented / exports ratio, 0.0-1.0 *)
   has_mli : bool;
   literacy : (float * float * float * float) option;  (** avg story, explain, teach, edge *)
@@ -24,6 +25,7 @@ type project_metrics = {
   total_functions : int;
   total_exports : int;
   total_documented : int;
+  total_verified : int;
   doc_coverage : float;
   avg_func_length : float;
   avg_literacy : (float * float * float * float) option;  (** project-wide averages *)
@@ -83,11 +85,40 @@ let compute_literacy ml_path =
     end
   with _ -> None
 
-(** Count declarations with doc comments ((**) ... (*)) immediately before them.
-    TODO: this is a placeholder — proper doc-comment parsing needs to
-    handle nested comments and avoid matching *) inside strings. *)
-let count_documented _content =
-  0
+(** Count bindings with doc comments in a file.
+    Reuses Doc_detect which handles nested comments and strings. *)
+let count_documented ml_path =
+  try
+    let docs = Doc_detect.extract_file_docs ml_path in
+    List.length (List.filter Doc_detect.binding_has_doc docs)
+  with _ -> 0
+
+(** Count bindings whose doc contains a verification marker.
+    Checks for "verified" or "verif" in doc comment text. *)
+let count_verified ml_path =
+  try
+    let docs = Doc_detect.extract_file_docs ml_path in
+    let is_verified (bd : Doc_detect.binding_doc) =
+      match bd.doc with
+      | None -> false
+      | Some (doc_kind, _) ->
+          let text = match doc_kind with
+            | Doc_detect.Docstring s -> s
+            | Doc_detect.Borg_note (_, content, _) -> content
+            | Doc_detect.Borg_short s -> s
+            | Doc_detect.Exempt_marker -> ""
+          in
+          let lower = String.lowercase_ascii text in
+          let rec contains_at i sub =
+            let sub_len = String.length sub in
+            if i + sub_len > String.length lower then false
+            else if String.sub lower i sub_len = sub then true
+            else contains_at (i + 1) sub
+          in
+          contains_at 0 "verified" || contains_at 0 "verif"
+    in
+    List.length (List.filter is_verified docs)
+  with _ -> 0
 
 (** Compute average function length for a file.
     Heuristic: total lines / function count. *)
@@ -107,11 +138,12 @@ let measure_file ml_path =
   let has_mli = Sys.file_exists mli_path in
   let surface = Surface.extract_surface ml_path in
   let exports = List.length surface.exports in
-  let documented = count_documented content in
+  let documented = count_documented ml_path in
+  let verified_count = count_verified ml_path in
   let doc_coverage = if exports = 0 then 1.0
     else float_of_int documented /. float_of_int exports in
   let literacy = compute_literacy ml_path in
-  { path = ml_path; module_name; lines; functions; avg_length; exports; documented; doc_coverage; has_mli; literacy }
+  { path = ml_path; module_name; lines; functions; avg_length; exports; documented; verified_count; doc_coverage; has_mli; literacy }
 
 (** Find all .ml files in a directory, excluding _build, .git, and test dirs *)
 let find_ml_files dir =
@@ -146,6 +178,7 @@ let run dir =
   let total_functions = List.fold_left (fun acc (m : file_metrics) -> acc + m.functions) 0 metrics in
   let total_exports = List.fold_left (fun acc (m : file_metrics) -> acc + m.exports) 0 metrics in
   let total_documented = List.fold_left (fun acc (m : file_metrics) -> acc + m.documented) 0 metrics in
+  let total_verified = List.fold_left (fun acc (m : file_metrics) -> acc + m.verified_count) 0 metrics in
   let doc_coverage = if total_exports = 0 then 1.0
     else float_of_int total_documented /. float_of_int total_exports in
   let avg_func_length = compute_avg_length total_lines total_functions in
@@ -162,4 +195,4 @@ let run dir =
       )
     end
   in
-  { files = metrics; total_lines; total_functions; total_exports; total_documented; doc_coverage; avg_func_length; avg_literacy }
+  { files = metrics; total_lines; total_functions; total_exports; total_documented; total_verified; doc_coverage; avg_func_length; avg_literacy }

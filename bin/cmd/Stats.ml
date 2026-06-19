@@ -107,23 +107,25 @@ let run dir json quiet coverage literacy =
   let max_name = List.fold_left (fun acc (m : Stats.file_metrics) ->
     max acc (String.length m.module_name)
   ) 4 result.files in
-  Printf.printf "%s  lines  funcs  avg  exports  docs  mli\n" (pad_right max_name "module");
-  Printf.printf "%s\n" (String.make (max_name + 50) '-');
+  Printf.printf "%s  lines  funcs  avg  exports  docs  verif  mli\n" (pad_right max_name "module");
+  Printf.printf "%s\n" (String.make (max_name + 57) '-');
   List.iter (fun (m : Stats.file_metrics) ->
-    Printf.printf "%s  %5d  %6d  %3.0f  %7d  %3.0f%%  %s\n"
+    Printf.printf "%s  %5d  %6d  %3.0f  %7d  %3.0f%%  %5d  %s\n"
       (pad_right max_name m.module_name)
       m.lines m.functions m.avg_length m.exports
       (m.doc_coverage *. 100.0)
+      m.verified_count
       (if m.has_mli then "yes" else "no")
   ) result.files;
-  Printf.printf "%s\n" (String.make (max_name + 50) '-');
-  Printf.printf "%s  %5d  %6d  %3.0f  %7d  %3.0f%%\n"
+  Printf.printf "%s\n" (String.make (max_name + 57) '-');
+  Printf.printf "%s  %5d  %6d  %3.0f  %7d  %3.0f%%  %5d\n"
     (pad_right max_name "total")
     result.total_lines result.total_functions result.avg_func_length result.total_exports
-    (result.doc_coverage *. 100.0);
-  Printf.printf "\n%d files | %d lines | %d functions | %d exports | doc %.0f%% | avg %.1f lines/function\n"
+    (result.doc_coverage *. 100.0)
+    result.total_verified;
+  Printf.printf "\n%d files | %d lines | %d functions | %d exports | %d verified | doc %.0f%% | avg %.1f lines/function\n"
     (List.length result.files) result.total_lines result.total_functions
-    result.total_exports (result.doc_coverage *. 100.0) result.avg_func_length;
+    result.total_exports result.total_verified (result.doc_coverage *. 100.0) result.avg_func_length;
   exit 0
 
 open Cmdliner

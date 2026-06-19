@@ -343,13 +343,18 @@
   (doc "Code statistics. lib/metrics/")
   (status implemented)
   (subsection stats
-   (doc "Code intelligence metrics: lines, functions, exports, literacy")
+   (doc "Code intelligence metrics: lines, functions, exports, verified, literacy")
    (status implemented)
    (details
     (doc (|
          Scans all .ml files and reports: line count, function count,
-         average function length, export count, doc coverage, mli status.
-         Aggregates into project totals. Filters _build, .git, test dirs.
+         average function length, export count, verified_count,
+         doc coverage, mli status. Aggregates into project totals.
+         Filters _build, .git, test dirs.
+
+         verified_count: bindings whose doc comment contains "verified"
+         or "verif" — agent-verified claims. Counted per-file and
+         aggregated project-wide as total_verified.
 
          With --literacy, also reports per-file literacy averages:
          story, explain, teach, edge — the four dimensions of the
@@ -433,6 +438,17 @@
        |))
    )
   )
+  (subsection ui-dream
+   (doc "Dream HTML code generation from UI AST")
+   (status implemented)
+   (implements lib/ui/ui_dream.ml)
+   (details (doc (|ui_dream.ml generates Dream HTML output from the typed UI AST.|)))
+  )
+  (subsection ui-clay
+   (doc "Clay CSS code generation from UI AST")
+   (status implemented)
+   (details (doc (|ui_clay.ml generates CSS output from the typed UI AST.|)))
+  )
  )
  (section lock
   (doc "Transactional isolation for agent sessions. lib/lock/")
@@ -440,6 +456,7 @@
   (subsection lock-core
    (doc "Lock directory creation, state management, commit/abort")
    (status implemented)
+   (implements lib/lock/lock.ml)
    (details
     (doc (|
          Lock.create: snapshot all .borg files to .borge.lock/original/
@@ -472,6 +489,11 @@
          pi is interactive so backgrounding loses status.
        |))
    )
+  )
+  (subsection prompt-minimal
+   (doc "Minimal prompt builder for quick agent sessions")
+   (status implemented)
+   (details (doc (|Prompt_minimal builds compact prompts without full context assembly.|)))
   )
  )
  (section db
@@ -524,6 +546,11 @@
          relations, groups, capabilities.
        |))
    )
+  )
+  (subsection db-sql
+   (doc "SQL DDL generator from DB AST")
+   (status implemented)
+   (details (doc (|db_sql.ml generates PostgreSQL DDL from the DB AST.|)))
   )
  )
  (section bug
@@ -648,6 +675,31 @@
        Never raises on parse failure — always returns result type.
      |))
    )
+  )
+  (subsection review-types
+   (doc "Types for semantic review findings")
+   (status implemented)
+   (details (doc (|Review_types defines semantic_finding and related data types.|)))
+  )
+  (subsection review-agent
+   (doc "LLM agent for semantic code review")
+   (status implemented)
+   (details (doc (|Review_agent orchestrates LLM calls for semantic review.|)))
+  )
+  (subsection extract-parsetree
+   (doc "OCaml parsetree extraction for semantic review")
+   (status implemented)
+   (details (doc (|Extract_parsetree uses compiler-libs to parse .ml files into parsetree.|)))
+  )
+  (subsection extract-functions
+   (doc "Function extraction from parsetree")
+   (status implemented)
+   (details (doc (|Extract_functions extracts function bindings from OCaml parsetree.|)))
+  )
+  (subsection extract-docs
+   (doc "Docstring extraction from parsetree")
+   (status implemented)
+   (details (doc (|Extract_docs extracts docstrings from parsed OCaml source.|)))
   )
  )
  (section doc
@@ -851,6 +903,59 @@
          - Convention.resolve : string -> t
        |))
    )
+  )
+ )
+ (section merge
+  (doc "Merge queue and branch management. lib/merge/")
+  (status implemented)
+  (subsection worktree
+   (doc "Git worktree management")
+   (status implemented)
+   (details (doc (|Worktree creates and manages git worktrees for agent isolation.|)))
+  )
+  (subsection branch
+   (doc "Git branch management for agent runs")
+   (status implemented)
+   (details (doc (|Branch creates and switches git branches for agent sessions.|)))
+  )
+  (subsection lockfile
+   (doc "Agent session lockfile format")
+   (status implemented)
+   (details (doc (|Lockfile defines the .borge.lock state format.|)))
+  )
+  (subsection queue-types
+   (doc "Merge queue type definitions")
+   (status implemented)
+   (details (doc (|Queue_types defines data types for the merge queue.|)))
+  )
+  (subsection queue-storage
+   (doc "Merge queue persistent storage")
+   (status implemented)
+   (details (doc (|Queue_storage persists merge queue state to disk.|)))
+  )
+  (subsection conflict-detect
+   (doc "Detect merge conflicts between agent branches")
+   (status implemented)
+   (details (doc (|Conflict_detect analyzes branches for potential merge conflicts.|)))
+  )
+  (subsection rollback
+   (doc "Rollback failed agent sessions")
+   (status implemented)
+   (details (doc (|Rollback reverts failed agent sessions and cleans up.|)))
+  )
+  (subsection agent-submit
+   (doc "Submit agent work to merge queue")
+   (status implemented)
+   (details (doc (|Agent_submit packages agent work for merge queue processing.|)))
+  )
+ )
+ (section future
+  (doc "Future work analysis. lib/future/")
+  (status implemented)
+  (subsection depends
+   (doc "Dependency graph analysis for .borg files")
+   (status implemented)
+   (details (doc (|Depends analyzes (depends-on ...) declarations across specs.|)))
   )
  )
 )

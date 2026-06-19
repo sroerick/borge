@@ -1,63 +1,104 @@
 ---
 name: borge-workflow
-description: Automatic borge spec integrity maintenance. When working in a directory containing .borg files, keep specs in sync with code by running balance, check, and drift as needed after every edit.
+description: Borge design/build/review workflow enforcement within pi sessions. File gating, phase cycling, and spec-first discipline.
 ---
 
 # Borge Workflow Skill
 
-## When to use
+## Overview
 
-Whenever you are in a borge project (directory with .borg files), this skill ensures specs stay accurate and drift-free automatically.
+This project uses **borge** for spec-driven development. Files are gated by workflow phase:
+- **idle**: Code files locked. Only `.borg` files editable.
+- **plan**: Edit `.borg` spec files. Code remains locked.
+- **make**: Edit code files. `.borg` files locked (use `borge issue new` for spec adjustments).
+- **review**: All files read-only.
 
-## Workflow
+## Tools Available
 
-After every edit to any .borg file, .ml file, or dune file:
+| Tool | When to call | What it does |
+|------|-------------|--------------|
+| `borg_plan(section="...")` | Before editing spec files | Unlocks `.borg` files for a section |
+| `borg_make(section="...")` | Before editing code files | Unlocks code files, locks `.borg` files |
+| `borg_review()` | After code changes | Runs `borge drift`, `lint`, `check`; enters review phase |
+| `borg_commit(message="...")` | When user approves | Suggests git commit, resets phase to idle |
+| `borg_abort()` | When abandoning work | Resets phase to idle, releases all locks |
+| `borg_status()` | Any time | Shows current phase, target section, project sections |
+| `/borg` | Quick status check | Same as `borg_status()` |
 
-1. **Balance first** — run `borge balance FILE` on any .borg file you touched
-2. **Auto-repair if needed** — if balance fails, run `borge balance --repair FILE > FILE.tmp && mv FILE.tmp FILE`
-   *Never manually count parens — the repair infers them from indentation (Parinfer-style).*
-3. **Parse check** — run `borge parse FILE` to validate syntax
-4. **Check project** — run `borge check` to catch cross-file issues
-5. **Drift check** — run `borge drift` to detect spec/code divergence
-6. **Fix findings** — address any drift findings by updating specs or code
+## Agent Workflow
 
-## Priority order
+When asked to implement a feature:
 
-- If `borge balance` fails: auto-repair from indentation, then re-run balance to confirm
-- If a .borg file edit won't parse: fix the file (balance → repair → parse → retry)
-- If `borge check` fails: fix the issue before committing
-- If `borge drift` shows findings: update the spec or the code, whichever is stale
-- If `borge drift --agent` is requested: run the LLM semantic analysis
+1. **Start**: Phase is `idle`. Only `.borg` files editable.
+2. **Plan**: Call `borg_plan(section="target-section")` → edit `.borg` specs → update status, verify stanzas → show diff to user for confirmation
+3. **Build**: Call `borg_make(section="target-section")` → edit code files. If spec needs adjustment, file an issue: `borge issue new "description"` instead of editing `.borg`
+4. **Review**: Call `borg_review()` → read drift/lint output → report to user
+5. **Decide**: Present results. Ask user: "Commit? Fix? Abort?"
+   - User says "commit" → `borg_commit(message="...")`
+   - User says "fix" → stay in current phase or re-enter make → fix → review again
+   - User says "abort" → `borg_abort()`
 
-## Commands summary
+## Phase Rules
+
+| Phase | What you CAN edit | What is BLOCKED |
+|-------|------------------|-----------------|
+| idle | `.borg` files | All code files |
+| plan | `.borg` files | All code files |
+| make | Code files (any non-`.borg`) | `.borg` files — use `borge issue new` for spec adjustments |
+| review | Nothing | All files (read-only) |
+
+**The `implements` stanza in `.borg` files is for drift detection only, not for gating.** During `make` phase, all code files are unlocked regardless of whether they appear in `(implements ...)`.
+
+## Spec Adjustments During Build Phase
+
+If during `make` you discover the spec needs to change:
+- **Do NOT** edit `.borg` files directly (they're locked for a reason)
+- **Do** file an issue: `borge issue new "Need to adjust X spec because Y"`
+- This captures the spec gap without breaking phase discipline
+- The user can review the issue and decide whether to enter a new plan phase later
+
+## After Every Spec Edit (`.borg` files)
+
+1. `borge balance FILE` — after any `.borg` edit
+2. `borge parse FILE` — verify syntax
+3. `borge check` — cross-file validation
+4. `borge drift` — spec/code alignment check
+
+## Auto-Repair
+
+If balance fails: `borge balance --repair FILE > FILE.tmp && mv FILE.tmp FILE`
+*Never manually count parens.*
+
+## Status Values
+
+Valid status in `.borg` files: `planned`, `in-progress`, `partial`, `implemented`, `verified`, `drifted`, `blank`
+
+## Verify Stanzas
+
+Per-section acceptance criteria. Example:
+```
+(subsection login-page
+  (status implemented)
+  (verify
+    (test "test/auth_login.ml")
+    (build)
+    (smoke "POST /api/login"))
+```
+
+When marking `implemented` with verify, always write an agent note documenting verification results.
+
+## Commands Summary
 
 | Command | When |
 |---------|------|
-| `borge balance FILE` | After every .borg edit |
-| `borge balance --repair FILE` | When balance detects imbalance — auto-fix from indentation |
-| `borge balance --repair-diff FILE` | Preview what repair would change |
+| `borge balance FILE` | After every `.borg` edit |
+| `borge balance --repair FILE` | When imbalance detected |
 | `borge parse FILE` | After balance passes |
 | `borge check` | Before commit |
-| `borge drift` | When reviewing project health |
-| `borge drift --agent` | When deeper analysis needed |
-| `borge fmt FILE` | Before commit (canonical formatting) |
-| `borge review` | Advisory: lint + drift summary |
-
-## .borg file conventions
-
-- Root spec: `PROJECT.borg` (e.g., `borge.borg`) declares architecture
-- Sub-specs: inlined via `(inline FILE.borg)` in parent
-- Every .borg file must be inlined or declare `(no-inline)`
-- Status values: `planned`, `in-progress`, `partial`, `implemented`, `drifted`, `blank`
-- Annotated comments: `(* author type (|content|) *)`
-
-## Agent prompt template
-
-When asked to work on a borge project, start with:
-
-```
-Checking borge project health...
-$ borge check && borge drift
-```
-
-Then proceed with the requested work, re-running check and drift after changes.
+| `borge drift` | When reviewing health |
+| `borge drift --agent` | Deeper semantic analysis |
+| `borge fmt FILE` | Before commit |
+| `borge lint` | Advisory check |
+| `borge report` | Dashboard |
+| `borge future` | Roadmap view |
+| `borge issue new "title"` | During make phase for spec adjustments |
