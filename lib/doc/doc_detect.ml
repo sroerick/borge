@@ -12,12 +12,21 @@
  *   "comment exists but is known to be inaccurate."
  * |) *)
 
+(** Literacy score for a comment: Story, Explain, Teach, Edge.
+    Each digit 0--7. Zeros are honest defaults. *)
+type literacy_score = {
+  story : int;
+  explain : int;
+  teach : int;
+  edge : int;
+}
+
 (** Types of documentation found *)
 type doc_kind =
-  | Docstring of string     (** (** ... *) *)
-  | Borg_note of string * string  (** borg-annotated comment *)
-  | Borg_short of string    (** (*| ... |*) *)
-  | Exempt_marker           (** (* exempt doc *) *)
+  | Docstring of string              (** (** ... *) *)
+  | Borg_note of string * string * literacy_score option  (** author, content, score *)
+  | Borg_short of string             (** (*| ... |*) *)
+  | Exempt_marker                    (** (* exempt doc *) *)
 
 (** Where the doc was found relative to binding *)
 type doc_position =
@@ -51,9 +60,33 @@ let has_drifted_marker text =
  * |) *)
 let doc_kind_is_drifted = function
   | Docstring content -> has_drifted_marker content
-  | Borg_note (_, content) -> has_drifted_marker content
+  | Borg_note (_, content, _) -> has_drifted_marker content
   | Borg_short content -> has_drifted_marker content
   | Exempt_marker -> false
+
+(* agent note (|
+ *   WHAT: Parse a 4-digit literacy score [STEX] from a string.
+ *   Each digit 0--7 representing Story, Explain, Teach, Edge.
+ *   Returns None if no valid score pattern found.
+ * |) *)
+let parse_literacy_score s =
+  try
+    let open_idx = String.index s '[' in
+    let close_idx = String.index_from s (open_idx + 1) ']' in
+    let digits = String.sub s (open_idx + 1) (close_idx - open_idx - 1) in
+    if String.length digits = 4 then
+      let is_digit c = c >= '0' && c <= '9' in
+      if is_digit digits.[0] && is_digit digits.[1] &&
+         is_digit digits.[2] && is_digit digits.[3] then
+        Some {
+          story = Char.code digits.[0] - Char.code '0';
+          explain = Char.code digits.[1] - Char.code '0';
+          teach = Char.code digits.[2] - Char.code '0';
+          edge = Char.code digits.[3] - Char.code '0';
+        }
+      else None
+    else None
+  with _ -> None
 
 (** Documentation info for a binding *)
 type binding_doc = {
@@ -162,17 +195,27 @@ let parse_borg_note line =
         let author = (* exempt: String.sub *) String.sub inner 0 space in
         let rest = String.sub inner (space + 1) (String.length inner - space - 1) |> String.trim in
         if String.starts_with ~prefix:"note " rest then
-          let note_content = String.sub rest 5 (String.length rest - 5) |> String.trim in
+          let note_raw = String.sub rest 5 (String.length rest - 5) |> String.trim in
+          let score = parse_literacy_score note_raw in
+          let note_after_score =
+            match score with
+            | Some _ ->
+                (try
+                  let close_idx = String.index note_raw ']' in
+                  String.sub note_raw (close_idx + 1) (String.length note_raw - close_idx - 1) |> String.trim
+                with _ -> note_raw)
+            | None -> note_raw
+          in
           (* Remove surrounding (| ... |) if present *)
           let note_content =
-            if String.starts_with ~prefix:"(|" note_content then
-              let len = String.length note_content in
-              if (* exempt: String.sub *) String.sub note_content (len - 2) 2 = "|)" then
-                (* exempt: String.sub *) String.sub note_content 2 (len - 4) |> String.trim
-              else note_content
-            else note_content
+            if String.starts_with ~prefix:"(|" note_after_score then
+              let len = String.length note_after_score in
+              if len >= 2 && String.sub note_after_score (len - 2) 2 = "|)" then
+                String.sub note_after_score 2 (len - 4) |> String.trim
+              else note_after_score
+            else note_after_score
           in
-          Some (author, note_content)
+          Some (author, note_content, score)
         else None
       with _ -> None
 
@@ -194,7 +237,7 @@ let parse_doc_line line =
     let inner = String.sub trimmed 3 (String.length trimmed - 5) |> String.trim in
     Some (Borg_short inner)
   else if is_borg_note line then
-    parse_borg_note line |> Option.map (fun (a, c) -> Borg_note (a, c))
+    parse_borg_note line |> Option.map (fun (a, c, s) -> Borg_note (a, c, s))
   else None
 
 (* agent note (|
@@ -246,7 +289,7 @@ let extract_file_docs path =
        that doesn't close on the same line, we note whether it
        started as a doc comment. When *) closes it, we treat the
        whole block as a doc line at the position of the closing paren-star. *)
-    let rec scan line_no prev_docs acc in_ml_comment ml_comment_is_doc = function
+    let rec scan line_no prev_docs acc in_ml_comment ml_comment_is_doc ml_comment_first_line = function
       | [] -> List.rev acc
       | line :: rest ->
           let line_no = line_no + 1 in
@@ -261,20 +304,28 @@ let extract_file_docs path =
                  if it started as a doc comment *)
               let prev_docs' =
                 if ml_comment_is_doc then
-                  (line_no, "doc-comment") :: prev_docs
+                  let marker = match ml_comment_first_line with
+                    | None -> "doc-comment"
+                    | Some first_line ->
+                        let score_opt = parse_literacy_score first_line in
+                        (match score_opt with
+                         | None -> "doc-comment"
+                         | Some s -> Printf.sprintf "borg-scored:%d%d%d%d" s.story s.explain s.teach s.edge)
+                  in
+                  (line_no, marker) :: prev_docs
                 else
                   (line_no, line) :: prev_docs
               in
-              scan line_no prev_docs' acc false false
+              scan line_no prev_docs' acc false false None
                 (if String.starts_with ~prefix:"let" (String.trim (String.sub trimmed 0 (String.length trimmed - 2))) then [line] else rest)
             else
-              scan line_no prev_docs acc true ml_comment_is_doc rest
+              scan line_no prev_docs acc true ml_comment_is_doc ml_comment_first_line rest
           end
           
           else if String.starts_with ~prefix:"let" trimmed then
             if String.starts_with ~prefix:"let open " trimmed ||
                String.starts_with ~prefix:"let module " trimmed then
-              scan line_no ((line_no, line) :: prev_docs) acc false false rest
+              scan line_no ((line_no, line) :: prev_docs) acc false false None rest
             else
               (* Found a binding — check for preceding doc *)
               let doc =
@@ -282,9 +333,19 @@ let extract_file_docs path =
                   | [] -> None
                   | (doc_line, doc_content) :: prev ->
                       (* "doc-comment" is our marker for a recognized
-                         multi-line doc comment *)
+                         multi-line doc comment. "borg-scored:*" carries
+                         a literacy score extracted from the first line. *)
                       if doc_content = "doc-comment" then
                         Some (Docstring "", Preceding (line_no - doc_line))
+                      else if String.starts_with ~prefix:"borg-scored:" doc_content then
+                        let digits = String.sub doc_content 12 4 in
+                        let score = {
+                          story = Char.code digits.[0] - Char.code '0';
+                          explain = Char.code digits.[1] - Char.code '0';
+                          teach = Char.code digits.[2] - Char.code '0';
+                          edge = Char.code digits.[3] - Char.code '0';
+                        } in
+                        Some (Borg_note ("agent", "", Some score), Preceding (line_no - doc_line))
                       else
                         match parse_doc_line doc_content with
                         | Some doc_kind -> Some (doc_kind, Preceding (line_no - doc_line))
@@ -299,7 +360,7 @@ let extract_file_docs path =
                 | None -> false
                 | Some (kind, _) -> doc_kind_is_drifted kind
               in
-              scan line_no [] ({ binding_line = line_no; doc; is_drifted } :: acc) false false rest
+              scan line_no [] ({ binding_line = line_no; doc; is_drifted } :: acc) false false None rest
           else
             (* Check if this line starts a multi-line comment that
                doesn't close on the same line *)
@@ -319,13 +380,14 @@ let extract_file_docs path =
               not starts_ml_doc
             in
             if starts_ml_doc then
-              scan line_no prev_docs acc true true rest
+              let first_line = Some trimmed in
+              scan line_no prev_docs acc true true first_line rest
             else if starts_ml_nondoc then
-              scan line_no prev_docs acc true false rest
+              scan line_no prev_docs acc true false None rest
             else
-              scan line_no ((line_no, line) :: prev_docs) acc false false rest
+              scan line_no ((line_no, line) :: prev_docs) acc false false None rest
     in
-    scan 0 [] [] false false lines
+    scan 0 [] [] false false None lines
   with e ->
     Printf.eprintf "Error extracting docs from %s: %s\n" path (Printexc.to_string e);
     []

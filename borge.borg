@@ -441,13 +441,30 @@
            |) *)
           let status_of_string s = ...
 
-       3. Short borg comment:
+       3. Borg-style annotated comment with literacy score:
+          (* agent note [5250] (|
+             The balance checker is a paranoid paren counter. We do
+             NOT trust the parser for structural validation because
+             a syntax error in the parser itself could hide a real
+             bug. So balance is a separate, dumber implementation.
+
+             This is defense in depth: the parser and balancer are
+             independent. They should agree. When they don't, at
+             least one is wrong.
+           |) *)
+          let check_balance input = ...
+
+       4. Short borg comment:
           (*| Convert string to status. Raises on invalid input. |*)
           let status_of_string s = ...
 
-       4. Exemption marker:
+       5. Exemption marker:
           (* exempt doc *)
           let internal_helper x = ...
+
+       The literacy score [NNNN] is optional on borg-style comments.
+       See the comment-writing-guide subsection for the full
+       scoring system.
 
        All formats are extracted during drift --docs analysis and
        contribute to coverage calculations.
@@ -501,63 +518,111 @@
    )
   )
   (subsection comment-writing-guide
-   (doc "How to write code comments — guide for agents and humans")
+   (doc "How to write code comments — literacy scoring for agents and humans")
    (status implemented)
    (details
     (doc (|
-       Every documented function must answer two questions:
+       Comments are not checkboxes. They are how the codebase tells
+       its story. The goal is not coverage — it is literacy. Can
+       someone read this file like a book and understand it?
 
-       1. WHAT does this function do?
-          A concise description of the behavior: inputs, outputs,
-          side effects, error cases. Someone reading only the
-          comment should be able to call the function correctly.
+       Every borg-style comment carries a 4-digit literacy score:
 
-       2. WHY does this function exist?
-          The design reason this function was created. What problem
-          does it solve? What constraint or requirement drove it?
-          Without the why, a future reader can only guess whether
-          the function is still needed.
+         (* agent note [STORY EXPLAIN TEACH EDGE] (| ... |) *)
 
-       Format using borg-style annotated comments:
-         (* agent note (|
-            WHAT: Parse a .borg file into a typed AST with
-            position tracking. Returns Error on malformed sexp.
+       Each digit is 0–7, self-declared by the author based on
+       what the comment actually contains. Zeros are honest and
+       common — most comments do not need to excel at everything.
 
-            WHY: Downstream tools (lint, drift, review) need
-            structured access to the spec, not raw text.
-            Position tracking enables line-accurate diagnostics.
+       1. STORY — Does this comment connect to a narrative?
+          0: No story. Just facts about this function.
+          5: Has context. Explains why this exists in the story
+             of the module — what came before, what comes after,
+             why you're reading it now.
+          7: Reads like a book chapter. You'd publish it. Someone
+             could understand the module's architecture from the
+             comments alone, without reading code.
+
+       2. EXPLAIN — Does it explain what's happening in the code?
+          0: Doesn't explain the implementation.
+          5: Explains the algorithm or data flow. Someone could
+             understand how the code works without reading every
+             line.
+          7: Walks you through it like a debugger session. Line
+             by line where needed. Reveals the mechanics.
+
+       3. TEACH — Does it teach something transferable?
+          0: No transferable insight.
+          5: Teaches a technique, pattern, or gotcha — something
+             you'll use elsewhere in the codebase or in other
+             projects.
+          7: Teaches a fundamental concept. You'll remember it
+             years later in unrelated code.
+
+       4. EDGE — Does it say what breaks?
+          0: No boundary discussion. Only the happy path.
+          5: Major edge cases, preconditions, or failure modes
+             mentioned. You know at least one thing that can go
+             wrong.
+          7: Every precondition stated, invariants explicit,
+             failure modes catalogued. Reads like an incident
+             report written by someone who got paged at 3am.
+
+       Examples:
+
+       A solid everyday comment — doesn't need to be a dissertation:
+         (* agent note [5200] (|
+            The balance checker is a paranoid paren counter. We
+            do NOT trust the parser for structural validation
+            because a parser bug could hide a real structural
+            error. So balance is a separate, dumber implementation.
+
+            This is defense in depth — two independent checks
+            that should agree.
           |) *)
-         let parse_file input = ...
 
-       Format using short borg comments:
-         (*| Parse .borg into typed AST with positions. |
-             Downstream tools need structure, not raw text. |*)
-         let parse_file input = ...
+       A wrapper that needs almost no comment — honest zeros:
+         (* agent note [5000] (|
+            WRAPPER: balance-verbose is the same scanner as
+            balance but with a paren stack for error reporting.
+            Same algorithm, more memory.
+          |) *)
 
-       Format using standard docstrings:
-         (** Parse a .borg file into a typed AST with position tracking.
-             Returns Error on malformed sexp.
+       An edge-case-heavy function that needs thorough warning:
+         (* agent note [5557] (|
+            Extracts named elements from a UI element tree.
 
-             Downstream tools (lint, drift, review) need structured
-             access to the spec, not raw text. Position tracking
-             enables line-accurate diagnostics. *)
-         let parse_file input = ...
+            Edge cases handled:
+            - Empty tree: returns empty list (not an error)
+            - Duplicate names: all occurrences collected, caller
+              deduplicates if needed
+            - Deep nesting: recurses through all children, O(depth)
+            - Null names: elements without names are silently
+              skipped (they're structural, not semantic)
+
+            Invariant: returned list preserves document order.
+            Do not sort it — downstream tools expect FIFO.
+          |) *)
 
        Guidelines:
-       - Avoid restating the signature. "Returns an int" is useless
-         when the type says int. Instead explain what the int means.
-       - The WHY is not optional. If you can't articulate why a
-         function exists, it may not need to.
-       - Prefer specifics over vagueness. "Handles errors" is weak.
-         "Retries on transient failure with exponential backoff,
-          gives up after 3 attempts" is useful.
-       - Update the comment when the function changes. A stale
-         comment is worse than no comment — it actively misleads.
-         Use (status drifted) to mark known drift (see
-         code-doc-drift-status subsection).
+       - Score honestly. [5000] is not a failing grade — it means
+         "I told the story but didn't explain mechanics, teach
+         principles, or catalogue edge cases." That's fine for
+         many functions.
+       - Zeros are the default. Adding a dimension takes effort.
+         If you didn't put edge cases in the comment, score EDGE
+         as 0. Don't inflate scores to look good.
+       - borge lint checks presence: every agent note must have a
+         [NNNN] score block. Missing score is a lint warning.
+       - borge lint checks plausibility: if you claim [7] on
+         TEACH but the comment contains no transferable insight,
+         lint suggests adjusting the score or adding content.
+       - When a comment changes, reset the 4th digit (EDGE)
+         and 1st digit (STORY if module context changed) to
+         reflect unverified currency. Humans raise digits; agents
+         should not claim currency they haven't verified.
        - Exempt internal helpers with (* exempt doc *) only if
-         the name is truly self-documenting (e.g. helper functions
-         whose purpose is clear from their call site and name).
+         the name is truly self-documenting.
      |))
    )
   )
