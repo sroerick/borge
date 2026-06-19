@@ -343,15 +343,20 @@
   (doc "Code statistics. lib/metrics/")
   (status implemented)
   (subsection stats
-   (doc "Code intelligence metrics: lines, functions, exports per file")
+   (doc "Code intelligence metrics: lines, functions, exports, literacy")
    (status implemented)
    (details
     (doc (|
          Scans all .ml files and reports: line count, function count,
          average function length, export count, doc coverage, mli status.
          Aggregates into project totals. Filters _build, .git, test dirs.
-         Doc coverage is a placeholder (0%) — proper nested-comment parsing
-         needs a real lexer.
+
+         With --literacy, also reports per-file literacy averages:
+         story, explain, teach, edge — the four dimensions of the
+         comment-writing-guide scoring system. Shows which files are
+         narrative-strong vs mechanics-strong vs pedagogy-strong.
+         Helps identify where the codebase tells its story well and
+         where comments are just checkboxes.
        |))
    )
   )

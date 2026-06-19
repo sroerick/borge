@@ -1,6 +1,6 @@
 open Ast
 
-(* agent note (|
+(* agent note [5200] (|
  *   WHAT: Convert a quoted string AST node to its escaped
  *   representation suitable for re-parsing.
  *

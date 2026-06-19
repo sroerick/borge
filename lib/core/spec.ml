@@ -73,7 +73,7 @@ let statuses (file : Borge_lang.Ast.file) : status list =
 
 let status_order = [Planned; In_progress; Partial; Implemented; Drifted; Blank]
 
-(* agent note (|
+(* agent note [5200] (|
  *   WHAT: Ordered list of status values for display and comparison.
  *   Used as the canonical ordering when computing status counts.
  *   WHY: Provides a consistent sort order for reports and ensures

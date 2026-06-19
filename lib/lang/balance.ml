@@ -39,7 +39,7 @@ type analysis = {
   pairs : paren_pair list;
 }
 
-(* agent note (|
+(* agent note [5200] (|
  *   WHAT: Convert a balance error detail to a human-readable string
  *   describing the problem and where it occurred.
  *
@@ -101,7 +101,7 @@ end
 
 type frame = { state : State.t; pos : pos }
 
-(* agent note (|
+(* agent note [5100] (|
  *   WHAT: Create a position record from a line and column number.
  *
  *   WHY: Position tracking is used throughout balance checking to
@@ -286,7 +286,7 @@ let check text =
   else
     Imbalanced all_errors
 
-(* agent note (|
+(* agent note [5300] (|
  *   WHAT: Run a structural analysis of a .borg file, recording
  *   every paren pair (open and close), lexical errors, and
  *   indent/depth divergences.

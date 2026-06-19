@@ -15,6 +15,8 @@ type lint_issue =
   | Undocumented_binding of { path : string; name : string; line : int }
   | Stale_doc_comment of { path : string; name : string; line : int }
   | Unsafe_call of { path : string; line : int; call : string; severity : [ `Error | `Warning ]; suggestion : string }
+  | Missing_literacy_score of { path : string; name : string; line : int }
+  | Implausible_literacy_score of { path : string; name : string; line : int; dimension : string; claimed : int; reason : string }
 
 type lint_result = {
   issues : lint_issue list;
@@ -253,12 +255,95 @@ let check_code_doc dir =
   List.rev !issues
 
 (* agent note (|
+ *   WHAT: Check .ml files for literacy score presence and plausibility.
+ *   Agent-written comments must have [NNNN] scores.
+ *   High scores must be supported by content.
+ * |) *)
+let contains_sub s substr =
+  try
+    let _ = Str.search_forward (Str.regexp_string substr) s 0 in
+    true
+  with Not_found -> false
+
+let check_literacy dir =
+  let ml_files = Doc_extract.find_ml_files dir in
+  let issues = ref [] in
+  List.iter (fun path ->
+    let bindings = Doc_extract.extract_bindings path in
+    let docs = Doc_detect.extract_file_docs path in
+    List.iter (fun (b : Doc_extract.binding_info) ->
+      if not b.is_internal && not b.is_test then begin
+        let doc = List.find_opt (fun (bd : Doc_detect.binding_doc) ->
+          bd.binding_line = b.line
+        ) docs in
+        match doc with
+        | Some bd when Doc_detect.binding_has_doc bd -> begin
+            match bd.doc with
+            | Some (Doc_detect.Borg_note (_, _content, None), _) ->
+                issues := Missing_literacy_score { path; name = b.name; line = b.line } :: !issues
+            | Some (Doc_detect.Borg_note (_, content, Some score), _) ->
+                let content_lower = String.lowercase_ascii content in
+                let has_narrative =
+                  String.length content > 200 ||
+                  contains_sub content_lower "because" ||
+                  contains_sub content_lower "this is why" ||
+                  contains_sub content_lower "design reason" ||
+                  contains_sub content_lower "the goal"
+                in
+                let has_explain =
+                  contains_sub content_lower "step" ||
+                  contains_sub content_lower "flow" ||
+                  contains_sub content_lower "algorithm" ||
+                  contains_sub content_lower "process" ||
+                  String.length content > 400
+                in
+                let has_teach =
+                  contains_sub content_lower "pattern" ||
+                  contains_sub content_lower "technique" ||
+                  contains_sub content_lower "principle" ||
+                  contains_sub content_lower "gotcha" ||
+                  contains_sub content_lower "lesson" ||
+                  contains_sub content_lower "remember"
+                in
+                let has_edge =
+                  contains_sub content_lower "edge" ||
+                  contains_sub content_lower "precondition" ||
+                  contains_sub content_lower "invariant" ||
+                  contains_sub content_lower "assume" ||
+                  contains_sub content_lower "break" ||
+                  contains_sub content_lower "warning" ||
+                  contains_sub content_lower "careful"
+                in
+                let check dim claimed has_support reason =
+                  if claimed >= 6 && not has_support then
+                    issues := Implausible_literacy_score {
+                      path; name = b.name; line = b.line;
+                      dimension = dim; claimed; reason
+                    } :: !issues
+                in
+                check "story" score.Doc_detect.story has_narrative
+                  "No narrative context found (try adding 'because', 'design reason', or more detail)";
+                check "explain" score.Doc_detect.explain has_explain
+                  "No mechanics explanation found (try adding 'step', 'flow', or algorithm detail)";
+                check "teach" score.Doc_detect.teach has_teach
+                  "No transferable insight found (try adding 'pattern', 'principle', or 'gotcha')";
+                check "edge" score.Doc_detect.edge has_edge
+                  "No boundary discussion found (try adding 'precondition', 'invariant', or 'careful')";
+            | _ -> ()
+        end
+        | _ -> ()
+      end
+    ) bindings
+  ) ml_files;
+  List.rev !issues
+
+(* agent note (|
  *   WHAT: Run lint checks on all .borg files in a directory.
  *   Performs validation: status values, duplicate names, annotated
  *   comments, pending responses, orphans, and optional code-doc checks.
  *   WHY: Main entry point for borge lint command.
  * |) *)
-let run ~code_doc ~mechanical dir =
+let run ~code_doc ~mechanical ~literacy dir =
   let all_files = File_utils.find_borg_files dir in
   let file_stats = List.filter_map (fun path ->
     try
@@ -301,7 +386,8 @@ let run ~code_doc ~mechanical dir =
       }
     ) (Code_quality.run dir)
   else [] in
-  let all_issues = status_issues @ name_issues @ comment_issues @ pending_issues @ orphan_issues @ db_issues @ ui_issues @ code_doc_issues @ mechanical_issues in
+  let literacy_issues = if literacy then check_literacy dir else [] in
+  let all_issues = status_issues @ name_issues @ comment_issues @ pending_issues @ orphan_issues @ db_issues @ ui_issues @ code_doc_issues @ mechanical_issues @ literacy_issues in
   let errors = List.filter (function
     | Invalid_status _ | Duplicate_project_name _ | Orphaned_file _
     | Db_validation { severity = `Error; _ }
@@ -315,7 +401,8 @@ let run ~code_doc ~mechanical dir =
     | Db_validation { severity = `Warning; _ }
     | Ui_validation { severity = `Warning; _ }
     | Undocumented_binding _ | Stale_doc_comment _
-    | Unsafe_call { severity = `Warning; _ } -> true
+    | Unsafe_call { severity = `Warning; _ }
+    | Missing_literacy_score _ | Implausible_literacy_score _ -> true
     | _ -> false
   ) all_issues in
   { issues = all_issues; error_count = List.length errors; warning_count = List.length warnings }

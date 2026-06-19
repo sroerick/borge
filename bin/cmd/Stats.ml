@@ -5,6 +5,57 @@ let pad_right n s =
   let len = String.length s in
   if len >= n then s else s ^ String.make (n - len) ' '
 
+(** Print a bar chart for a literacy dimension *)
+let bar n =
+  let filled = int_of_float (n) in
+  String.make (min filled 7) '#' ^ String.make (max 0 (7 - filled)) '.'
+
+(** Run literacy analysis and print results *)
+let run_literacy dir =
+  Printf.printf "Literacy Metrics — %s\n\n" dir;
+  let result = Stats.run dir in
+  Printf.printf "Per-file literacy scores:\n";
+  Printf.printf "  %-30s story  explain  teach  edge  profile\n" "module";
+  Printf.printf "  %s\n" (String.make 75 '-');
+  List.iter (fun (m : Stats.file_metrics) ->
+    match m.literacy with
+    | None ->
+        Printf.printf "  %-30s  no scores\n" m.module_name
+    | Some (s, e, t, g) ->
+        let profile =
+          if s >= 5.0 && e < 3.0 && t < 3.0 && g < 3.0 then "narrative-strong"
+          else if s < 3.0 && e >= 5.0 && t < 3.0 && g < 3.0 then "mechanics-strong"
+          else if s < 3.0 && e < 3.0 && t >= 5.0 && g < 3.0 then "pedagogy-strong"
+          else if s < 3.0 && e < 3.0 && t < 3.0 && g >= 5.0 then "edge-strong"
+          else "balanced"
+        in
+        Printf.printf "  %-30s  %.1f%s  %.1f%s  %.1f%s  %.1f%s  %s\n"
+          m.module_name
+          s (bar s) e (bar e) t (bar t) g (bar g) profile
+  ) result.files;
+  (match result.avg_literacy with
+  | None -> Printf.printf "\nNo literacy scores found in project.\n"
+  | Some (s, e, t, g) ->
+      Printf.printf "\nProject averages:\n";
+      Printf.printf "  Story:   %.1f %s\n" s (bar s);
+      Printf.printf "  Explain: %.1f %s\n" e (bar e);
+      Printf.printf "  Teach:   %.1f %s\n" t (bar t);
+      Printf.printf "  Edge:    %.1f %s\n" g (bar g);
+      let insight =
+        if e < 2.0 && s >= 4.0 then
+          "Narrative is strong but mechanics are weak. Comments tell you WHY but not HOW."
+        else if s < 2.0 && e >= 4.0 then
+          "Mechanics are strong but narrative is weak. Comments walk through code but don't explain why it exists."
+        else if t < 1.0 && s >= 3.0 && e >= 3.0 then
+          "Solid documentation but limited teaching. Comments explain this code but don't help with other code."
+        else if g < 1.0 then
+          "Boundary conditions missing. Comments describe happy path but don't say what breaks."
+        else
+          "Balanced literacy across all four dimensions."
+      in
+      Printf.printf "\n  %s\n" insight);
+  exit 0
+
 (** Run documentation coverage analysis and print results *)
 let run_coverage dir =
   Printf.printf "Documentation Coverage — %s\n\n" dir;
@@ -38,8 +89,9 @@ let run_coverage dir =
   ) coverage.files;
   if coverage.total_undocumented > 0 then exit 1 else exit 0
 
-let run dir json quiet coverage =
-  if coverage then run_coverage dir
+let run dir json quiet coverage literacy =
+  if literacy then run_literacy dir
+  else if coverage then run_coverage dir
   else
   let result = Stats.run dir in
   if json then begin
@@ -93,11 +145,15 @@ let quiet =
 let coverage =
   Arg.(value & flag & info ["coverage"; "c"] ~doc:"Show documentation coverage analysis")
 
+let literacy =
+  Arg.(value & flag & info ["literacy"; "l"] ~doc:"Show literacy scoring metrics")
+
 let cmd : unit Cmd.t =
   Cmd.v (Cmd.info "stats" ~doc:"show code intelligence metrics"
     ~man:[`S "DESCRIPTION";
           `P "Scans all .ml files and reports lines of code, function count, \
               average function length, export count, and .mli coverage.";
           `P "With --json, outputs structured JSON instead of formatted text.";
-          `P "With --coverage, shows documentation coverage analysis."])
-  Term.(const run $ dir $ json $ quiet $ coverage)
+          `P "With --coverage, shows documentation coverage analysis.";
+          `P "With --literacy, shows per-file literacy scores: story, explain, teach, edge."])
+  Term.(const run $ dir $ json $ quiet $ coverage $ literacy)

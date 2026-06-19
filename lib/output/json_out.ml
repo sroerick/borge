@@ -172,6 +172,25 @@ let lint_issue = function
       "call", `String call;
       "suggestion", `String suggestion;
     ]
+  | Lint.Missing_literacy_score { path; name; line } ->
+    `Assoc [
+      "type", `String "missing_literacy_score";
+      "severity", `String "warning";
+      "path", `String path;
+      "name", `String name;
+      "line", `Int line;
+    ]
+  | Lint.Implausible_literacy_score { path; name; line; dimension; claimed; reason } ->
+    `Assoc [
+      "type", `String "implausible_literacy_score";
+      "severity", `String "warning";
+      "path", `String path;
+      "name", `String name;
+      "line", `Int line;
+      "dimension", `String dimension;
+      "claimed", `Int claimed;
+      "reason", `String reason;
+    ]
 
 (* exempt doc: simple JSON wrapper - name is self-documenting *)
 let lint (r : Lint.lint_result) =
@@ -227,6 +246,14 @@ let file_metrics (m : Stats.file_metrics) =
     "documented", `Int m.documented;
     "doc_coverage", `Float m.doc_coverage;
     "has_mli", `Bool m.has_mli;
+    "literacy", (match m.literacy with
+      | None -> `Null
+      | Some (s, e, t, g) -> `Assoc [
+          "story", `Float s;
+          "explain", `Float e;
+          "teach", `Float t;
+          "edge", `Float g;
+        ]);
   ]
 
 (* exempt doc: simple JSON wrapper - name is self-documenting *)
@@ -239,6 +266,14 @@ let stats (r : Stats.project_metrics) =
     "total_documented", `Int r.total_documented;
     "doc_coverage", `Float r.doc_coverage;
     "avg_func_length", `Float r.avg_func_length;
+    "avg_literacy", (match r.avg_literacy with
+      | None -> `Null
+      | Some (s, e, t, g) -> `Assoc [
+          "story", `Float s;
+          "explain", `Float e;
+          "teach", `Float t;
+          "edge", `Float g;
+        ]);
   ]
 
 (* ── Balance ───────────────────────────────────────────────────── *)

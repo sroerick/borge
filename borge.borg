@@ -216,7 +216,7 @@
    )
   )
   (subsection lint
-   (doc "Semantic validation: invalid status, illegal placement.")
+   (doc "Semantic validation: invalid status, illegal placement, literacy.")
    (status implemented)
    (details
     (doc (|
@@ -231,6 +231,15 @@
           - (no-inline) on root files (root files can't inline anything)
           - Mechanical code quality: unsafe stdlib calls, polymorphic
             equality. borge lint --mechanical to enable.
+
+          borge lint --literacy checks .ml files for:
+          - Missing literacy scores on agent-written doc comments
+            (no [NNNN] after the authorship tag)
+          - Plausible scores: if STORY >= 6 the comment must show
+            narrative context; if EXPLAIN >= 6 it must walk through
+            mechanics; if TEACH >= 6 it must contain a transferable
+            principle. Catches inflated scores like [7777777] on a
+            2-line comment.
         |))
    )
   )

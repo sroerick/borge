@@ -1,7 +1,7 @@
 open Borge_lib
 
-let run dir json quiet code_doc mechanical =
-  let result = Lint.run ~code_doc ~mechanical dir in
+let run dir json quiet code_doc mechanical literacy =
+  let result = Lint.run ~code_doc ~mechanical ~literacy dir in
   if json then begin
     Printf.printf "%s\n" (Yojson.Basic.to_string (Json_out.lint result));
     exit (if result.error_count > 0 then 1 else 0)
@@ -37,6 +37,11 @@ let run dir json quiet code_doc mechanical =
         Printf.printf "  ⚠ %s:%d: undocumented binding '%s'\n" path line name
     | Lint.Stale_doc_comment { path; name; line } ->
         Printf.printf "  ⚠ %s:%d: drifted doc comment on '%s'\n" path line name
+    | Lint.Missing_literacy_score { path; name; line } ->
+        Printf.printf "  ⚠ %s:%d: missing literacy score on '%s'\n" path line name
+    | Lint.Implausible_literacy_score { path; name; line; dimension; claimed; reason } ->
+        Printf.printf "  ⚠ %s:%d: %s=%d on '%s' is implausible — %s\n"
+          path line dimension claimed name reason
     | Lint.Unsafe_call { path; line; call; severity; suggestion } ->
         let mark = match severity with `Error -> "✗" | `Warning -> "⚠" in
         Printf.printf "  %s %s:%d: unsafe call '%s' — %s\n" mark path line call suggestion
@@ -74,6 +79,9 @@ let code_doc =
 let mechanical =
   Arg.(value & flag & info ["mechanical"] ~doc:"Check .ml/.mli files for unsafe stdlib calls")
 
+let literacy =
+  Arg.(value & flag & info ["literacy"; "l"] ~doc:"Check .ml files for literacy scores")
+
 let cmd : unit Cmd.t =
   Cmd.v (Cmd.info "lint" ~doc:"semantic validation of .borg files"
     ~man:[`S "DESCRIPTION";
@@ -84,5 +92,7 @@ let cmd : unit Cmd.t =
               exported bindings and drifted doc comments.";
           `P "With --mechanical, also checks .ml/.mli files for unsafe \
               standard library calls (List.hd, List.assoc, Hashtbl.find, etc.).";
+          `P "With --literacy, also checks .ml files for missing or implausible \
+              literacy scores on doc comments.";
           `P "With --json, outputs structured JSON instead of formatted text."])
-  Term.(const run $ dir $ json $ quiet $ code_doc $ mechanical)
+  Term.(const run $ dir $ json $ quiet $ code_doc $ mechanical $ literacy)

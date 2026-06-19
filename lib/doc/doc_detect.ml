@@ -34,7 +34,7 @@ type doc_position =
   | Inline                  (** Same line as binding - rare *)
   | None_found
 
-(* agent note (|
+(* agent note [5300] (|
  *   WHAT: Check whether a comment string contains a (status drifted) marker.
  *   Scans the entire text for the literal substring "(status drifted)".
  *

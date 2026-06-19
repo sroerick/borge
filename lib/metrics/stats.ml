@@ -14,6 +14,7 @@ type file_metrics = {
   documented : int;  (** exports with doc comments *)
   doc_coverage : float;  (** documented / exports ratio, 0.0-1.0 *)
   has_mli : bool;
+  literacy : (float * float * float * float) option;  (** avg story, explain, teach, edge *)
 }
 
 (** Aggregated project metrics *)
@@ -25,6 +26,7 @@ type project_metrics = {
   total_documented : int;
   doc_coverage : float;
   avg_func_length : float;
+  avg_literacy : (float * float * float * float) option;  (** project-wide averages *)
 }
 
 (** Count the lines in a string (excluding blank lines and comments) *)
@@ -58,6 +60,29 @@ let count_functions content =
     end
   ) 0 lines
 
+(** Extract literacy scores from all borg-note comments in a file.
+    Returns averages per dimension (story, explain, teach, edge) *)
+let compute_literacy ml_path =
+  try
+    let docs = Doc_detect.extract_file_docs ml_path in
+    let scored = List.filter_map (fun (bd : Doc_detect.binding_doc) ->
+      match bd.doc with
+      | Some (Doc_detect.Borg_note (_, _, Some score), _) -> Some score
+      | _ -> None
+    ) docs in
+    if scored = [] then None
+    else begin
+      let total = float_of_int (List.length scored) in
+      let sum f = List.fold_left (fun acc s -> acc + f s) 0 scored in
+      Some (
+        float_of_int (sum (fun s -> s.Doc_detect.story)) /. total,
+        float_of_int (sum (fun s -> s.Doc_detect.explain)) /. total,
+        float_of_int (sum (fun s -> s.Doc_detect.teach)) /. total,
+        float_of_int (sum (fun s -> s.Doc_detect.edge)) /. total
+      )
+    end
+  with _ -> None
+
 (** Count declarations with doc comments ((**) ... (*)) immediately before them.
     TODO: this is a placeholder — proper doc-comment parsing needs to
     handle nested comments and avoid matching *) inside strings. *)
@@ -85,7 +110,8 @@ let measure_file ml_path =
   let documented = count_documented content in
   let doc_coverage = if exports = 0 then 1.0
     else float_of_int documented /. float_of_int exports in
-  { path = ml_path; module_name; lines; functions; avg_length; exports; documented; doc_coverage; has_mli }
+  let literacy = compute_literacy ml_path in
+  { path = ml_path; module_name; lines; functions; avg_length; exports; documented; doc_coverage; has_mli; literacy }
 
 (** Find all .ml files in a directory, excluding _build, .git, and test dirs *)
 let find_ml_files dir =
@@ -123,4 +149,17 @@ let run dir =
   let doc_coverage = if total_exports = 0 then 1.0
     else float_of_int total_documented /. float_of_int total_exports in
   let avg_func_length = compute_avg_length total_lines total_functions in
-  { files = metrics; total_lines; total_functions; total_exports; total_documented; doc_coverage; avg_func_length }
+  let avg_literacy =
+    let all_scores = List.filter_map (fun (m : file_metrics) -> m.literacy) metrics in
+    if all_scores = [] then None
+    else begin
+      let total = float_of_int (List.length all_scores) in
+      Some (
+        List.fold_left (fun acc (s, _, _, _) -> acc +. s) 0.0 all_scores /. total,
+        List.fold_left (fun acc (_, e, _, _) -> acc +. e) 0.0 all_scores /. total,
+        List.fold_left (fun acc (_, _, t, _) -> acc +. t) 0.0 all_scores /. total,
+        List.fold_left (fun acc (_, _, _, g) -> acc +. g) 0.0 all_scores /. total
+      )
+    end
+  in
+  { files = metrics; total_lines; total_functions; total_exports; total_documented; doc_coverage; avg_func_length; avg_literacy }
