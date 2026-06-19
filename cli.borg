@@ -56,6 +56,32 @@
    (doc "Show diff between current and formatted output")
    (status implemented)
   )
+  (subsection fmt-repair
+   (doc "Repair imbalanced files before formatting")
+   (status implemented)
+   (details
+    (doc (|
+         When a .borg file has paren imbalance, borge fmt normally
+         fails with a parse error. The --repair flag attempts to
+         fix the imbalance first by inferring close-parens from
+         indentation (Parinfer-style), then formats the repaired
+         file.
+
+         Usage:
+           borge fmt --repair FILE
+
+         Process:
+         1. Attempt normal parse + format
+         2. If parse fails, run balance repair on the file
+         3. Attempt parse + format on the repaired text
+         4. If both fail, report the parse error
+
+         This is the recovery path for agent edits that break
+         structural balance. Instead of manual paren counting,
+         the agent should run: borge fmt --repair FILE
+       |))
+   )
+  )
   (subsection expand
    (doc "Expand a section by resolving ai-prompt directives")
    (status planned)

@@ -12,6 +12,7 @@ type error_detail =
   | Unexpected_close of pos * pos option
   | Unclosed_parens of paren_frame list
   | Unclosed_context of pos * string
+  | Indent_mismatch of pos * paren_frame  (** structural `)` column does not match `(` column *)
 
 type check_result =
   | Balanced of { max_depth : int }
@@ -62,6 +63,10 @@ let string_of_error = function
   | Unclosed_context (p, ctx) ->
       Printf.sprintf "End of file: unclosed %s (opened at line %d, col %d)"
         ctx p.line p.col
+  | Indent_mismatch (p, frame) ->
+      let kw = match frame.keyword with Some k -> k | None -> "form" in
+      Printf.sprintf "Line %d, col %d: structural `)` at column %d does not match `(` at column %d (%s, opened line %d)"
+        p.line p.col p.col frame.open_pos.col kw frame.open_pos.line
 
 (** Render the paren stack for verbose output *)
 let string_of_paren_stack (frames : paren_frame list) =
@@ -139,6 +144,7 @@ let check text =
   let paren_stack : paren_frame list ref = ref [] in
   let max_depth = ref 0 in
   let errors = ref [] in
+  let seen_non_ws = ref false in
 
   let push_state st =
     state_stack := { state = st; pos = mk_pos !line !col } :: !state_stack
@@ -162,6 +168,7 @@ let check text =
     if ch = '\n' then (
       line := !line + 1;
       col := 1;
+      seen_non_ws := false;
       incr i;
       if current_state () = State.Plain_comment then pop_state ();
     ) else (
@@ -172,27 +179,38 @@ let check text =
             incr i; incr col
           ) else if ch = '(' && !i + 1 < len && text.[!i + 1] = '*' then (
             push_state State.Annotated_comment;
+            seen_non_ws := false;
             i := !i + 2; col := !col + 2
           ) else if ch = '(' && !i + 1 < len && text.[!i + 1] = '|' then (
             push_state (State.Verbatim 1);
+            seen_non_ws := false;
             i := !i + 2; col := !col + 2
           ) else if ch = '"' then (
             push_state State.Quoted_string;
+            seen_non_ws := false;
             incr i; incr col
           ) else if ch = '(' then (
             let keyword = peek_keyword text (!i + 1) len in
             paren_stack := { open_pos = here (); keyword } :: !paren_stack;
             max_depth := max !max_depth (List.length !paren_stack);
+            seen_non_ws := true;
             incr i; incr col
           ) else if ch = ')' then (
-            match !paren_stack with
+            let is_structural = not !seen_non_ws in
+            seen_non_ws := true;
+            (match !paren_stack with
             | [] ->
                 errors := Unexpected_close (here (), None) :: !errors;
                 incr i; incr col
-            | _ :: rest ->
+            | frame :: rest ->
+                if is_structural && frame.open_pos.col <> !col then (
+                  errors := Indent_mismatch (here (), frame) :: !errors
+                );
                 paren_stack := rest;
                 incr i; incr col
+            )
           ) else (
+            if ch <> ' ' && ch <> '\t' then seen_non_ws := true;
             incr i; incr col
           )
 
@@ -202,6 +220,7 @@ let check text =
       | State.Annotated_comment ->
           if ch = '*' && !i + 1 < len && text.[!i + 1] = ')' then (
             pop_state ();
+            seen_non_ws := true;
             i := !i + 2; col := !col + 2
           ) else (
             incr i; incr col
@@ -212,6 +231,7 @@ let check text =
             i := !i + 2; col := !col + 2
           ) else if ch = '"' then (
             pop_state ();
+            seen_non_ws := true;
             incr i; incr col
           ) else (
             incr i; incr col
@@ -223,6 +243,7 @@ let check text =
             i := !i + 2; col := !col + 2
           ) else if ch = '|' && !i + 1 < len && text.[!i + 1] = ')' then (
             pop_state ();
+            seen_non_ws := true;
             i := !i + 2; col := !col + 2
           ) else if ch = '<' && !i + 1 < len && text.[!i + 1] = '<' then (
             push_state (State.Inline_example 1);
@@ -237,6 +258,7 @@ let check text =
             i := !i + 2; col := !col + 2
           ) else if ch = '>' && !i + 1 < len && text.[!i + 1] = '>' then (
             pop_state ();
+            seen_non_ws := true;
             i := !i + 2; col := !col + 2
           ) else (
             incr i; incr col
@@ -283,6 +305,7 @@ let analyze text =
   let all_pairs : paren_pair list ref = ref [] in
   let max_depth = ref 0 in
   let errors = ref [] in
+  let seen_non_ws = ref false in
 
   let push_state st =
     state_stack := { state = st; pos = mk_pos !line !col } :: !state_stack
@@ -306,6 +329,7 @@ let analyze text =
     if ch = '\n' then (
       line := !line + 1;
       col := 1;
+      seen_non_ws := false;
       incr i;
       if current_state () = State.Plain_comment then pop_state ();
     ) else (
@@ -316,12 +340,15 @@ let analyze text =
             incr i; incr col
           ) else if ch = '(' && !i + 1 < len && text.[!i + 1] = '*' then (
             push_state State.Annotated_comment;
+            seen_non_ws := false;
             i := !i + 2; col := !col + 2
           ) else if ch = '(' && !i + 1 < len && text.[!i + 1] = '|' then (
             push_state (State.Verbatim 1);
+            seen_non_ws := false;
             i := !i + 2; col := !col + 2
           ) else if ch = '"' then (
             push_state State.Quoted_string;
+            seen_non_ws := false;
             incr i; incr col
           ) else if ch = '(' then (
             let keyword = peek_keyword text (!i + 1) len in
@@ -332,8 +359,11 @@ let analyze text =
             let pair = { open_pos; close_pos = None; keyword; depth } in
             pair_stack := pair :: !pair_stack;
             all_pairs := pair :: !all_pairs;
+            seen_non_ws := true;
             incr i; incr col
           ) else if ch = ')' then (
+            let is_structural = not !seen_non_ws in
+            seen_non_ws := true;
             (match !pair_stack with
             | [] -> ()
             | pair :: rest ->
@@ -344,11 +374,15 @@ let analyze text =
             | [] ->
                 errors := Unexpected_close (here (), None) :: !errors;
                 incr i; incr col
-            | _ :: rest ->
+            | frame :: rest ->
+                if is_structural && frame.open_pos.col <> !col then (
+                  errors := Indent_mismatch (here (), frame) :: !errors
+                );
                 paren_stack := rest;
                 incr i; incr col
             )
           ) else (
+            if ch <> ' ' && ch <> '\t' then seen_non_ws := true;
             incr i; incr col
           )
 
@@ -358,6 +392,7 @@ let analyze text =
       | State.Annotated_comment ->
           if ch = '*' && !i + 1 < len && text.[!i + 1] = ')' then (
             pop_state ();
+            seen_non_ws := true;
             i := !i + 2; col := !col + 2
           ) else (
             incr i; incr col
@@ -368,6 +403,7 @@ let analyze text =
             i := !i + 2; col := !col + 2
           ) else if ch = '"' then (
             pop_state ();
+            seen_non_ws := true;
             incr i; incr col
           ) else (
             incr i; incr col
@@ -379,6 +415,7 @@ let analyze text =
             i := !i + 2; col := !col + 2
           ) else if ch = '|' && !i + 1 < len && text.[!i + 1] = ')' then (
             pop_state ();
+            seen_non_ws := true;
             i := !i + 2; col := !col + 2
           ) else if ch = '<' && !i + 1 < len && text.[!i + 1] = '<' then (
             push_state (State.Inline_example 1);
@@ -393,6 +430,7 @@ let analyze text =
             i := !i + 2; col := !col + 2
           ) else if ch = '>' && !i + 1 < len && text.[!i + 1] = '>' then (
             pop_state ();
+            seen_non_ws := true;
             i := !i + 2; col := !col + 2
           ) else (
             incr i; incr col
@@ -538,6 +576,354 @@ let render_smart_suggestion text (pairs : paren_pair list) (frame : paren_frame)
           Printf.printf "    (closes %s opened at line %d)\n" kw pair.open_pos.line
 
 (** Extract lines [start_line; end_line] inclusive from text *)
+(* ── Indent-based repair (Parinfer-style) ─────────────────────────── *)
+
+type line_event = {
+  ev_line : int;
+  ev_open_col : int option;       (** column of first structural `(` *)
+  ev_keyword : string option;
+  ev_structural_close_col : int option;  (** column of first structural `)` *)
+  ev_inline_close_count : int;    (** number of inline `)` *)
+}
+
+type repair_action =
+  | Insert_line of { line : int; indent : int; reason : string }
+  | Trim_end of { line : int; count : int; reason : string }
+
+(** Per-line scanner: for every line, record first open-paren and total
+    close-parens, skipping comments/strings/verbatim. *)
+let scan_line_events text =
+  let len = String.length text in
+  let line = ref 1 in
+  let col = ref 1 in
+  let state_stack = ref [] in
+  let events = ref [] in
+  let current_open = ref None in
+  let current_keyword = ref None in
+  let current_structural_close = ref None in
+  let current_inline_closes = ref 0 in
+  let seen_non_ws = ref false in
+
+  let push_state st = state_stack := st :: !state_stack in
+  let pop_state () = state_stack := (match !state_stack with _::t -> t | [] -> []) in
+  let current_state () = match !state_stack with [] -> State.Normal | s::_ -> s in
+  let flush_event () =
+    events := {
+      ev_line = !line;
+      ev_open_col = !current_open;
+      ev_keyword = !current_keyword;
+      ev_structural_close_col = !current_structural_close;
+      ev_inline_close_count = !current_inline_closes;
+    } :: !events;
+    current_open := None;
+    current_keyword := None;
+    current_structural_close := None;
+    current_inline_closes := 0;
+    seen_non_ws := false
+  in
+
+  let i = ref 0 in
+  while !i < len do
+    let ch = text.[!i] in
+
+    if ch = '\n' then (
+      flush_event ();
+      line := !line + 1;
+      col := 1;
+      incr i;
+      if current_state () = State.Plain_comment then pop_state ();
+    ) else (
+      match current_state () with
+      | State.Normal ->
+          if ch = ';' then (
+            push_state State.Plain_comment;
+            incr i; incr col
+          ) else if ch = '(' && !i + 1 < len && text.[!i + 1] = '*' then (
+            push_state State.Annotated_comment;
+            seen_non_ws := false;
+            i := !i + 2; col := !col + 2
+          ) else if ch = '(' && !i + 1 < len && text.[!i + 1] = '|' then (
+            push_state (State.Verbatim 1);
+            seen_non_ws := false;
+            i := !i + 2; col := !col + 2
+          ) else if ch = '"' then (
+            push_state State.Quoted_string;
+            seen_non_ws := false;
+            incr i; incr col
+          ) else if ch = '(' then (
+            if !current_open = None then (
+              current_open := Some !col;
+              current_keyword := peek_keyword text (!i + 1) len;
+            );
+            seen_non_ws := true;
+            incr i; incr col
+          ) else if ch = ')' then (
+            if not !seen_non_ws then (
+              if !current_structural_close = None then
+                current_structural_close := Some !col
+            ) else (
+              incr current_inline_closes
+            );
+            seen_non_ws := true;
+            incr i; incr col
+          ) else (
+            if ch <> ' ' && ch <> '\t' then seen_non_ws := true;
+            incr i; incr col
+          )
+
+      | State.Plain_comment ->
+          incr i; incr col
+
+      | State.Annotated_comment ->
+          if ch = '*' && !i + 1 < len && text.[!i + 1] = ')' then (
+            pop_state ();
+            seen_non_ws := true;
+            i := !i + 2; col := !col + 2
+          ) else (
+            incr i; incr col
+          )
+
+      | State.Quoted_string ->
+          if ch = '\\' && !i + 1 < len then (
+            i := !i + 2; col := !col + 2
+          ) else if ch = '"' then (
+            pop_state ();
+            seen_non_ws := true;
+            incr i; incr col
+          ) else (
+            incr i; incr col
+          )
+
+      | State.Verbatim depth ->
+          if ch = '(' && !i + 1 < len && text.[!i + 1] = '|' then (
+            push_state (State.Verbatim (depth + 1));
+            i := !i + 2; col := !col + 2
+          ) else if ch = '|' && !i + 1 < len && text.[!i + 1] = ')' then (
+            pop_state ();
+            seen_non_ws := true;
+            i := !i + 2; col := !col + 2
+          ) else if ch = '<' && !i + 1 < len && text.[!i + 1] = '<' then (
+            push_state (State.Inline_example 1);
+            i := !i + 2; col := !col + 2
+          ) else (
+            incr i; incr col
+          )
+
+      | State.Inline_example depth ->
+          if ch = '<' && !i + 1 < len && text.[!i + 1] = '<' then (
+            push_state (State.Inline_example (depth + 1));
+            i := !i + 2; col := !col + 2
+          ) else if ch = '>' && !i + 1 < len && text.[!i + 1] = '>' then (
+            pop_state ();
+            seen_non_ws := true;
+            i := !i + 2; col := !col + 2
+          ) else (
+            incr i; incr col
+          )
+    )
+  done;
+  (* Only flush final event if there is actual content — prevents
+     a phantom empty line from stealing EOF repair actions. *)
+  if !current_open <> None || !current_structural_close <> None || !current_inline_closes > 0 then
+    flush_event ();
+  List.rev !events
+
+type indent_form = {
+  if_line : int;
+  if_col : int;
+  if_keyword : string option;
+}
+
+(** Build repair actions from indentation-based tree inference.
+    Algorithm:
+    - Each line with an open-paren at col C starts a form.
+    - Before opening a new form at col C, close all forms with col > C.
+    - Structural `)` must match its opener's column; mismatches are trimmed.
+    - Inline `)` pops from the stack normally.
+    - At EOF, close everything remaining with properly indented new lines.
+*)
+let compute_repair_actions (events : line_event list) =
+  let stack : indent_form list ref = ref [] in
+  let actions : repair_action list ref = ref [] in
+
+  let insert_closes before_line forms =
+    (* Insert from innermost (highest indent) to outermost *)
+    let sorted = List.sort (fun a b -> compare b.if_col a.if_col) forms in
+    List.iter (fun form ->
+      actions := Insert_line { line = before_line - 1; indent = form.if_col;
+        reason = Printf.sprintf "close %s opened at line %d" (match form.if_keyword with Some k -> k | None -> "form") form.if_line }
+        :: !actions
+    ) sorted
+  in
+
+  let close_forms target_col new_line =
+    let rec aux acc =
+      match !stack with
+      | [] -> acc
+      | top :: rest when top.if_col >= target_col ->
+          stack := rest;
+          aux (top :: acc)
+      | _ -> acc
+    in
+    let to_close = aux [] in
+    if to_close <> [] then insert_closes new_line to_close
+  in
+
+  List.iter (fun ev ->
+    (* Handle open first: close deeper forms, then push new form *)
+    (match ev.ev_open_col with
+    | Some c ->
+        close_forms c ev.ev_line;
+        stack := { if_line = ev.ev_line; if_col = c; if_keyword = ev.ev_keyword } :: !stack
+    | None -> ());
+
+    (* Handle inline closes: pop from stack *)
+    if ev.ev_inline_close_count > 0 then (
+      let rec pop count =
+        if count <= 0 then ()
+        else match !stack with
+        | [] ->
+            actions := Trim_end { line = ev.ev_line; count = count;
+              reason = "unexpected `)` — no matching open-paren" } :: !actions
+        | _ :: rest ->
+            stack := rest;
+            pop (count - 1)
+      in
+      pop ev.ev_inline_close_count
+    );
+
+    (* Handle structural close: must match top of stack *)
+    (match ev.ev_structural_close_col with
+    | Some c ->
+        (match !stack with
+        | top :: rest when top.if_col = c ->
+            stack := rest
+        | _ ->
+            (* Mismatched structural close or unexpected — trim it *)
+            actions := Trim_end { line = ev.ev_line; count = 1;
+              reason = "structural `)` does not match open-paren indentation" } :: !actions
+        )
+    | None -> ()
+    );
+  ) events;
+
+  (* EOF: close any remaining *)
+  (match !stack with
+  | [] -> ()
+  | remaining ->
+      let last_ev = match List.rev events with e::_ -> e.ev_line | [] -> 1 in
+      insert_closes (last_ev + 1) remaining;
+      stack := []
+  );
+
+  List.rev !actions
+
+(** Apply repair actions to text, producing the corrected file. *)
+let apply_repair_actions text actions =
+  let raw_lines = String.split_on_char '\n' text in
+  let lines, has_trailing_newline =
+    match List.rev raw_lines with
+    | "" :: rest -> List.rev rest, true
+    | _ -> raw_lines, false
+  in
+  let lines = Array.of_list lines in
+
+  (* Group actions by line *)
+  let inserts = Hashtbl.create 16 in
+  let trims = Hashtbl.create 16 in
+  List.iter (function
+    | Insert_line { line; indent; reason } ->
+        let existing = try Hashtbl.find inserts line with Not_found -> [] in
+        Hashtbl.replace inserts line ((indent, reason) :: existing)
+    | Trim_end { line; count; reason = _ } ->
+        let existing = try Hashtbl.find trims line with Not_found -> 0 in
+        Hashtbl.replace trims line (existing + count)
+  ) actions;
+
+  let result = ref [] in
+  for i = 0 to Array.length lines - 1 do
+    let line_num = i + 1 in
+    let line_text = lines.(i) in
+
+    (* Apply trim to current line *)
+    let trim_count = try Hashtbl.find trims line_num with Not_found -> 0 in
+    let trimmed =
+      let rec trim s n =
+        if n <= 0 then s
+        else
+          let len = String.length s in
+          if len > 0 && s.[len - 1] = ')' then trim (String.sub s 0 (len - 1)) (n - 1)
+          else s
+      in
+      trim line_text trim_count
+    in
+    result := trimmed :: !result;
+
+    (* Insert new lines after this line *)
+    match try Some (Hashtbl.find inserts line_num) with Not_found -> None with
+    | Some items ->
+        (* Sort by indent descending so innermost closes appear first *)
+        let sorted = List.sort (fun (a, _) (b, _) -> compare b a) items in
+        List.iter (fun (indent, _) ->
+          result := (String.make (indent - 1) ' ' ^ ")") :: !result
+        ) sorted
+    | None -> ()
+  done;
+
+  let text = String.concat "\n" (List.rev !result) in
+  if has_trailing_newline then text ^ "\n" else text
+
+let repair text =
+  let events = scan_line_events text in
+  let actions = compute_repair_actions events in
+  apply_repair_actions text actions
+
+(** Enriched analysis with structural tree and repair actions. *)
+type structural_node = {
+  node_line : int;
+  node_depth : int;
+  node_keyword : string option;
+  node_open_col : int;
+  node_closed : bool;
+  node_close_line : int option;
+}
+
+type enriched_analysis = {
+  enriched_result : check_result;
+  enriched_pairs : paren_pair list;
+  enriched_divergences : indent_divergence list;
+  enriched_tree : structural_node list;
+  enriched_repair_actions : repair_action list;
+}
+
+let analyze_enriched text =
+  let analysis = analyze text in
+  let tree =
+    List.map (fun (p : paren_pair) ->
+      { node_line = p.open_pos.line;
+        node_depth = p.depth;
+        node_keyword = p.keyword;
+        node_open_col = p.open_pos.col;
+        node_closed = p.close_pos <> None;
+        node_close_line = Option.map (fun (c : pos) -> c.line) p.close_pos;
+      }
+    ) analysis.pairs
+  in
+  let divergences = find_divergences analysis.pairs in
+  let actions =
+    match analysis.result with
+    | Balanced _ -> []
+    | Imbalanced _ ->
+        let events = scan_line_events text in
+        compute_repair_actions events
+  in
+  { enriched_result = analysis.result;
+    enriched_pairs = analysis.pairs;
+    enriched_divergences = divergences;
+    enriched_tree = tree;
+    enriched_repair_actions = actions;
+  }
+
 let excerpt text start_line end_line =
   let lines = String.split_on_char '\n' text in
   let total = List.length lines in
@@ -567,49 +953,8 @@ let report_file ?(verbose=false) path =
       true
   | Imbalanced errs ->
       Printf.printf "✗ %s — %d issue(s):\n" path (List.length errs);
-
-      (* Structural skeleton *)
-      Printf.printf "\n─── Structural skeleton (paren pairs) ───\n";
-      render_skeleton text analysis.pairs;
-
-      (* Indent divergences *)
-      let divergences = find_divergences analysis.pairs in
-      (match divergences with
-      | [] -> ()
-      | divs ->
-          Printf.printf "\n─── Indent divergences (hints only) ───\n";
-          List.iter render_divergence divs;
-      );
-
-      (* Errors with smart suggestions *)
       List.iter (fun err ->
-        let msg = string_of_error err in
-        Printf.printf "\n─── %s ───\n" msg;
-        (* Smart suggestion *)
-        (match err with
-        | Unclosed_parens frames ->
-            List.iter (render_smart_suggestion text analysis.pairs) frames
-        | Unexpected_close (p, _) ->
-            Printf.printf "  This `)` has no matching `(`.\n";
-            Printf.printf "  Suggestion: remove it or match it with an opening `(` before line %d.\n" p.line
-        | Unclosed_context (p, ctx) ->
-            Printf.printf "  Suggestion: close the %s that opened at line %d, col %d.\n"
-              ctx p.line p.col
-        );
-        (* Show context: 2 lines before and after error *)
-        let surrounding =
-          match err with
-          | Unexpected_close (p, _) ->
-              excerpt text (p.line - 1) (p.line + 1)
-          | Unclosed_parens frames ->
-              (match List.rev frames with
-              | first :: _ ->
-                  excerpt text (first.open_pos.line - 1) (first.open_pos.line + 1)
-              | [] -> [])
-          | Unclosed_context (p, _) ->
-              excerpt text (p.line - 1) (p.line + 1)
-        in
-        List.iter (fun l -> Printf.printf "      %s\n" l) surrounding;
+        Printf.printf "  • %s\n" (string_of_error err);
         if verbose then begin
           match err with
           | Unclosed_parens frames ->
@@ -617,6 +962,7 @@ let report_file ?(verbose=false) path =
           | _ -> ()
         end;
       ) errs;
+      Printf.printf "\n  Run `borge balance --repair %s` to auto-fix.\n" path;
       false
   with e ->
     close_in ic;

@@ -278,6 +278,56 @@ let balance_error_detail = function
       "pos", balance_pos p;
       "context", `String ctx;
     ]
+  | Borge_lang.Balance.Indent_mismatch (p, frame) ->
+    `Assoc [
+      "type", `String "indent_mismatch";
+      "pos", balance_pos p;
+      "expected_col", `Int frame.open_pos.col;
+      "keyword", (match frame.keyword with Some k -> `String k | None -> `Null);
+      "open_pos", balance_pos frame.open_pos;
+    ]
+
+let structural_node (n : Borge_lang.Balance.structural_node) =
+  `Assoc ([
+    "line", `Int n.node_line;
+    "depth", `Int n.node_depth;
+    "keyword", (match n.node_keyword with Some k -> `String k | None -> `Null);
+    "open_col", `Int n.node_open_col;
+    "closed", `Bool n.node_closed;
+  ] @ match n.node_close_line with
+    | Some l -> ["close_line", `Int l]
+    | None -> [])
+
+let indent_divergence (d : Borge_lang.Balance.indent_divergence) =
+  `Assoc [
+    "line", `Int d.line;
+    "col", `Int d.col;
+    "depth", `Int d.depth;
+    "expected_col", `Int d.expected_col;
+    "hint", `String (
+      if d.col > d.expected_col then
+        "this form is over-indented — check for an extra `)` above this line"
+      else
+        "this form is under-indented — a `)` may be missing before this line"
+    );
+  ]
+
+let repair_action = function
+  | Borge_lang.Balance.Insert_line { line; indent; reason } ->
+    `Assoc [
+      "action", `String "insert_line";
+      "line", `Int line;
+      "indent", `Int indent;
+      "reason", `String reason;
+    ]
+  | Borge_lang.Balance.Trim_end { line; count; reason } ->
+    `Assoc [
+      "action", `String "remove";
+      "line", `Int line;
+      "column", `Int 0;
+      "text", `String (String.make count ')');
+      "reason", `String reason;
+    ]
 
 (* exempt doc: simple JSON converter - name is self-documenting *)
 let balance path = function
@@ -293,3 +343,29 @@ let balance path = function
       "status", `String "imbalanced";
       "errors", `List (List.map balance_error_detail details);
     ]
+
+let balance_enriched (path : string) (ea : Borge_lang.Balance.enriched_analysis) =
+  let repaired_text = Borge_lang.Balance.repair (File_utils.read_file path) in
+  let base = match ea.enriched_result with
+    | Balanced { max_depth } ->
+      `Assoc [
+        "path", `String path;
+        "status", `String "balanced";
+        "max_depth", `Int max_depth;
+      ]
+    | Imbalanced details ->
+      `Assoc [
+        "path", `String path;
+        "status", `String "imbalanced";
+        "errors", `List (List.map balance_error_detail details);
+      ]
+  in
+  match base with
+  | `Assoc fields ->
+    `Assoc (fields @ [
+      "structural_tree", `List (List.map structural_node ea.enriched_tree);
+      "indent_divergences", `List (List.map indent_divergence ea.enriched_divergences);
+      "repair_actions", `List (List.map repair_action ea.enriched_repair_actions);
+      "repaired_text", `String repaired_text;
+    ])
+  | _ -> base

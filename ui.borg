@@ -1,14 +1,17 @@
 (project borge-ui
- (doc "Declarative UI DSL — an extension of the borge language, not a separate one.
-       Adds (theme), (component), (layout), (variant), (page), (routes) and related
-       forms inside .borg sections. All existing borge commands work on UI sections.
-       The spec is the artifact — borge does NOT generate code. Renderer-agnostic
-       semantics for human interpretation and implementation.")
- (no-inline)
+ (doc "Declarative UI DSL — an extension of the borge language, not a separate one.\n       Adds (theme), (component), (layout), (variant), (page), (routes) and related\n       forms inside .borg sections. All existing borge commands work on UI sections.\n       The spec is the artifact — borge does NOT generate code. Renderer-agnostic\n       semantics for human interpretation and implementation.")
+ (no-inline
+ )
  (status implemented)
- (exports parse_ui validate_ui ui_to_json
-          parse_component parse_layout parse_page)
-
+ (exports parse_ui
+  validate_ui
+  ui_to_json
+  parse_component
+  parse_layout
+  parse_page
+  parse_workflow
+  parse_step
+ )
  (section relationship-to-borge
   (doc "UI is an extension of the borge language, not a separate language")
   (status implemented)
@@ -47,7 +50,6 @@
    |))
   )
  )
-
  (section philosophy
   (doc (|
     Borge UI is a declarative language for describing user interfaces.
@@ -90,7 +92,6 @@
     not couple to any host language's function naming or event system.
   |))
  )
-
  (section theme
   (doc "Theme variables — shared values referenced by all UI elements")
   (status implemented)
@@ -160,7 +161,6 @@
    |))
   )
  )
-
  (section ui-form
   (doc "The (ui ...) form — the core building block")
   (status implemented)
@@ -189,7 +189,6 @@
    |))
   )
  )
-
  (section layout-properties
   (doc "How elements are arranged inside their parent")
   (status implemented)
@@ -203,7 +202,6 @@
      (layout vertical)     — top to bottom
    |))
   )
-
   (subsection sizing
    (doc "How elements size themselves within their parent")
    (status implemented)
@@ -239,7 +237,6 @@
     |))
    )
   )
-
   (subsection spacing
    (doc "Padding, gaps, and alignment between children")
    (status implemented)
@@ -266,7 +263,6 @@
    )
   )
  )
-
  (section style-properties
   (doc "Visual appearance — colors, borders, corners")
   (status implemented)
@@ -294,7 +290,6 @@
    |))
   )
  )
-
  (section text
   (doc "Text elements")
   (status planned)
@@ -317,7 +312,6 @@
    |))
   )
  )
-
  (section interactive
   (doc "Capability declarations — what the user can do to an element")
   (status implemented)
@@ -349,7 +343,6 @@
    |))
   )
  )
-
  (section scroll
   (doc "Scrollable containers")
   (status implemented)
@@ -361,7 +354,6 @@
    |))
   )
  )
-
  (section floating
   (doc "Elements that float above the normal layout flow")
   (status implemented)
@@ -377,7 +369,6 @@
    |))
   )
  )
-
  (section image
   (doc "Image elements")
   (status planned)
@@ -391,7 +382,6 @@
    |))
   )
  )
-
  (section variants
   (doc "Named variants for responsive design")
   (status implemented)
@@ -434,7 +424,6 @@
    |))
   )
  )
-
  (section children
   (doc "Declaring child elements")
   (status implemented)
@@ -464,7 +453,6 @@
    |))
   )
  )
-
  (section components
   (doc "Reusable UI pieces — defined once, used anywhere")
   (status implemented)
@@ -546,7 +534,6 @@
    |))
   )
  )
-
  (section layouts
   (doc "Page-level compositions with slots — structural templates for pages")
   (status implemented)
@@ -633,7 +620,6 @@
    |))
   )
  )
-
  (section pages
   (doc "Concrete pages — fill layout slots with specific content")
   (status implemented)
@@ -689,7 +675,59 @@
    |))
   )
  )
+ (section workflows
+  (doc "User journeys — sequences of actions across pages")
+  (status implemented)
+  (details
+   (doc (|
+     A workflow defines how a user moves through the application.
+     It connects pages via actions (click, type, hover) and
+     outcomes (navigate to another page, submit a form).
 
+     (workflow login-to-dashboard
+       (doc "Authenticate and land on dashboard")
+       (step welcome-page
+         (page home)
+         (action click "get-started")
+         (outcome navigate "/login"))
+       (step login-page
+         (page login)
+         (action type "username")
+         (action type "password")
+         (action click "sign-in")
+         (outcome navigate "/dashboard"))
+       (step dashboard-landing
+         (page dashboard)
+         (action click "new-post")))
+
+     Every page in a UI spec should appear in at least one workflow.
+     Pages not part of any workflow are considered dead code — they
+     are reachable by URL but not by any user journey. Drift
+     detection reports them as orphaned pages.
+
+     (workflow name) declares the workflow:
+       - name: symbol identifying the user journey
+       - Body: one or more (step ...) forms and optional (doc ...)
+
+     (step name ...) declares a single step in the journey:
+       - (page PAGE_NAME): which page this step is on
+       - (action click "element-name"): user clicks an element
+       - (action type "input-name"): user types into an input
+       - (action hover "element-name"): user hovers an element
+       - (outcome navigate "/path"): next route (must be defined)
+       - (outcome submit): form submission, next step continues
+       - No outcome: terminal step (last step in the workflow)
+
+     Validation rules:
+     - Every step must reference a defined page
+     - Every outcome.navigate path must match a defined route
+     - Every action must reference an (interactive ...) element
+       on the referenced page
+     - Every page should appear in at least one step
+     - Every workflow must have a (doc ...) explaining the journey
+   |))
+  )
+ )
  (section routes
   (doc "URL-to-page mapping for multi-page applications")
   (status implemented)
@@ -717,7 +755,6 @@
    |))
   )
  )
-
  (section app-structure
   (doc "How a complete multi-page UI spec is organized")
   (status implemented)
@@ -776,7 +813,6 @@
    |))
   )
  )
-
  (section full-example
   (doc "A complete example: multi-page text editor")
   (status planned)
@@ -889,7 +925,6 @@
    |))
   )
  )
-
  (section convention-targets
   (doc "Code generators: walk the typed UI AST and emit target source")
   (status in-progress)
@@ -927,7 +962,6 @@
      and the cybernetic loop.
    |))
   )
-
   (subsection ocaml-dream-target
    (doc "Generate dream_html OCaml code from a UI spec")
    (status planned)
@@ -1059,7 +1093,6 @@
      |))
    )
   )
-
   (subsection clay-c-target
    (doc "Generate Clay C code from a UI spec — for raylib/pico rendering")
    (status planned)
@@ -1272,7 +1305,6 @@
    )
   )
  )
-
  (section agentic-editing
   (doc "How agents edit UI specs using borge make")
   (status implemented)
@@ -1296,7 +1328,6 @@
    |))
   )
  )
-
  (section future-work
   (doc "Possible extensibility for the UI DSL")
   (status planned)

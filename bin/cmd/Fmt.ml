@@ -23,9 +23,45 @@ let show_diff original formatted =
   in
   show 1 (orig_lines, fmt_lines)
 
-let run path check diff output quiet =
+let check_or_repair path repair quiet =
+  let input = File_utils.read_file path in
+  try
+    let formatted = Fmt.format_string input in
+    if Fmt.strip_trailing_newlines input = Fmt.strip_trailing_newlines formatted then
+      Fmt.CheckClean
+    else
+      Fmt.CheckDirty formatted
+  with Borge_lang.Error.Parse_error _ as exn ->
+    if repair then (
+      let repaired = Borge_lang.Balance.repair input in
+      try
+        let formatted = Fmt.format_string repaired in
+        if not quiet then Printf.eprintf "borge fmt: repaired imbalance before formatting\n";
+        Fmt.CheckDirty formatted
+      with Borge_lang.Error.Parse_error _ ->
+        raise exn
+    ) else
+      raise exn
+
+let format_or_repair path repair quiet =
+  let input = File_utils.read_file path in
+  try
+    Fmt.Formatted (Fmt.format_string input)
+  with Borge_lang.Error.Parse_error _ as exn ->
+    if repair then (
+      let repaired = Borge_lang.Balance.repair input in
+      try
+        let formatted = Fmt.format_string repaired in
+        if not quiet then Printf.eprintf "borge fmt: repaired imbalance before formatting\n";
+        Fmt.Formatted formatted
+      with Borge_lang.Error.Parse_error _ ->
+        raise exn
+    ) else
+      raise exn
+
+let run path check diff output quiet repair =
   if check then
-    match Fmt.check_file path with
+    match check_or_repair path repair quiet with
     | Fmt.CheckClean ->
         if not quiet then Printf.printf "%s: already formatted\n" (Filename.basename path);
         exit 0
@@ -41,14 +77,14 @@ let run path check diff output quiet =
     | Fmt.Formatted _ -> (* shouldn't happen in check mode *) exit 1
   else if diff then begin
     let original = File_utils.read_file path in
-    match Fmt.format_file path with
+    match format_or_repair path repair quiet with
     | Fmt.Formatted formatted ->
         if not quiet then show_diff original formatted;
         if Fmt.strip_trailing_newlines original = Fmt.strip_trailing_newlines formatted
         then exit 0 else exit 1
     | _ -> exit 1
   end else
-    match Fmt.format_file path with
+    match format_or_repair path repair quiet with
     | Fmt.Formatted txt ->
         (match output with
          | Some dst ->
@@ -79,11 +115,16 @@ let diff =
 let quiet =
   Arg.(value & flag & info ["quiet"; "q"] ~doc:"Suppress all output except errors")
 
+let repair =
+  Arg.(value & flag & info ["repair"] ~doc:"Repair paren imbalance from indentation before formatting")
+
 let cmd : unit Cmd.t =
   Cmd.v (Cmd.info "fmt" ~doc:"auto-format a .borg file to canonical indentation"
     ~man:[`S "DESCRIPTION";
           `P "Parses the .borg file and re-prints it with canonical indentation.";
           `P "Use --check for CI (exit 1 if formatting would change). \
-              Use --diff to see what would change."])
-  Term.(const run $ path $ check $ diff $ output $ quiet)
+              Use --diff to see what would change.";
+          `P "Use --repair to auto-fix paren imbalance before formatting \
+              (infers close-parens from indentation)."])
+  Term.(const run $ path $ check $ diff $ output $ quiet $ repair)
 

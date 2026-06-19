@@ -208,12 +208,124 @@ let test_db_parse_crud_variants () =
       (match o3.Db_ast.crud with Some (Db_ast.Crud_only ["read"]) -> () | _ -> Alcotest.fail "o3 not Crud_only")
     | _ -> Alcotest.fail "wrong ops count"))
 
+let test_ui_workflow_parse () =
+  let input = {|(ui my-app
+    (theme
+      (palette bg-primary "#e0d7d2")
+      (spacing sm 8) (spacing md 16))
+    (component button
+      (interactive click)
+      (padding (spacing sm))
+      (text "Sign In"))
+    (layout app-shell
+      (ui root
+        (layout vertical)
+        (width full)
+        (height full)
+        (children ..content)))
+    (page home
+      (use-layout app-shell)
+      (fill content
+        (ui get-started (interactive click) (text "Get Started"))))
+    (page login
+      (use-layout app-shell)
+      (fill content
+        (ui username-input (interactive type))
+        (ui password-input (interactive type))
+        (ui sign-in-btn (interactive click) (text "Sign In"))))
+    (page dashboard
+      (use-layout app-shell)
+      (fill content
+        (ui new-post-btn (interactive click) (text "New Post"))))
+    (routes
+      (route "/" home)
+      (route "/login" login)
+      (route "/dashboard" dashboard))
+    (workflow login-to-dashboard
+      (doc "Authenticate and land on dashboard")
+      (step welcome
+        (page home)
+        (action click "get-started")
+        (outcome navigate "/login"))
+      (step auth
+        (page login)
+        (action type "username-input")
+        (action type "password-input")
+        (action click "sign-in-btn")
+        (outcome navigate "/dashboard"))
+      (step landing
+        (page dashboard)
+        (action click "new-post-btn"))))|} in
+  let file = Borge_lang.Parse.parse_file input in
+  let app = Ui_parse.parse_file file in
+  match app with
+  | None -> Alcotest.fail "parse returned None"
+  | Some a ->
+    let open Ui_ast in
+    Alcotest.(check int) "workflows" 1 (List.length a.workflows);
+    (match a.workflows with
+    | [wf] ->
+      Alcotest.(check string) "workflow name" "login-to-dashboard" wf.name;
+      Alcotest.(check int) "workflow steps" 3 (List.length wf.steps);
+      let auth_steps = List.filter (fun (s : Ui_ast.step) -> s.name = "auth") wf.steps in
+      Alcotest.(check int) "found auth step" 1 (List.length auth_steps);
+      (match auth_steps with
+       | [s] -> Alcotest.(check int) "workflow actions in auth step" 3 (List.length s.actions)
+       | _ -> Alcotest.fail "expected exactly 1 auth step")
+    | _ -> Alcotest.fail "expected 1 workflow")
+
+let test_ui_workflow_validate () =
+  let input = {|(ui my-app
+    (theme (palette accent "#a8421c"))
+    (component button
+      (interactive click)
+      (padding (spacing sm))
+      (text "Sign In"))
+    (layout app-shell
+      (ui root (layout vertical) (width full) (height full) (children ..content)))
+    (page home
+      (use-layout app-shell)
+      (fill content
+        (ui get-started (interactive click) (text "Get Started"))))
+    (page login
+      (use-layout app-shell)
+      (fill content
+        (ui sign-in-btn (interactive click) (text "Sign In"))))
+    (page orphan
+      (use-layout app-shell)
+      (fill content (text "No one visits me")))
+    (routes
+      (route "/" home))
+    (workflow bad-journey
+      (step welcome
+        (page home)
+        (action click "get-started")
+        (outcome navigate "/login"))
+      (step bad-page
+        (page nonexistent)
+        (action click "sign-in-btn"))))|} in
+  let file = Borge_lang.Parse.parse_file input in
+  let app = Ui_parse.parse_file file in
+  match app with
+  | None -> Alcotest.fail "parse returned None"
+  | Some a ->
+    let issues = Ui_validate.validate a in
+    let errors = List.filter (fun (i : Ui_validate.issue) -> i.severity = `Error) issues in
+    let warnings = List.filter (fun (i : Ui_validate.issue) -> i.severity = `Warning) issues in
+    (* Errors: undefined spacing ref (button padding), undefined route (/login),
+       undefined page (nonexistent) *)
+    Alcotest.(check int) "workflow errors" 3 (List.length errors);
+    (* Warnings: unworked pages login+orphan, workflow missing doc *)
+    Alcotest.(check int) "workflow warnings" 3 (List.length warnings)
+
 let () =
   Alcotest.run "UI/DB tests" [
     "ui", [Alcotest.test_case "parse" `Quick test_ui_parse;
            Alcotest.test_case "validate" `Quick test_ui_validate;
            Alcotest.test_case "parse-empty" `Quick test_ui_parse_empty;
-           Alcotest.test_case "parse-nested" `Quick test_ui_parse_nested_elements];
+           Alcotest.test_case "parse-nested" `Quick test_ui_parse_nested_elements;
+           Alcotest.test_case "workflow-parse" `Quick test_ui_workflow_parse;
+           Alcotest.test_case "workflow-validate" `Quick test_ui_workflow_validate];
     "db", [Alcotest.test_case "parse" `Quick test_db_parse;
            Alcotest.test_case "validate" `Quick test_db_validate;
            Alcotest.test_case "parse-minimal" `Quick test_db_parse_minimal;

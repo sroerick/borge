@@ -1,188 +1,215 @@
 # Code Context
 
 ## Files Retrieved
-
-1. **bin/borge.ml** (all lines) - Main CLI entry point that chains together all subcommand modules
-2. **bin/cmd/Generate.ml** (all lines) - Contains the `borge generate` command with subcommands: `spec`, `code`, `ui`, `db`
-3. **lib/generate/generate.ml** (all lines) - Contains `generate_spec` and `generate_code` helper functions used by the CLI
-4. **lib/db/db_sql.ml** (all lines) - PostgreSQL DDL generator for `db` specs
-5. **lib/ui/ui_dream.ml** (all lines) - OCaml Dream HTML generator for `ui` specs
-6. **lib/ui/ui_clay.ml** (all lines) - Clay C generator for `ui` specs
-7. **lib/db/db_json.ml** (all lines) - JSON serialization for DB specs
-8. **lib/dune** (lines 1-15) - Defines the `borge_lib` library with all internal modules including the three target generators
+1. `lib/lang/ast.ml` (lines 1-98) - Core AST type definitions
+2. `lib/lang/parse.ml` (lines 1-55) - Parser bridge and entry points
+3. `lib/lang/parser.mly` (lines 1-84) - Menhir grammar for borge file parsing
+4. `lib/lang/print.ml` (lines 1-125) - Pretty-printing and serialization of AST
+5. `lib/format/nodes.ml` (lines 1-114) - Node enumeration for structure analysis
+6. `lib/distributed/borg_comment.ml` (lines 1-62) - Comment extraction using sexp AST
+7. `lib/convention.ml` (lines 1-109) - Convention dispatch using sexp pattern matching
+8. `lib/lang/error.ml` (lines 1-17) - Parse error definition
 
 ## Key Code
 
-### CLI Entry Structure
-
-The CLI uses **Cmdliner** for argument parsing:
+### AST Type Definitions (lib/lang/ast.ml)
 
 ```ocaml
-let cmds = [
-  Generate.cmd;
-  (* other commands... *)
-]
+type pos = {
+  line : int;
+  col : int;
+  offset : int;
+}
 
-let () = exit (Cmd.eval (Cmd.group info cmds))
+type verbatim_string = {
+  v_content : string;
+  (* The raw text between (| and |), newlines preserved *)
+}
+
+type quoted_string = {
+  q_content : string;
+  (* The decoded text, escapes already resolved *)
+}
+
+type string_value =
+  | Quoted of quoted_string
+  | Verbatim of verbatim_string
+
+type symbol = string
+
+(* Simple sum type - NO GADTs *)
+type sexp =
+  | Atom of pos * symbol
+  | String of pos * string_value
+  | List of pos * sexp list
+
+(* Comments are first-class but nullable within nested lists *)
+type plain_comment = {
+  text : string;
+  line : int;
+}
+
+type authorship =
+  | Single of symbol
+  | Multiple of symbol list
+
+type comment_type =
+  | Untyped  (* two-position: (* author value *) *)
+  | Typed of symbol  (* three-position: (* author type value *) *)
+
+type annotated_comment = {
+  authorship : authorship;
+  comment_type : comment_type;
+  value : string_value option;  (* None for empty (||) *)
+  start_line : int;
+  end_line : int;
+}
+
+type comment_attachment =
+  | Plain of plain_comment
+  | Annotated of annotated_comment
+
+type sexp_with_comments = {
+  comments_before : comment_attachment list;
+  node : sexp;
+  end_pos : pos;  (* position after the closing delimiter *)
+}
+
+type file = {
+  top_level_comments : comment_attachment list;
+  top_level : sexp_with_comments list;
+  trailing_comments : comment_attachment list;
+}
 ```
 
-### Generate Subcommands (bin/cmd/Generate.ml)
-
-Four subcommands exist in a Cmdliner group:
-
-- **spec**: `borge generate spec <TODO> [--dir <dir>] [--quiet]`
-  - Calls `Generate.generate_spec todo dir`
-- **code**: `borge generate code <SECTION> [--dir <dir>] [--quiet]`
-  - Calls `Generate.generate_code section dir`
-- **ui**: `borge generate ui <SECTION> [--dir <dir>] [--json] [--quiet]`
-  - Parses and prints UI specs, doesn't generate code
-- **db**: `borge generate db <TABLE> [--dir <dir>] [--json] [--quiet]`
-  - Parses and prints DB specs, doesn't generate code
-
-**The problem**: Currently no `--target` flag exists. All three generators (postgres-sql, ocaml-dream, clay-c) are internal library functions but hidden from the CLI.
-
-### Generate Functions (lib/generate/generate.ml)
+### Core Pattern Matching (lib/lang/print.ml - print_sexp)
 
 ```ocaml
-let generate_spec todo_text dir = ...
-let generate_code section_name dir = ...
+let rec print_sexp indent buf sexp =
+  match sexp with
+  | Atom (_, sym) ->
+      Buffer.add_string buf sym
+  | String (_, sv) ->
+      Buffer.add_string buf (string_of_string_value sv)
+  | List (_, []) ->
+      Buffer.add_string buf "()"
+  | List (_, children) ->
+      if children = [] then Buffer.add_string buf "()"
+      else begin
+        (* ... handling for pretty-printing with keywords, comments, etc ... *)
+      end
 ```
 
-These are called by the CLI but don't accept target parameters yet.
-
-### Target Generators (Already Exposed as Library Functions)
-
-All three target generators exist in `lib/` and are exposed via the `borge_lib` library (lib/dune):
-
-1. **db_sql.generate** (`lib/db/db_sql.ml:230`) - Takes `db_app`, returns SQL string
-   - Signature: `let generate ?(source_path = "<spec>") (app : db_app) = Buffer.contents buf`
-   - Already handles: `CREATE TABLE`, `CREATE INDEX`, RLS policies, operations/relations as comments
-
-2. **ui_dream.generate** (`lib/ui/ui_dream.ml:392`) - Takes `ui_app`, returns OCaml module string
-   - Signature: `let generate ?(source_path = "<spec>") (app : ui_app) = Buffer.contents buf`
-   - Handles: Component render functions, layouts, pages, routes with dream_html nodes
-
-3. **ui_clay.generate** (`lib/ui/ui_clay.ml:378`) - Takes `ui_app`, returns C code string
-   - Signature: `let generate ?(source_path = "<spec>") (app : ui_app) = Buffer.contents buf`
-   - AND `let generate_header_file` for .h file generation
-   - Handles: Component functions, layouts, pages, route dispatcher
-
-### Pattern for Usage
-
-Currently unused in CLI, but the library interface is:
+### Value Extraction (lib/distributed/borg_comment.ml - extract_form_info)
 
 ```ocaml
-(* pattern for db_sql *)
-let sql = Db_sql.generate ~source_path:borg_path db_app
-Printf.printf "%s\n" sql
+let extract_form_info sexp =
+  match sexp with
+  | Borge_lang.Ast.List (_, Borge_lang.Ast.Atom (_, form_type) :: rest) ->
+      let name = match rest with
+        | Borge_lang.Ast.Atom (_, n) :: _ -> n
+        | _ -> ""
+      in
+      Some (form_type, name)
+  | _ -> None
+```
 
-(* pattern for ui_dream *)
-let dream_code = Ui_dream.generate ~source_path:borg_path ui_app
-(* write to file or stdout *)
+### Convention Resolution (lib/convention.ml - resolve_from_file)
 
-(* pattern for ui_clay *)
-let clay_c = Ui_clay.generate ~source_path:borg_path app
-let clay_h = Ui_clay.generate_header_file app
-(* write both files *)
+```ocaml
+let rec find_convention = function
+  | [] -> Ocaml_dune
+  | { Borge_lang.Ast.node; _ } :: rest ->
+    (match node with
+     | Borge_lang.Ast.List (_, children) ->
+       let rec scan = function
+         | [] -> find_convention rest
+         | Borge_lang.Ast.List (_, Borge_lang.Ast.Atom (_, "convention") :: Borge_lang.Ast.Atom (_, name) :: _) :: _ ->
+           (match of_string name with
+            | Some t -> t
+            | None -> Ocaml_dune)
+         | _ :: scan_rest -> scan scan_rest
+       in
+       scan children
+     | _ -> find_convention rest)
+```
+
+### Node Enumeration (lib/format/nodes.ml)
+
+```ocaml
+and node_info_of_sexp sexp _indent =
+  match sexp with
+  | Atom (p, sym) ->
+      { pos = p; kind = "Atom"; keyword = None; child_count = 0; value = Some sym }
+  | String (p, sv) ->
+      let val_str = string_value_summary sv in
+      { pos = p; kind = "String"; keyword = None; child_count = 0; value = Some val_str }
+  | List (p, children) ->
+      let keyword = list_keyword children in
+      { pos = p; kind = "List"; keyword; child_count = List.length children; value = None }
+```
+
+### Parser Bridge (lib/lang/parse.ml)
+
+```ocaml
+let parse_file input =
+  let lexbuf = make_lexbuf input in
+  let token_reader (_lb : Lexing.lexbuf) =
+    read_token lexbuf
+  in
+  let dummy_lb = Lexing.from_string "" in
+  try
+    Parser.file token_reader dummy_lb
+  with Parser.Error ->
+    let pos = Sedlexing.lexing_position_start lexbuf in
+    Error.error ~line:pos.Lexing.pos_lnum ~column:(pos.Lexing.pos_cnum - pos.Lexing.pos_bol)
+      "Parse error"
 ```
 
 ## Architecture
 
-### Command Flow
+### Parser Pipeline
+1. **Input**: String containing .borg file contents
+2. **Lexer (sedlex)**: Tokenizes input into SYMBOL, QUOTED, SEMICOLON, VERB, LPAREN, RPAREN, HASH_LPAREN, STAR_RPAREN
+3. **Parser (menhir)**: Generates parse tree from tokens into `Ast.file`
+4. **Error Handling**: Menhir errors are caught and re-raised as `Error.Parse_error` with line/column
 
-```
-borge binary (bin/borge.ml)
-  → Cmdliner group with Generate.cmd
-  → bin/cmd/Generate.ml: generate_ui / generate_db / generate_spec / generate_code
-     → lib/generate/generate.ml: generate_spec / generate_code
-  → lib/db/db_parse.parse_file → db_ast.db_app
-  → lib/ui/ui_parse.parse_file → ui_ast.ui_app
-  → (target generators in lib/):
-     → Db_sql.generate(db_app) → SQL string
-     → Ui_dream.generate(ui_app) → .ml string
-     → Ui_clay.generate(ui_app) → .c + .h strings
-```
+### AST Semantics
+- **simple variant sum type**: `sexp = Atom | String | List` - no type constraints, no GADT tags
+- **pos embedded in all nodes**: Position tracking is explicit and duplicated (every node stores its `pos`)
+- **comments as attachments**: Comments are attached to nodes via `sexp_with_comments` wrapper
+- **plain comments discarded in lists**: Comments nested inside lists (`inner_comment_list`) are discarded during parsing
+- **round-trip support**: Both `print.ml` and `parse.ml` preserve comments for round-tripping
 
-### Dependency Graph (Relevant Modules)
+### Usage Patterns Across Codebase
+1. **AST traversal**: `print_sexp` recursively traverses with accumulator `indent` and `Buffer`
+2. **structure analysis**: `nodes.ml` collects `node_info` for every node with depth tracking
+3. **comment inspection**: `borg_comment.ml` extracts form info from top-level nodes only
+4. **convention detection**: `convention.ml` recursively scans `top_level` list for `(convention NAME)` forms
 
-```
-bin/cmd/Generate.ml
-  → imports via:
-      - open Borge_lib
-      - Generate.* from lib/generate/generate.ml
-      - Parse/format from Borge_lib (parsing .borg files)
-      - File_utils (reading files)
+## Findings
 
-lib/generate/generate.ml
-  → Borge_lang.Parse
-  → Agent.run_pi_print (LLM integration)
-  → Project.find_roots
-  → Convention.resolve
+**AST is NOT using GADTs.** The `sexp` type is a straightforward algebraic data type with no type arguments, no `[@@gadt]` annotations, and no pattern-level type constraints.
 
-lib/db/db_sql.ml
-  → Db_ast.db_app
-  → Creates: SQL CREATE TABLE, CREATE INDEX, RLS policies
+**Key observations:**
+- All pattern matches on `sexp` are simple deconstructions: `match sexp with | Atom ... | String ... | List ...`
+- No type arguments appear in any variant constructor
+- Position tracking is duplicated (stored in every node) instead of using GADT tags to constrain position of each variant
+- All type functions would be trivial widening or box-unboxing (e.g., `string_value -> string`)
 
-lib/ui/ui_dream.ml
-  → Ui_ast.ui_app
-  → Creates: OCaml .ml with dream_html nodes
-
-lib/ui/ui_clay.ml
-  → Ui_ast.ui_app
-  → Creates: .c + .h with Clay layout trees
-```
+**Pattern matching locations across lib/:**
+- `lib/distributed/borg_comment.ml:38` - `extract_form_info` (lines 38-48)
+- `lib/distributed/module_spec.ml:46` - AST extraction
+- `lib/bug/bug_parse.ml:7,12,36,40` - bug-specific parsing logic
+- `lib/format/nodes.ml:25` - `collect_nodes`/`node_info_of_sexp`
+- `lib/lang/print.ml:56` - `print_sexp` (main printer)
+- `lib/convention.ml:82-100` - `find_convention`/`scan`
 
 ## Start Here
 
-**Start at bin/cmd/Generate.ml** because:
-1. It's the CLI entry point for `borge generate`
-2. It already has the subcommand structure (`ui_cmd`, `db_cmd`)
-3. This is where you need to add the new `target_cmd` subcommand
-4. The pattern for `ui_cmd` and `db_cmd` can serve as a reference
-5. After adding the subcommand, you'll call into the existing target generators in lib/
+No handoff needed — the AST code is fully self-contained and well-documented. The `lib/lang/ast.ml` file is the primary reference for type definitions.
 
-**Specific duties in Generate.ml**:
-1. Add a `target_cmd` subcommand to the Cmdliner group (similar to `ui_cmd` and `db_cmd`)
-2. Add `--target` argument accepting: `postgres-sql`, `ocaml-dream`, `clay-c`
-3. Update `run_ui` and `run_db` handlers (or convert them) to support optional target generation
-4. Wire up calls to `Db_sql.generate`, `Ui_dream.generate`, `Ui_clay.generate` based on target
-
-**Implementation notes**:
-- The three target generators already exist in lib/, no new files needed
-- They all have `~source_path` optional parameter—use from current borg file path
-- For clay, you'll generate both `generate` and `generate_header_file` outputs
-- Follow the existing JSON/quiet flag pattern in `run_ui`/`run_db` for output control
-- The output mode is code generation (not JSON inspection of specs)
-
-### Wait, I need to reconsider `ui_cmd` and `db_cmd`
-
-The current `ui_cmd` and `db_cmd` are **inspecting** commands (parse, validate, summarize). They have a `--json` flag but **don't generate code**. The comment says: "The UI spec IS the artifact — no code is generated. Use borge make to edit UI specs interactively."
-
-Your goal is to add **code generation** via `--target` flag. You have two options:
-
-**Option A (Clean break)**: Keep `ui` and `db` as inspection-only. Add a new `generate ui ... --target ...` subtype.
-
-**Option B (Hybrid)**: Modify existing `ui` and `db` to support both inspection and generation based on flags.
-
-Given the existing code, I'd suggest **Option A first**: keep inspection-only behavior for clarity, add a new `--target` param for code generation. If you want to simplify syntax, you could rename or consolidate later—start here since it's spec-driven and clearer.
-
-**Updated first file**: bin/cmd/Generate.ml lines 322+ where the subcommands are defined (after `db_cmd`). Add a new top-level `target_cmd` there.
-
-**Next steps after adding the subcommand**:
-1. Create `run_postgres_sql ~dir ~quiet` that:
-   - Parses DB spec
-   - Calls `Db_sql.generate ~source_path:borg_path db_app`
-   - Outputs SQL to stdout (or file if needed)
-
-2. Create `run_dream ~dir ~quiet` that:
-   - Parses UI spec
-   - Calls `Ui_dream.generate ~source_path:borg_path ui_app`
-   - Outputs .ml code to stdout (or file)
-
-3. Create `run_clay ~dir ~quiet` that:
-   - Parses UI spec
-   - Calls `Ui_clay.generate ~source_path:borg_path app`
-   - Calls `Ui_clay.generate_header_file app`
-   - Outputs both files
-
-4. Update the Cmdliner `target_cmd` to dispatch based on `--target` value.
+If implementing semantic analysis or AST transformations, start with:
+1. `lib/lang/print.ml` (lines 56-98) to see existing traversal patterns
+2. `lib/format/nodes.ml` (lines 25-60) for how node enumeration is structured
+3. `lib/convention.ml` (lines 75-100) to see recursive AST scanning with pattern matching

@@ -14,14 +14,17 @@ Whenever you are in a borge project (directory with .borg files), this skill ens
 After every edit to any .borg file, .ml file, or dune file:
 
 1. **Balance first** — run `borge balance FILE` on any .borg file you touched
-2. **Parse check** — run `borge parse FILE` to validate syntax
-3. **Check project** — run `borge check` to catch cross-file issues
-4. **Drift check** — run `borge drift` to detect spec/code divergence
-5. **Fix findings** — address any drift findings by updating specs or code
+2. **Auto-repair if needed** — if balance fails, run `borge balance --repair FILE > FILE.tmp && mv FILE.tmp FILE`
+   *Never manually count parens — the repair infers them from indentation (Parinfer-style).*
+3. **Parse check** — run `borge parse FILE` to validate syntax
+4. **Check project** — run `borge check` to catch cross-file issues
+5. **Drift check** — run `borge drift` to detect spec/code divergence
+6. **Fix findings** — address any drift findings by updating specs or code
 
 ## Priority order
 
-- If a .borg file edit won't parse: fix the file (balance → parse → retry)
+- If `borge balance` fails: auto-repair from indentation, then re-run balance to confirm
+- If a .borg file edit won't parse: fix the file (balance → repair → parse → retry)
 - If `borge check` fails: fix the issue before committing
 - If `borge drift` shows findings: update the spec or the code, whichever is stale
 - If `borge drift --agent` is requested: run the LLM semantic analysis
@@ -31,6 +34,8 @@ After every edit to any .borg file, .ml file, or dune file:
 | Command | When |
 |---------|------|
 | `borge balance FILE` | After every .borg edit |
+| `borge balance --repair FILE` | When balance detects imbalance — auto-fix from indentation |
+| `borge balance --repair-diff FILE` | Preview what repair would change |
 | `borge parse FILE` | After balance passes |
 | `borge check` | Before commit |
 | `borge drift` | When reviewing project health |

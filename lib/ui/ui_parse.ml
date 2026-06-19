@@ -366,6 +366,66 @@ and parse_page = function
     Some { name; layout_name; fills; override_element = [] }
   | _ -> None
 
+(** Parse a single action from a sexp form *)
+let parse_action = function
+  | List (_, [Atom (_, "action"); Atom (_, "click"); String (_, Quoted { q_content })]) ->
+    Some (Click q_content)
+  | List (_, [Atom (_, "action"); Atom (_, "click"); Atom (_, name)]) ->
+    Some (Click name)
+  | List (_, [Atom (_, "action"); Atom (_, "type"); String (_, Quoted { q_content })]) ->
+    Some (Type q_content)
+  | List (_, [Atom (_, "action"); Atom (_, "type"); Atom (_, name)]) ->
+    Some (Type name)
+  | List (_, [Atom (_, "action"); Atom (_, "hover"); String (_, Quoted { q_content })]) ->
+    Some (Hover q_content)
+  | List (_, [Atom (_, "action"); Atom (_, "hover"); Atom (_, name)]) ->
+    Some (Hover name)
+  | _ -> None
+
+(** Parse an outcome from a sexp form *)
+let parse_outcome = function
+  | List (_, [Atom (_, "outcome"); Atom (_, "navigate"); String (_, Quoted { q_content })]) ->
+    Some (Navigate q_content)
+  | List (_, [Atom (_, "outcome"); Atom (_, "navigate"); Atom (_, path)]) ->
+    Some (Navigate path)
+  | List (_, [Atom (_, "outcome"); Atom (_, "submit")]) ->
+    Some Submit
+  | _ -> None
+
+(** Parse a (step name ...) form *)
+let parse_step = function
+  | List (_, Atom (_, "step") :: Atom (_, name) :: forms) ->
+    let page_name =
+      List.find_map (function
+        | List (_, [Atom (_, "page"); Atom (_, pn)]) -> Some pn
+        | _ -> None
+      ) forms
+      |> Option.value ~default:""
+    in
+    let actions = List.filter_map parse_action forms in
+    let outcome =
+      List.find_map (fun f ->
+        match parse_outcome f with Some o -> Some o | None -> None
+      ) forms
+      |> Option.value ~default:No_outcome
+    in
+    Some { name; page_name; actions; outcome }
+  | _ -> None
+
+(** Parse a (workflow name ...) form *)
+let parse_workflow = function
+  | List (_, Atom (_, "workflow") :: Atom (_, name) :: rest) ->
+    let doc_str =
+      List.find_map (function
+        | List (_, [Atom (_, "doc"); String (_, Quoted { q_content })]) -> Some q_content
+        | List (_, [Atom (_, "doc"); String (_, Verbatim { v_content })]) -> Some v_content
+        | _ -> None
+      ) rest
+    in
+    let steps = List.filter_map parse_step rest in
+    Some { name; doc = doc_str; steps }
+  | _ -> None
+
 (** Parse a (routes ...) form *)
 let parse_routes = function
   | List (_, Atom (_, "routes") :: entries) ->
@@ -390,7 +450,8 @@ let parse_ui_app = function
       | routes -> routes
     ) body in
     let elements = List.filter_map parse_ui_element body in
-    Some { theme; components; layouts; pages; routes; elements }
+    let workflows = List.filter_map parse_workflow body in
+    Some { theme; components; layouts; pages; routes; elements; workflows }
   | _ -> None
 
 (** Parse all UI forms from a file's top-level sexps *)
@@ -416,4 +477,5 @@ let parse_file (file : Borge_lang.Ast.file) : ui_app option =
       match parse_routes s with [] -> [] | r -> r
     ) sexps in
     let elements = List.filter_map parse_ui_element sexps in
-    Some { theme; components; layouts; pages; routes; elements }
+    let workflows = List.filter_map parse_workflow sexps in
+    Some { theme; components; layouts; pages; routes; elements; workflows }

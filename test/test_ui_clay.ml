@@ -14,6 +14,7 @@ let test_simple_element () =
     layouts = [];
     pages = [];
     routes = [];
+    workflows = [];
     elements = [
       { name = Some "box";
         properties = [P_layout Vertical; P_width (Flex 1); P_bg (Hex "#333")];
@@ -37,6 +38,7 @@ let test_color_rgba () =
     layouts = [];
     pages = [];
     routes = [];
+    workflows = [];
     elements = [
       { name = Some "box";
         properties = [P_bg (Hex "#e0d7d2")];
@@ -56,6 +58,7 @@ let test_keyword_color () =
     layouts = [];
     pages = [];
     routes = [];
+    workflows = [];
     elements = [
       { name = Some "box";
         properties = [P_bg (Keyword "dark")];
@@ -75,6 +78,7 @@ let test_c_sanitization () =
     layouts = [];
     pages = [];
     routes = [];
+    workflows = [];
     elements = [
       { name = Some "nav-bar";
         properties = [P_layout Horizontal];
@@ -94,6 +98,7 @@ let test_routes_enum () =
     layouts = [];
     pages = [];
     routes = [{ path = "/"; page_name = "home" }; { path = "/dashboard"; page_name = "dashboard" }];
+    workflows = [];
     elements = [];
   } in
   let c = Ui_clay.generate ~source_path:"test.borg" app in
@@ -109,6 +114,7 @@ let test_header_file () =
     layouts = [];
     pages = [];
     routes = [{ path = "/"; page_name = "home" }];
+    workflows = [];
     elements = [];
   } in
   let h = Ui_clay.generate_header_file app in

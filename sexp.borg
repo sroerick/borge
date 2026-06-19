@@ -181,31 +181,120 @@
    (status implemented)
    (details
     (doc (|
-         When balance finds errors, it now produces three
-         additional diagnostic layers:
+         When balance finds errors, it reports them concisely
+         with one line per issue. It also validates that
+         structural `)` on their own line match the column of
+         their matching `(` — catching the common agent mistake
+         of closing the wrong form. Errors include:
+         - unexpected_close: `)` with no matching `(`
+         - unclosed_parens: EOF reached with open forms
+         - unclosed_context: unclosed string/verbatim/comment
+         - indent_mismatch: structural `)` at wrong column
 
-         1. Structural skeleton: a table of every paren pair
-            (open position, keyword, close position if closed).
-            Each line shows the source text so the agent can
-            map directly to their file. Unclosed pairs are
-            marked with ⚠ UNCLOSED.
+         With --verbose, balance shows the full paren stack.
+    |))
+   )
+  )
+  (subsection indent-repair
+   (doc "Infer missing or extra parens from indentation (Parinfer-style)")
+   (status implemented)
+   (details
+    (doc (|
+         Agents are good at indentation (visual/spatial) but
+         bad at counting parens (symbolic/stateful). When a
+         .borg file has balance errors, the single most useful
+         recovery action is to treat indentation as the
+         canonical structure and infer the parens from it.
 
-         2. Indent divergence detection: for each open paren,
-            balance checks whether its column matches its
-            canonical depth (col == depth for 1-space indent).
-            When they diverge and the file has balance errors,
-            balance prints a hint. This catches the common
-            case where a missing `)` above causes subsequent
-            forms to sit at the wrong indent.
+         The `--repair` flag produces a corrected version of
+         the file by reading indentation as a tree:
 
-         3. Smart close suggestions: instead of "add N `)` at
-            EOF", balance scans forward from the unclosed paren
-            to find the next sibling-level form. It suggests
-            inserting `)` before that line, rendered as a
-            mini diff so the fix location is unambiguous.
+         Algorithm (one-pass line scanner):
+         1. Track open forms with (line, indent, keyword).
+         2. For each new line at indent I, close every form
+            whose indent >= I and has not been explicitly closed.
+         3. Missing closes become new lines at the correct
+            indentation (one `)` per line, innermost first).
+         4. Structural `)` that don't match their opener are
+            trimmed. Inline `)` that overflow the stack are
+            trimmed. At EOF, close all remaining open forms.
+         5. Repaired file is guaranteed to pass `borge balance`.
 
-         These three layers turn "End of file: 1 unclosed `(`"
-         into actionable, structural guidance.
+         Lexical context: the repair scanner MUST skip
+         comments, verbatim strings, and quoted strings
+         using the same state stack as the balance checker.
+         It MUST NOT repair inside string literals or
+         comments.
+
+         Output modes:
+         - `borge balance --repair FILE` prints the corrected
+           file to stdout (exit 0 even if repairs were made).
+         - `borge balance --repair-diff FILE` shows a diff
+           between original and repaired.
+         - Combined with `--json`, outputs repair_actions:
+           [{"action":"insert_line","line":12,"indent":3,
+             "reason":"close beta opened at line 4"}]
+           plus "repaired_text" with the full corrected file.
+
+         Canonical format assumption: repair assumes the
+         file follows borge canonical formatting (one form
+         per line, strictly nested). Non-canonical files
+         may still repair correctly but are not guaranteed.
+    |))
+   )
+  )
+  (subsection enriched-json
+   (doc "Structured tree + repair actions in JSON output")
+   (status implemented)
+   (details
+    (doc (|
+         When `--json` is passed, balance produces a rich
+         structured response that programmatic consumers
+         (agents) can act on without parsing human text:
+
+         ```json
+         {
+           "status": "imbalanced",
+           "errors": [
+             {"type":"indent_mismatch","pos":{"line":6,"col":3},
+              "expected_col":2,"keyword":"section",
+              "open_pos":{"line":2,"col":2}}
+           ],
+           "structural_tree": [
+             {"line":1,"depth":1,"keyword":"project",
+              "open_col":1,"closed":false},
+             {"line":3,"depth":2,"keyword":"section",
+              "open_col":2,"closed":false},
+             ...
+           ],
+           "indent_divergences": [
+             {"line":13,"col":3,"depth":5,"expected_col":5,
+              "hint":"a `)` may be missing before this line"}
+           ],
+           "repair_actions": [
+             {"action":"insert_line","line":5,"indent":3,
+              "reason":"close beta opened at line 4"},
+             {"action":"remove","line":6,"column":0,
+              "text":")",
+              "reason":"structural `)` does not match open-paren indentation"}
+           ],
+           "repaired_text": "(project test\\n ..."
+         }
+         ```
+
+         The `structural_tree` is a flat list of paren pairs
+         in source order. Unclosed pairs are marked
+         `"closed": false` with no `close_line` field.
+
+         The `repair_actions` list is only present when the
+         file is imbalanced AND `--json` is used. Each action:
+         - action: "insert_line" | "remove"
+         - line: 1-indexed position in the original
+         - indent: for insert_line, the column of the new `)`
+         - text: for remove, the string being removed
+         - reason: human-readable explanation
+
+         `repaired_text` contains the full corrected file.
     |))
    )
   )
@@ -219,7 +308,8 @@
         Raised as Parse_error exception from parse.ml.
         After menhir: menhir produces its own error type.
         The balance module has its own error_detail union:
-        Unexpected_close, Unclosed_parens, Unclosed_context.
+        Unexpected_close, Unclosed_parens, Unclosed_context,
+        Indent_mismatch.
    |))
   )
  )

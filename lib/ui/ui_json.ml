@@ -119,7 +119,7 @@ let layout_to_json (ly : Ui_ast.layout_def) =
   ]
 
 (* exempt doc: JSON converter for page - name is self-documenting *)
-let page_to_json p =
+let page_to_json (p : Ui_ast.page) =
   `Assoc [
     ("name", `String p.name);
     ("layout", `String p.layout_name);
@@ -129,8 +129,39 @@ let page_to_json p =
   ]
 
 (* exempt doc: JSON converter for route - name is self-documenting *)
-let route_to_json r =
+let route_to_json (r : Ui_ast.route) =
   `Assoc [("path", `String r.path); ("page", `String r.page_name)]
+
+(* exempt doc: JSON converter for action - name is self-documenting *)
+let action_to_json (a : Ui_ast.action) =
+  match a with
+  | Click name -> `Assoc [("click", `String name)]
+  | Type name -> `Assoc [("type", `String name)]
+  | Hover name -> `Assoc [("hover", `String name)]
+
+(* exempt doc: JSON converter for outcome - name is self-documenting *)
+let outcome_to_json (o : Ui_ast.outcome) =
+  match o with
+  | Navigate path -> `Assoc [("navigate", `String path)]
+  | Submit -> `String "submit"
+  | No_outcome -> `Null
+
+(* exempt doc: JSON converter for step - name is self-documenting *)
+let step_to_json (s : Ui_ast.step) =
+  `Assoc [
+    ("name", `String s.name);
+    ("page", `String s.page_name);
+    ("actions", `List (List.map action_to_json s.actions));
+    ("outcome", outcome_to_json s.outcome);
+  ]
+
+(* exempt doc: JSON converter for workflow - name is self-documenting *)
+let workflow_to_json (wf : Ui_ast.workflow) =
+  `Assoc [
+    ("name", `String wf.name);
+    ("doc", match wf.doc with Some d -> `String d | None -> `Null);
+    ("steps", `List (List.map step_to_json wf.steps));
+  ]
 
 (* exempt doc: JSON converter for full app - name is self-documenting *)
 let ui_app_to_json app =
@@ -145,4 +176,5 @@ let ui_app_to_json app =
     ("pages", `List (List.map page_to_json app.pages));
     ("routes", `List (List.map route_to_json app.routes));
     ("elements", `List (List.map ui_element_to_json app.elements));
+    ("workflows", `List (List.map workflow_to_json app.workflows));
   ]

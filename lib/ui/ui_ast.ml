@@ -197,6 +197,33 @@ type route = {
   page_name : string;
 }
 
+(** User action in a workflow step *)
+type action =
+  | Click of string         (** element name *)
+  | Type of string          (** input element name *)
+  | Hover of string         (** element name *)
+
+(** Outcome of a workflow step *)
+type outcome =
+  | Navigate of string      (** route path *)
+  | Submit                  (** form submission *)
+  | No_outcome              (** terminal step *)
+
+(** A single step in a user workflow *)
+type step = {
+  name : string;
+  page_name : string;
+  actions : action list;
+  outcome : outcome;
+}
+
+(** A user workflow — a journey through pages *)
+type workflow = {
+  name : string;
+  doc : string option;
+  steps : step list;
+}
+
 (** A complete UI application spec *)
 type ui_app = {
   theme : theme option;
@@ -205,4 +232,5 @@ type ui_app = {
   pages : page list;
   routes : route list;
   elements : ui_element list;  (** top-level elements not in a component/layout/page *)
+  workflows : workflow list;
 }
