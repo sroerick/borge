@@ -246,7 +246,9 @@ let escape_text s =
   String.iter (fun c ->
     match c with
     | '\\' -> Buffer.add_string buf "\\textbackslash{}"
-    | '_' | '&' | '%' | '#' | '$' | '^' | '~' | '{' | '}' ->
+    | '^' -> Buffer.add_string buf "\\textasciicircum{}"
+    | '~' -> Buffer.add_string buf "\\textasciitilde{}"
+    | '_' | '&' | '%' | '#' | '$' | '{' | '}' ->
         Buffer.add_char buf '\\'; Buffer.add_char buf c
     | _ -> Buffer.add_char buf c
   ) s;
@@ -307,6 +309,101 @@ let sanitize content =
   done;
   Buffer.contents buf
 
+(* --- .borg -> LaTeX renderer (parses the sexp; no raw sexp in the PDF) ---
+   section/subsection -> headings, (doc ...) -> prose paragraphs,
+   (* author ... (|...|) *) comments -> attributed blockquotes,
+   (status X) -> an italic marker. Other forms (inline, verify,
+   depends-on, ...) are structural noise and are skipped. Falls back
+   to raw listing if the file fails to parse. *)
+exception Fallback_raw
+
+let string_value_text = function
+  | Borge_lang.Ast.Quoted q -> q.Borge_lang.Ast.q_content
+  | Borge_lang.Ast.Verbatim v -> v.Borge_lang.Ast.v_content
+
+(* Emit prose: split on blank lines into paragraphs, escape, emit. *)
+let render_prose buf text =
+  let paras = Str.split (Str.regexp "\n[ \t]*\n") text in
+  List.iter (fun p ->
+    let p = String.trim p in
+    if p <> "" then begin
+      Buffer.add_string buf (escape_text p);
+      Buffer.add_string buf "\n\n"
+    end
+  ) paras
+
+let render_borg_comment buf c =
+  match c with
+  | Borge_lang.Ast.Plain _ -> ()  (* skip (; machine comments *)
+  | Borge_lang.Ast.Annotated ac ->
+    let author =
+      match ac.Borge_lang.Ast.authorship with
+      | Borge_lang.Ast.Single a -> a
+      | Borge_lang.Ast.Multiple xs -> String.concat "," xs
+    in
+    let typ = match ac.Borge_lang.Ast.comment_type with
+      | Borge_lang.Ast.Untyped -> ""
+      | Borge_lang.Ast.Typed t -> " " ^ t
+    in
+    let body =
+      match ac.Borge_lang.Ast.value with
+      | Some v -> String.trim (string_value_text v)
+      | None -> ""
+    in
+    if body <> "" then begin
+      Buffer.add_string buf "\\begin{quote}\n";
+      Printf.bprintf buf "\\textit{-- %s%s:} " (escape_text author) (escape_text typ);
+      render_prose buf body;
+      Buffer.add_string buf "\\end{quote}\n\n"
+    end
+
+let rec render_borg_node buf depth node =
+  let open Borge_lang.Ast in
+  match node with
+  | Atom _ | String _ -> ()
+  | List (_, children) ->
+    let head_is s = match children with Atom (_, x) :: _ -> x = s | _ -> false in
+    let rest = match children with _ :: r -> r | [] -> [] in
+    if head_is "project" || head_is "section" || head_is "subsection" then begin
+      let name = match rest with Atom (_, n) :: _ -> n | _ -> "" in
+      let cmd =
+        if head_is "project" then "section*"
+        else if head_is "section" then "subsection*"
+        else "subsubsection*"
+      in
+      Printf.bprintf buf "\\%s{%s}\n" cmd (escape_text name);
+      let inner = match rest with _ :: r -> r | _ -> [] in
+      List.iter (render_borg_node buf (depth + 1)) inner
+    end
+    else if head_is "doc" then begin
+      match rest with String (_, v) :: _ -> render_prose buf (string_value_text v) | _ -> ()
+    end
+    else if head_is "details" then List.iter (render_borg_node buf depth) rest
+    else if head_is "status" then begin
+      match rest with Atom (_, s) :: _ ->
+        Printf.bprintf buf "\\textit{[status: %s]}\n" (escape_text s)
+      | _ -> ()
+    end
+    else if head_is "inline" then begin
+      match rest with String (_, v) :: _ ->
+        Printf.bprintf buf "\\textit{[inlines %s]}\n" (escape_text (string_value_text v))
+      | _ -> ()
+    end
+    else ()   (* skip structural forms: verify, depends-on, convention, ... *)
+
+let borg_to_latex ~content =
+  let file =
+    try Borge_lang.Parse.parse_file content
+    with _ -> raise Fallback_raw
+  in
+  let buf = Buffer.create 4096 in
+  List.iter (render_borg_comment buf) file.Borge_lang.Ast.top_level_comments;
+  List.iter (fun swc ->
+    List.iter (render_borg_comment buf) swc.Borge_lang.Ast.comments_before;
+    render_borg_node buf 0 swc.Borge_lang.Ast.node
+  ) file.Borge_lang.Ast.top_level;
+  Buffer.contents buf
+
 let render_to_tex ~dir ~files ~tex_path =
   let src_dir = Filename.concat (Filename.dirname tex_path) "src" in
   (try Unix.mkdir src_dir 0o755 with Unix.Unix_error (Unix.EEXIST, _, _) -> ());
@@ -316,17 +413,33 @@ let render_to_tex ~dir ~files ~tex_path =
   output_string oc "\\tableofcontents\n";
   List.iteri (fun i f ->
     let escaped = escape_text f in
-    let sanitized_path = Filename.concat src_dir (Printf.sprintf "%04d.ml" i) in
     let full = Filename.concat dir f in
-    let content = sanitize (try File_utils.read_file full with Sys_error _ -> "") in
-    let soc = open_out sanitized_path in
-    output_string soc content;
-    close_out soc;
-    (* \markboth sets leftmark+rightmark to the filename. Combined with
-       \clearpage per file, \leftmark in the header tracks the current
-       file across continuation pages with no lag. *)
-    Printf.fprintf oc "\\clearpage\n\\section{%s}\n\\label{file:%s}\n\\markboth{%s}{%s}\n\\lstinputlisting[firstnumber=1]{%s}\n"
-      escaped f escaped escaped sanitized_path
+    Printf.fprintf oc "\\clearpage\n\\section{%s}\n\\label{file:%s}\n\\markboth{%s}{%s}\n"
+      escaped f escaped escaped;
+    if Filename.check_suffix f ".borg" then begin
+      (* Render the .borg spec as prose (parsed), not raw sexp. Falls
+         back to a raw listing if the file fails to parse. *)
+      let raw = try File_utils.read_file full with Sys_error _ -> "" in
+      let body =
+        try Some (borg_to_latex ~content:(sanitize raw))
+        with Fallback_raw -> None
+      in
+      match body with
+      | Some b -> output_string oc b
+      | None ->
+        let sanitized_path = Filename.concat src_dir (Printf.sprintf "%04d.borg" i) in
+        let soc = open_out sanitized_path in
+        output_string soc (sanitize raw);
+        close_out soc;
+        Printf.fprintf oc "\\lstinputlisting[firstnumber=1]{%s}\n" sanitized_path
+    end else begin
+      let sanitized_path = Filename.concat src_dir (Printf.sprintf "%04d.ml" i) in
+      let content = sanitize (try File_utils.read_file full with Sys_error _ -> "") in
+      let soc = open_out sanitized_path in
+      output_string soc content;
+      close_out soc;
+      Printf.fprintf oc "\\lstinputlisting[firstnumber=1]{%s}\n" sanitized_path
+    end
   ) files;
   output_string oc "\\end{document}\n";
   close_out oc

@@ -1900,6 +1900,20 @@
          is a build detail, not a spec invariant. The invariant
          is: paginated, numbered, with a notes column.
 
+         .borg files are NOT rendered as raw sexp. They are parsed
+         (Borge_lang.Parse) and emitted as prose: section/subsection
+         names as headings, (doc ...) strings as paragraphs,
+         (* author ... (|...|) *) comments as attributed
+         blockquotes (the narrative voice), (status X) as an italic
+         marker, (inline path) as a small note. Other structural
+         forms (verify, depends-on, convention) are skipped — they
+         are noise in the reading view. On parse failure the file
+         falls back to a raw listing. The point: the spec reads as a
+         document, not as data.
+
+         .ml/.mli files keep the listings treatment (line numbers,
+         framed code) — they are code, and the book shows them as code.
+
          Page furniture, every page:
          - page number (top or bottom corner)
          - chapter name (the section title) and section path
