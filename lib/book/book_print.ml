@@ -408,12 +408,12 @@ let rec render_borg_node buf depth pending node =
     end
     else if head_is "status" then begin
       match rest with Atom (_, s) :: _ ->
-        Printf.bprintf buf "\\textit{[status: %s]}\n" (escape_text s)
+        Printf.bprintf buf "\\textit{[status: %s]}\\par\n" (escape_text s)
       | _ -> ()
     end
     else if head_is "inline" then begin
       match rest with String (_, v) :: _ ->
-        Printf.bprintf buf "\\textit{[inlines %s]}\n" (escape_text (string_value_text v))
+        Printf.bprintf buf "\\textit{[inlines %s]}\\par\n" (escape_text (string_value_text v))
       | _ -> ()
     end
     else ()   (* skip structural forms: verify, depends-on, convention, ... *)
