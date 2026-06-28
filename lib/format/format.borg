@@ -1,0 +1,28 @@
+(project borge-lib-format
+ (section format
+  (doc "Formatting and display. lib/format/")
+  (status implemented)
+  (subsection fmt
+   (doc "Auto-format a .borg file to canonical indentation")
+   (status implemented)
+   (details
+    (doc (|
+         Parses and re-prints with canonical indentation. Supports
+         --check (exit 1 if formatting would change) and --diff
+         (show line-by-line diff).
+       |))
+   )
+  )
+  (subsection nodes
+   (doc "Dump the parsed AST with types and positions for debugging")
+   (status implemented)
+   (details
+    (doc (|
+         Walks the AST and prints each node with its type, keyword (if
+         list), source position, and child count. Useful for debugging
+         mismatches between source and AST.
+       |))
+   )
+  )
+ )
+)

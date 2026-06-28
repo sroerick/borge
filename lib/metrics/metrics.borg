@@ -1,0 +1,29 @@
+(project borge-lib-metrics
+ (section metrics
+  (doc "Code statistics. lib/metrics/")
+  (status implemented)
+  (subsection stats
+   (doc "Code intelligence metrics: lines, functions, exports, verified, literacy")
+   (status implemented)
+   (details
+    (doc (|
+         Scans all .ml files and reports: line count, function count,
+         average function length, export count, verified_count,
+         doc coverage, mli status. Aggregates into project totals.
+         Filters _build, .git, test dirs.
+
+         verified_count: bindings whose doc comment contains "verified"
+         or "verif" — agent-verified claims. Counted per-file and
+         aggregated project-wide as total_verified.
+
+         With --literacy, also reports per-file literacy averages:
+         story, explain, teach, edge — the four dimensions of the
+         comment-writing-guide scoring system. Shows which files are
+         narrative-strong vs mechanics-strong vs pedagogy-strong.
+         Helps identify where the codebase tells its story well and
+         where comments are just checkboxes.
+       |))
+   )
+  )
+ )
+)

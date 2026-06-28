@@ -1,0 +1,132 @@
+(project borge-lib-lang
+ (section lang
+  (doc "Spec sections embedded in source files. lib/spec_in_code/")
+  (status planned)
+  (subsection spec-in-mli
+   (doc "Extract borge spec sections from OCaml .mli comments")
+   (status planned)
+   (verify
+    (build
+    )
+    (test
+     "test/spec_in_code.ml"
+    )
+   )
+   (details
+    (doc (|
+         An .mli file may carry a borge spec section as a top-of-file
+         comment. The comment uses the standard (* ... *) OCaml delimiter
+         and contains a complete (section ...) or (subsection ...) form:
+
+         (* borge (subsection login
+            (doc "Login form and handlers")
+            (status implemented)
+            (endpoint GET (verify (build) (smoke "GET /login")))
+            (endpoint POST (verify (build) (test "test/auth_login.ml")))
+         ) *)
+
+         The .mli is the declaration layer for OCaml modules. Putting the
+         spec there means one file answers both "what must exist?" (types,
+         signatures) and "why? is it done? how to verify?" (borg spec).
+
+         Types:
+         - mli_spec: { name : string; kind : [Section | Subsection];
+                       status : Spec.status option;
+                       verify : Spec.verify_item list;
+                       children : mli_spec list;
+                       raw : string; line : int }
+
+         Functions:
+         - extract_from_mli : string -> mli_spec list
+             Scan an .mli file for (* borge (section ...) *) and
+             (* borge (subsection ...) *) comments. Returns all
+             top-level spec sections found. Parses the borge sexp
+             inside the comment using the existing Borge_lang.Parse.
+         - spec_to_section_mapping : mli_spec -> Spec.section_mapping
+             Convert to the existing section_mapping type so that
+             drift, check, and report work unchanged.
+         - is_spec_comment : string -> bool
+             Returns true if a comment line starts a borge spec block.
+
+         Integration with build_tree:
+         project.ml:build_tree is extended so that (inline target.mli)
+         resolves targets ending in .mli by calling extract_from_mli
+         instead of parse_file. The extracted mli_spec becomes a child
+         node in the project tree. The project tree representation is
+         unchanged — only the source format differs.
+
+         Index relationship:
+         The root .borg file uses (inline auth/login.mli) to declare
+         that login.mli carries the spec for the login subsection.
+         The .mli file is the authority for the spec detail. The
+         association to the implementation is implicit by convention:
+         login.mli describes the module implemented in login.ml.
+         No (implements ...) declaration is needed — surface extraction
+         already pairs .mli with .ml.
+
+         Drift detection:
+         Works identically. Borge reads the spec from login.mli's
+         comment, reads the code surface from login.ml, and checks
+         coherence. Drift does not need to change — the spec model
+         (section_mapping) is the same regardless of whether the
+         spec source was a .borg file or a .mli comment.
+       |))
+   )
+  )
+  (subsection comment-parser
+   (doc "Extend borg_comment.ml to handle section/subsection forms")
+   (status planned)
+   (details
+    (doc (|
+         Currently borg_comment.ml extracts leaf forms: (fn ...),
+         (val ...), (type ...). For spec-in-mli, it must also extract
+         nested forms: (section ...), (subsection ...) with arbitrary
+         children including (verify ...), (endpoint ...), etc.
+
+         The existing is_borg_form checks the top-level atom. Extend
+         to also match "section" and "subsection". The parse_comment
+         function already calls Borge_lang.Parse.parse — the parser
+         handles arbitrary nesting. The only change is what form types
+         trigger extraction, and preserving the entire nested subtree
+         rather than flattening to a (form_type, name) pair.
+
+         Functions:
+         - is_section_form : string -> bool
+             Recognizes (section ...) and (subsection ...) comment
+             content, same pattern as existing is_borg_form.
+         - extract_section : Borge_lang.Ast.file -> mli_spec list
+             Walk parsed top-level forms, extract section/subsection
+             nodes into the mli_spec tree type.
+       |))
+   )
+  )
+  (subsection inline-resolution
+   (doc "Extend build_tree to resolve (inline file.mli) targets")
+   (status planned)
+   (details
+    (doc (|
+         project.ml:build_tree currently only handles .borg targets
+         (calls parse_file). The extension:
+
+         1. Check file extension of inline target.
+         2. If target ends in .borg: existing path (parse_file).
+         3. If target ends in .mli: call extract_from_mli, convert
+            each mli_spec to a project_node.
+         4. If target ends in anything else: error (unsupported).
+
+         The project_node type does not change. The source field is
+         already a path string. The children come from the mli_spec
+         tree (nested subsections become nested project_nodes).
+
+         Cycle detection: works identically — the visited list tracks
+         paths regardless of extension.
+
+         find_root_candidates: must also consider .mli files that
+         contain (no-inline) declarations in their spec comments.
+         An .mli file whose spec comment does not declare (no-inline)
+         and is not inlined by any parent is orphaned.
+       |))
+   )
+  )
+ )
+)

@@ -1,0 +1,20 @@
+(project borge-lib-distributed
+ (section distributed
+  (doc "Distributed specs: module-level .borg files")
+  (status implemented)
+  (subsection borg-comment
+   (doc "Parse borg-comments from OCaml source")
+   (status implemented)
+   (details
+    (doc (|Extract (* (fn name ...) *) comments from .ml files.|))
+   )
+  )
+  (subsection module-spec
+   (doc "Discover and parse module .borg files")
+   (status implemented)
+   (details
+    (doc (|Find all .borg files, extract exports, check integrity.|))
+   )
+  )
+ )
+)

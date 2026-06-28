@@ -1,0 +1,24 @@
+(project borge-lib-output
+ (section output
+  (doc "Structured output formats. lib/output/")
+  (status implemented)
+  (subsection json
+   (doc "JSON serialization for --json flag across borge commands")
+   (status implemented)
+   (details
+    (doc (|
+         Yojson-based serializers for Report, Check, Lint, Drift, Stats,
+         and Balance result types. Each command's --json flag calls the
+         corresponding Json_out.to_json function and prints the result.
+       |))
+   )
+  )
+  (subsection json-out
+   (doc "Individual JSON output serializers")
+   (status implemented)
+   (details
+    (doc (|Json_out contains to_json functions for each command result.|))
+   )
+  )
+ )
+)

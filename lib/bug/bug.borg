@@ -1,0 +1,34 @@
+(project borge-lib-bug
+ (section bug
+  (doc "Issue tracking for repo-stored bugs")
+  (status implemented)
+  (subsection bug-ast
+   (doc "Bug AST types and operations")
+   (status implemented)
+   (details
+    (doc (|Bug_ast defines bug type, status workflow, and helper functions.|))
+   )
+  )
+  (subsection bug-parse
+   (doc "Parse .borge-bug files")
+   (status implemented)
+   (details
+    (doc (|Bug_parse reads .borge-bug files into typed bug records.|))
+   )
+  )
+  (subsection bug-registry
+   (doc "Manage .borge-bug directory")
+   (status implemented)
+   (details
+    (doc (|Bug_registry handles file paths, listing, loading, saving bugs.|))
+   )
+  )
+  (subsection bug-write
+   (doc "Write bugs to .borge-bug files")
+   (status implemented)
+   (details
+    (doc (|Bug_write renders bug records to .borge-bug file format.|))
+   )
+  )
+ )
+)

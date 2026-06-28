@@ -1,0 +1,62 @@
+(project borge-lib-merge
+ (section merge
+  (doc "Merge queue and branch management. lib/merge/")
+  (status implemented)
+  (subsection worktree
+   (doc "Git worktree management")
+   (status implemented)
+   (details
+    (doc (|Worktree creates and manages git worktrees for agent isolation.|))
+   )
+  )
+  (subsection branch
+   (doc "Git branch management for agent runs")
+   (status implemented)
+   (details
+    (doc (|Branch creates and switches git branches for agent sessions.|))
+   )
+  )
+  (subsection lockfile
+   (doc "Agent session lockfile format")
+   (status implemented)
+   (details
+    (doc (|Lockfile defines the .borge.lock state format.|))
+   )
+  )
+  (subsection queue-types
+   (doc "Merge queue type definitions")
+   (status implemented)
+   (details
+    (doc (|Queue_types defines data types for the merge queue.|))
+   )
+  )
+  (subsection queue-storage
+   (doc "Merge queue persistent storage")
+   (status implemented)
+   (details
+    (doc (|Queue_storage persists merge queue state to disk.|))
+   )
+  )
+  (subsection conflict-detect
+   (doc "Detect merge conflicts between agent branches")
+   (status implemented)
+   (details
+    (doc (|Conflict_detect analyzes branches for potential merge conflicts.|))
+   )
+  )
+  (subsection rollback
+   (doc "Rollback failed agent sessions")
+   (status implemented)
+   (details
+    (doc (|Rollback reverts failed agent sessions and cleans up.|))
+   )
+  )
+  (subsection agent-submit
+   (doc "Submit agent work to merge queue")
+   (status implemented)
+   (details
+    (doc (|Agent_submit packages agent work for merge queue processing.|))
+   )
+  )
+ )
+)

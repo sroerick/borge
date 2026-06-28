@@ -87,6 +87,12 @@ let status_order = [Planned; In_progress; Partial; Implemented; Verified; Drifte
 let inline_targets (file : Borge_lang.Ast.file) : string list =
   let rec extract = function
     | List (_, Atom (_, "inline") :: Atom (_, filename) :: _) -> [filename]
+    | List (_, Atom (_, "inline") :: String (_, sv) :: _) ->
+        let s = match sv with
+          | Quoted q -> q.q_content
+          | Verbatim v -> v.v_content
+        in
+        [s]
     | List (_, sexps) -> List.concat_map extract sexps
     | _ -> []
   in

@@ -1,0 +1,123 @@
+(project borge-lib-review
+ (section review
+  (doc "Semantic code review with LLM")
+  (status implemented)
+  (subsection semantic-review
+   (doc "Verify function docs match implementation")
+   (status implemented)
+   (details
+    (doc (|
+       semantic_review.ml implements per-function LLM verification.
+
+       Extraction: Uses compiler-libs/ocaml-common to parse .ml/.mli
+       files into Parsetree. Extracts:
+       - Value bindings (Pstr_value)
+       - Docstrings (attribute "ocaml.doc")
+       - Type signatures (from .mli when available)
+
+       Batching: Files with >20 functions are batched into groups
+       of 15-20, alphabetically sorted for determinism.
+
+       LLM Prompt: See meta.borg (section semantic-review-integration)
+       for the exact prompt template. Returns structured sexp that
+       parses into semantic_finding record.
+
+       Error handling: Parse failures are logged to stderr with raw
+       response preserved for debugging. Previous .borg.meta content
+       is preserved — never corrupt metadata.
+
+       Data types:
+       - doc_present: bool — is there a docstring/comment?
+       - doc_accuracy: high | medium | low — does doc match code?
+       - signature_match: accurate | mismatch | unknown
+       - behavior_coverage: complete | partial | missing
+       - structural_issues: string option (none, or description)
+       - confidence: high | medium | low
+
+       Output: Writes (semantic-review ...) block to .borg.meta file
+       sibling to the corresponding .borg file. See meta.borg for
+       block format specification.
+
+       Commands exposed:
+       - borge review FILE — review single file
+       - borge review --dir DIR — review all .ml in directory
+       - borge review --all — review entire project
+       - borge review --stale — only review files with stale metadata
+     |))
+   )
+  )
+  (subsection review-prompt
+   (doc "Prompt assembly for semantic review LLM queries")
+   (status implemented)
+   (details
+    (doc (|
+       review_prompt.ml: builds prompts for semantic review.
+
+       Functions:
+       - build_review_prompt: spec_section -> module_surface -> string
+       - format_function_for_review: function_info -> string
+
+       The prompt includes:
+       1. The spec section describing this module (doc body)
+       2. List of functions with signatures and docstrings
+       3. Structured output constraint (sexp format only)
+
+       Token management: If prompt would exceed ~8k tokens, truncate
+       function signatures (keep names only) and move full signatures
+       to a follow-up batch.
+     |))
+   )
+  )
+  (subsection review-parse
+   (doc "Parse LLM responses into typed semantic findings")
+   (status implemented)
+   (details
+    (doc (|
+       review_parse.ml: parses sexp responses from LLM.
+
+       Handles:
+       - Well-formed (findings ...) blocks → semantic_finding list
+       - Malformed responses → Parse_error logged, empty list returned
+       - Partially valid → extracts valid findings, logs invalid remainder
+
+       Never raises on parse failure — always returns result type.
+     |))
+   )
+  )
+  (subsection review-types
+   (doc "Types for semantic review findings")
+   (status implemented)
+   (details
+    (doc (|Review_types defines semantic_finding and related data types.|))
+   )
+  )
+  (subsection review-agent
+   (doc "LLM agent for semantic code review")
+   (status implemented)
+   (details
+    (doc (|Review_agent orchestrates LLM calls for semantic review.|))
+   )
+  )
+  (subsection extract-parsetree
+   (doc "OCaml parsetree extraction for semantic review")
+   (status implemented)
+   (details
+    (doc (|Extract_parsetree uses compiler-libs to parse .ml files into parsetree.|))
+   )
+  )
+  (subsection extract-functions
+   (doc "Function extraction from parsetree")
+   (status implemented)
+   (details
+    (doc (|Extract_functions extracts function bindings from OCaml parsetree.|))
+   )
+  )
+  (subsection extract-docs
+   (doc "Docstring extraction from parsetree")
+   (status implemented)
+   (details
+    (doc (|Extract_docs extracts docstrings from parsed OCaml source.|))
+   )
+  )
+ )
+)

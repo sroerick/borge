@@ -1,0 +1,45 @@
+(project borge-lib-generate
+ (section generate
+  (doc "LLM-driven generation. lib/generate/")
+  (status implemented)
+  (subsection generate-command
+   (doc "Generate spec sections and code from specs via LLM")
+   (status implemented)
+   (details
+    (doc (|
+         Two subcommands: generate spec (todo -> .borg section) and
+         generate code (spec -> implementation). Both use pi -p via
+         Agent.run_pi_print. Generate spec takes free-form text and
+         produces a structured (status planned) section. Generate code
+         reads a planned section's spec text and module surfaces, then
+         invokes pi to write the implementation.
+       |))
+   )
+  )
+  (subsection agent
+   (doc "LLM-driven semantic drift analysis")
+   (status implemented)
+   (details
+    (doc (|
+         Assembles context (spec + code + existing findings) into a
+         prompt, invokes an LLM via BORGE_AGENT_CMD env var, parses
+         the sexp response into typed findings. Parse failures are
+         discarded — never corrupt .borg.meta. Agent findings merge
+         with static findings (static preserved, agent replaced).
+       |))
+   )
+  )
+  (subsection review-quality
+   (doc "Per-file LLM code quality assessment against spec")
+   (status implemented)
+   (details
+    (doc (|
+         review_quality.ml: for each implemented section, find the
+         corresponding source file, build a prompt comparing spec vs
+         code, call pi -p, and return structured findings. Exposed
+         via borge review --agent.
+       |))
+   )
+  )
+ )
+)

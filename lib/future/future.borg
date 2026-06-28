@@ -1,0 +1,13 @@
+(project borge-lib-future
+ (section future
+  (doc "Future work analysis. lib/future/")
+  (status implemented)
+  (subsection depends
+   (doc "Dependency graph analysis for .borg files")
+   (status implemented)
+   (details
+    (doc (|Depends analyzes (depends-on ...) declarations across specs.|))
+   )
+  )
+ )
+)

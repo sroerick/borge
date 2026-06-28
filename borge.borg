@@ -49,14 +49,15 @@
         no-inline itself. A .borg file with no parent and no no-inline
         declaration is orphaned — this is structural drift.
 
-        The inline directive is by filename and supports two target formats:
-          (inline cli.borg)  — the target is a .borg file containing the spec
-          (inline login.mli)  — the target is a .mli file; the spec lives in
-                                 a (* borge (subsection ...) *) comment at the
-                                 top of the .mli. The .mli's type declarations
-                                 serve as the specification's structural
-                                 contract; the borge comment adds status,
-                                 verification criteria, and section nesting.
+        The inline directive is by filename/path and supports two target
+        formats (with or without quotes; quotes allow '/' subdirectories):
+          (inline cli.borg)
+          (inline "lib/core/core.borg")
+          (inline login.mli)
+        The first form targets a .borg file containing the spec. The
+        quoted form is the same but may include a relative path. The
+        .mli form targets an .mli file; the spec lives in a
+        (* borge (subsection ...) *) comment at the top of the .mli.
         The parent owns the architectural relationship. The child owns
         the detail.
 
@@ -2661,4 +2662,3 @@
   )
  )
 )
-

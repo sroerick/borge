@@ -1,0 +1,61 @@
+(project borge-lib-db
+ (section db
+  (doc "DB DSL types and parsing. lib/db/")
+  (status implemented)
+  (subsection db-ast
+   (doc "Typed AST for borge DB specs")
+   (status implemented)
+   (details
+    (doc (|
+         db_ast.ml defines typed representations: table_def, column,
+         operations_def, relation_def, group_def, capability, and all
+         value types (column_constraint, crud_spec, join_type, etc.).
+         The DB types are consumers of the generic sexp AST.
+       |))
+   )
+  )
+  (subsection db-parse
+   (doc "Sexp to typed DB AST extraction")
+   (status implemented)
+   (details
+    (doc (|
+         db_parse.ml walks the generic Ast.sexp tree and extracts
+         typed DB nodes. Functions like parse_table, parse_column,
+         parse_operations, parse_relation, parse_group, parse_db_app.
+       |))
+   )
+  )
+  (subsection db-validate
+   (doc "Semantic validation for DB specs")
+   (status implemented)
+   (details
+    (doc (|
+         Checks: table and column names are unique, (references
+         table.column) refers to an existing table, (ownership column)
+         refers to an existing column on the same table, operations
+         reference existing tables, relation from-tables and join tables
+         exist, group capability tables exist. Returns structured issues
+         with severity (error/warning).
+       |))
+   )
+  )
+  (subsection db-json
+   (doc "JSON serialization for DB AST")
+   (status implemented)
+   (details
+    (doc (|
+         db_json.ml serializes the typed DB AST to yojson for --json
+         output. Covers all types: tables, columns, operations,
+         relations, groups, capabilities.
+       |))
+   )
+  )
+  (subsection db-sql
+   (doc "SQL DDL generator from DB AST")
+   (status implemented)
+   (details
+    (doc (|db_sql.ml generates PostgreSQL DDL from the DB AST.|))
+   )
+  )
+ )
+)

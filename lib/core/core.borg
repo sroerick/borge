@@ -1,0 +1,48 @@
+(project borge-lib-core
+ (section core
+  (doc "Spec model: what borge files ARE. lib/core/")
+  (status implemented)
+  (subsection spec
+   (doc "Borge-specific types and operations on top of the sexp AST")
+   (status implemented)
+   (details
+    (doc (|
+         Types: status (planned, in-progress, partial, implemented,
+         drifted, blank). Functions: status_of_string, string_of_status,
+         project_name, count_sections, statuses, status_counts,
+         inline_targets, has_no_inline.
+       |))
+   )
+  )
+  (subsection file-utils
+   (doc "File discovery and reading shared by all commands")
+   (status implemented)
+   (details
+    (doc (|
+         find_borg_files: recursively discover .borg files, skipping
+         _build and .git. read_file: read a file into a string.
+       |))
+   )
+  )
+  (subsection project
+   (doc "Inline tree building and orphan detection")
+   (status implemented)
+   (details
+    (doc (|
+         build_tree: recursively follow inline directives from a root
+         .borg file, producing a project_node tree. Each node carries
+         its path, project_name, children, and orphan status.
+
+         find_roots: find .borg files not inlined by any other file.
+         find_orphans: find files not in any tree, no (no-inline), and
+         don't inline any children themselves.
+
+         tree_status_counts: count statuses across the tree without
+         double-counting inlined sub-specs.
+
+         format_tree: indented text representation of the tree.
+       |))
+   )
+  )
+ )
+)

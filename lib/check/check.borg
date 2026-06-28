@@ -1,0 +1,216 @@
+(project borge-lib-check
+ (section check
+  (doc "Validation and analysis. lib/check/")
+  (status implemented)
+  (subsection check-command
+   (doc "Recursive health check across all .borg files")
+   (status implemented)
+   (details
+    (doc (|
+         Walks a directory, finds .borg files, parses each, reports
+         project name and validity. Returns a typed result per file
+         with pass/fail status and warnings (orphan detection).
+       |))
+   )
+  )
+  (subsection report
+   (doc "Status summary across all .borg files")
+   (status implemented)
+   (details
+    (doc (|
+         Aggregates status counts per file and globally. Returns typed
+         data: per-file (name, impl, in-progress, planned) and totals.
+         Uses inline tree to avoid double-counting sub-specs.
+         Reports orphaned files.
+       |))
+   )
+  )
+  (subsection lint
+   (doc "Semantic validation of .borg files")
+   (status implemented)
+   (details
+    (doc (|
+         Checks: invalid status values, duplicate project names,
+         unknown comment types, missing comment values, deleted
+         human comments (against git HEAD), pending ask/response
+         slots, orphaned files. Since nested comments are now
+         captured in the AST (see sexp.borg comment-attachment),
+         lint inspects them as well through a single shared
+         Borge_lang.Ast.iter_comments traversal — no duplicated
+         comment-walking boilerplate, and no blind spot inside
+         (section ...) or (project ...) forms.
+       |))
+   )
+  )
+  (subsection code-quality
+   (doc "Mechanical code quality checks in .ml/.mli files")
+   (status implemented)
+   (details
+    (doc (|
+         Scans OCaml source for mechanical anti-patterns via regex
+         and targeted AST inspection. Integrates with borge lint
+         --mechanical. Supports (* exempt: FUNC *) comments for
+         intentional overrides.
+
+         Rules are defined in lib/check/code_quality.ml. Each rule
+         specifies: the call pattern, severity (Error/Warning),
+         and the preferred safe alternative. Errors crash the
+         program on certain inputs; Warnings use exceptions for
+         control flow, which is harder to reason about and easier
+         to miss in review.
+
+         Implemented rules:
+
+         rule "List.hd"
+           severity: Error
+           pattern: List.hd <expr>
+           why: Throws Failure on empty list. Pattern matching
+             is the only correct fix.
+           fix: match expr with | [] -> ... | x :: _ -> ...
+
+         rule "List.tl"
+           severity: Error
+           pattern: List.tl <expr>
+           why: Throws Failure on empty list.
+           fix: match expr with | [] -> ... | _ :: xs -> ...
+
+         rule "List.assoc"
+           severity: Warning
+           pattern: List.assoc key assoc_list
+           why: Throws Not_found when key is absent. Almost all
+             callers wrap it in try/with — the _opt variant does
+             this correctly.
+           fix: List.assoc_opt key assoc_list
+
+         rule "Hashtbl.find"
+           severity: Warning
+           pattern: Hashtbl.find tbl key
+           why: Throws Not_found when key is absent. The _opt
+             variant produces None, eliminating exception-based
+             control flow.
+           fix: Hashtbl.find_opt tbl key
+
+         rule "String.sub"
+           severity: Warning
+           pattern: String.sub s start len
+           why: Throws Invalid_argument when bounds exceed string
+             length. Many callers are guarded by String.length,
+             but the scanner cannot verify this in all cases.
+           fix: Guard with String.length; or use a bounds-safe
+             helper; or exempt with (* exempt: String.sub *)
+
+         rule "Str.search_forward"
+           severity: Warning
+           pattern: Str.search_forward regexp s pos
+           why: Throws Not_found when no match. Wrapping every
+             call in try/with is noisy; consider a safe wrapper.
+           fix: Wrap in try/with Not_found and handle None; or
+             exempt if clearly guarded
+
+         rule "int_of_string"
+           severity: Warning
+           pattern: int_of_string s
+           why: Throws Failure on non-numeric input.
+           fix: int_of_string_opt s
+
+         rule "float_of_string"
+           severity: Warning
+           pattern: float_of_string s
+           why: Throws Failure on non-numeric input.
+           fix: float_of_string_opt s
+
+         rule "open_in"
+           severity: Warning
+           pattern: open_in path
+           why: Requires manual close_in. Easy to leak channels
+             on exceptions or early returns.
+           fix: In_channel.with_open_text path (fun ic -> ...)
+
+         rule "input_line"
+           severity: Warning
+           pattern: input_line ic
+           why: Throws End_of_file at EOF. In_channel.input_line
+             returns None, which composes with option-handling.
+           fix: In_channel.input_line ic
+
+         Planned rules (AST-based, not yet implemented):
+
+         rule "polymorphic equality"
+           severity: planned Error
+           pattern: expr_1 = expr_2 where either operand is
+             string, list, or other structural type
+           why: (=) is polymorphic and performs physical equality
+             on functions, incorrect comparison on floats, and
+             structural recursion on lists. Use structural
+             equality functions (String.equal, List.equal, etc.)
+           fix: String.equal, Int.equal, List.equal, etc.
+
+         rule "deep match nesting"
+           severity: planned Warning
+           pattern: match nesting > 3 levels inside a single
+             function (state-machine exclusions apply)
+           why: Deeply nested match is hard to read and often
+             indicates a missing helper extraction. State
+             machines (e.g., balance checker) are legitimate.
+           fix: Extract sub-functions; use result/bind patterns
+             for early return
+       |))
+   )
+  )
+  (subsection drift
+   (doc "Detect spec drift, code drift, and structural drift")
+   (status implemented)
+   (details
+    (doc (|
+         Three drift layers:
+         1. Spec drift: .borg describes something not in code
+         2. Code drift: dune-aware — modules from dune files not in .borg
+         3. Structural drift: code organization does not match inline
+            architecture
+
+         Generates .borg.meta files with findings, module surfaces,
+         and dune snapshots. Supports --agent flag for LLM-driven
+         semantic analysis.
+       |))
+   )
+  )
+  (subsection dune-parse
+   (doc "Parse dune files for structural drift detection")
+   (status implemented)
+   (details
+    (doc (|
+         Parses dune (sexp) files to extract library, executable,
+         and test stanzas. Returns typed records with name, modules,
+         public_name, and libraries. Used by drift for cross-referencing
+         dune structure against .borg spec sections.
+       |))
+   )
+  )
+  (subsection surface
+   (doc "Extract public module interface from .ml/.mli files")
+   (status implemented)
+   (details
+    (doc (|
+         For modules with .mli: .mli is the authoritative surface.
+         For modules without .mli: infer from top-level let bindings,
+         type definitions, exceptions, and module declarations.
+         Returns module_name, file path, and export list.
+       |))
+   )
+  )
+  (subsection meta
+   (doc "Types and writer for .borg.meta companion files")
+   (status implemented)
+   (details
+    (doc (|
+         .borg.meta files hold machine-generated observations:
+         analyzed-at timestamp, content hashes, module surfaces,
+         dune snapshots, and findings. The writer is idempotent
+         and deterministic. Findings are sorted for clean git diffs.
+         Agent findings merge (replace) on re-run; static findings
+         are preserved.
+       |))
+   )
+  )
+ )
+)

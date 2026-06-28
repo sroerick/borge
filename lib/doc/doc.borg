@@ -1,0 +1,130 @@
+(project borge-lib-doc
+ (section doc
+  (doc "Documentation coverage detection and enforcement for .ml files")
+  (status in-progress)
+  (subsection doc-extract
+   (doc "Extract top-level let bindings from OCaml source files")
+   (status implemented)
+   (details
+    (doc (|
+         Gathers all top-level value bindings from .ml files,
+         distinguishing between public exports and internal helpers.
+         Filters out test bindings, ignored bindings, and local opens.
+
+         Types:
+         - binding_info: { name; line; is_exported; is_test; is_internal }
+
+         Functions:
+         - extract_bindings : string -> binding_info list
+             Parse a .ml file and return all top-level let bindings
+             with name, line number, and classification.
+         - extract_binding_name : string -> string option
+             Parse a let-binding line to extract the binding name.
+         - find_ml_files : string -> string list
+             Recursively find .ml files under a directory,
+             skipping _build/ and .git/.
+         - extract_project_bindings : string -> (string * binding_info) list
+             All bindings from all .ml files, paired with file path.
+         - count_stats : binding_info list -> int * int * int * int
+             Returns (total, exported, tests, internal).
+
+         Classification rules:
+         - is_test: line starts with let%
+         - is_internal: name starts with _ or is a test binding
+         - is_exported: not internal and name starts with lowercase a-z
+
+         Skips let open and let module forms.
+       |))
+   )
+  )
+  (subsection doc-detect
+   (doc "Detect documentation comment formats preceding let bindings")
+   (status implemented)
+   (details
+    (doc (|
+         Identifies various documentation formats and exempt markers
+         on lines preceding a let binding:
+         - Standard docstrings: (** ... *)
+         - Borg annotated: (* author note (|...|) *)
+         - Short borg: (*| ... |*)
+         - Exempt: (* exempt doc *)
+
+         Types:
+         - doc_kind: Docstring of string | Borg_note of string*string
+                     | Borg_short of string | Exempt_marker
+         - doc_position: Preceding of int | Inline | None_found
+         - binding_doc: { binding_line : int; doc : (doc_kind * doc_position) option }
+
+         Functions:
+         - parse_doc_line : string -> doc_kind option
+             Classify a single line as one of the four doc kinds
+             or return None.
+         - extract_file_docs : string -> binding_doc list
+             Scan a .ml file for all let bindings and their
+             preceding doc comments. Returns one binding_doc per
+             binding with the closest preceding comment.
+         - binding_has_doc : binding_doc -> bool
+             True if doc exists and is not Exempt_marker.
+         - binding_is_exempt : binding_doc -> bool
+             True if doc is Exempt_marker.
+
+         Detection logic for extract_file_docs:
+         - Walk lines left to right, accumulating a prev_docs stack.
+         - When a let-binding line is found, search prev_docs
+           backward for the nearest parse_doc_line hit.
+         - Stop searching at the first non-comment, non-empty line.
+         - This handles multi-line comments and blank lines between
+           comment and binding.
+       |))
+   )
+  )
+  (subsection doc-coverage
+   (doc "Compute documentation coverage statistics and write .borg.meta blocks")
+   (status implemented)
+   (details
+    (doc (|
+         Computes per-file and project-wide doc coverage, formats
+         human-readable reports, and generates (documentation ...)
+         blocks for .borg.meta files.
+
+         Types:
+         - file_coverage: { path; total_bindings; documented; exempt;
+                            undocumented; coverage_percent;
+                            undocumented_names }
+         - project_coverage: { files; total_files; total_bindings;
+                                total_documented; total_exempt;
+                                total_undocumented; overall_percent }
+
+         Functions:
+         - calculate_file_coverage : string -> file_coverage
+             Combine Doc_extract.extract_bindings with
+             Doc_detect.extract_file_docs. Skip tests and internals.
+             coverage_percent = documented / (total - exempt) * 100.
+         - calculate_dir_coverage : string -> project_coverage
+             All .ml files under a directory.
+         - format_coverage : file_coverage -> string
+             "path: N/M documented (X.X%), E exempt, U undocumented"
+         - format_project_summary : project_coverage -> string
+             Multi-line project summary.
+         - generate_meta_block : file_coverage -> string
+             Sexp block for .borg.meta:
+             (documentation (analyzed-at ...) (file ...) ...)
+         - write_coverage_meta : file_coverage -> string -> unit
+             Write meta block to a .borg.meta path.
+         - meets_threshold : file_coverage -> float -> bool
+             Check if coverage_percent >= threshold.
+
+         Coverage calculation:
+         documented = bindings with valid doc (not exempt)
+         exempt = bindings with (* exempt doc *)
+         total_bindings = all extracted bindings (after filtering tests/internals)
+         undocumented = total - documented - exempt
+         coverage_percent = documented / (total - exempt) * 100
+
+         Integration: called by borge drift --docs (see borge.borg
+         code-documentation.doc-coverage-command).
+       |))
+   )
+  )
+ )
+)
