@@ -2,7 +2,8 @@
  *   WHAT: v1 codebook printer. Walks the source tree in
  *   deterministic filesystem-order, emits a LaTeX document with
  *   the listings package (line numbers, framed code, a wide
- *   right-hand margin for hand annotations), runs pdflatex twice,
+ *   right-hand margin for hand annotations), runs pdflatex until
+ *   the .aux/.toc stabilize (a multi-page TOC grows across passes),
  *   and writes a manifest sidecar via Book_manifest.
  *   WHY: The "print" half of the book round trip (borge.borg
  *   section book). Code-only, no spec interleaving; spec-order
@@ -48,7 +49,7 @@ let collect_files dir =
     if pa <> pb then compare pa pb else compare a b
   ) files
 
-(* Escape LaTeX special chars for use in \section{} and headers.
+(* Escape LaTeX special chars for use in \section{}, \markboth{}, headers.
    Paths contain _, ., /, alphanumerics — only _ needs escaping,
    but we escape the full set to be safe. *)
 let escape_text s =
@@ -73,7 +74,10 @@ let preamble () =
   "\\pagestyle{fancy}\n" ^
   "\\fancyhf{}\n" ^
   "\\fancyhead[L]{borge codebook}\n" ^
-  "\\fancyhead[R]{\\rightmark}\n" ^
+  (* \leftmark = the first mark set on the page. Each file starts with
+     \clearpage + \markboth{file}{file}, so \leftmark is the current
+     file with no lag. (\rightmark lags by one section by design.) *)
+  "\\fancyhead[R]{\\leftmark}\n" ^
   "\\fancyfoot[C]{\\thepage}\n" ^
   "\\renewcommand{\\headrulewidth}{0.4pt}\n" ^
   "\\lstset{basicstyle=\\ttfamily\\footnotesize, numbers=left, numberstyle=\\tiny\\color{gray}, stepnumber=1, firstnumber=1, frame=single, rulecolor=\\color{gray!50}, breaklines=true, breakatwhitespace=true, showstringspaces=false, tabsize=2, xleftmargin=2em, numbersep=10pt, columns=fullflexible, keepspaces=true}\n"
@@ -129,8 +133,11 @@ let render_to_tex ~dir ~files ~tex_path =
     let soc = open_out sanitized_path in
     output_string soc content;
     close_out soc;
-    Printf.fprintf oc "\\clearpage\n\\section{%s}\n\\label{file:%s}\n\\lstinputlisting[firstnumber=1]{%s}\n"
-      escaped f sanitized_path
+    (* \markboth sets leftmark+rightmark to the filename. Combined with
+       \clearpage per file, \leftmark in the header tracks the current
+       file across continuation pages with no lag. *)
+    Printf.fprintf oc "\\clearpage\n\\section{%s}\n\\label{file:%s}\n\\markboth{%s}{%s}\n\\lstinputlisting[firstnumber=1]{%s}\n"
+      escaped f escaped escaped sanitized_path
   ) files;
   output_string oc "\\end{document}\n";
   close_out oc
@@ -138,15 +145,33 @@ let render_to_tex ~dir ~files ~tex_path =
 let has_cmd name =
   Sys.command (Printf.sprintf "command -v %s >/dev/null 2>&1" name) = 0
 
-(* Two passes: first writes labels, second resolves \pageref/\tableofcontents. *)
+let file_hash path =
+  try
+    let content = File_utils.read_file path in
+    Digest.to_hex (Digest.string content)
+  with Sys_error _ -> ""
+
+(* Run pdflatex until the .aux and .toc hashes stop changing, max 5
+   passes. A multi-page TOC grows across passes: pass 1 has no .toc
+   (TOC renders 1 page, page numbers wrong), pass 2 renders the full
+   TOC (pushing content down), pass 3 displays + records the corrected
+   page numbers. Looping on the .aux+.toc hash catches the stabilization
+   the way latexmk does. *)
 let run_pdflatex ~tmpdir ~tex =
   let cmd =
     Printf.sprintf "pdflatex -interaction=nonstopmode -halt-on-error -output-directory=%s %s >/dev/null 2>&1"
       (Filename.quote tmpdir) (Filename.quote tex)
   in
-  let _ = Sys.command cmd in
-  let _ = Sys.command cmd in
-  ()
+  let aux = Filename.concat tmpdir "book.aux" in
+  let toc = Filename.concat tmpdir "book.toc" in
+  let rec loop ~prev_hash ~passes =
+    let _ = Sys.command cmd in
+    let h = file_hash aux ^ ":" ^ file_hash toc in
+    if passes >= 5 then ()
+    else if h = prev_hash then ()
+    else loop ~prev_hash:h ~passes:(passes + 1)
+  in
+  loop ~prev_hash:"" ~passes:1
 
 (* Parse book.aux for \newlabel{file:PATH}{{sec}{PAGE}{...}{...}{}} entries.
    Returns (path, start_page) for every labeled file. *)
