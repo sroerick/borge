@@ -46,80 +46,6 @@ let string_of_string_value = function
 and spaces n = String.make n ' '
 
 (* agent note (|
- *   WHAT: Recursively pretty-print a single sexp with indentation.
- *   Handles atoms, strings, and nested lists with proper formatting.
- *
- *   WHY: Core pretty-printing for the AST. Formats lists with keywords
- *   differently from plain lists, adding newlines for readability.
- * |) *)
-let rec print_sexp indent buf sexp =
-  match sexp with
-  | Atom (_, sym) ->
-      Buffer.add_string buf sym
-  | String (_, sv) ->
-      Buffer.add_string buf (string_of_string_value sv)
-  | List (_, []) ->
-      Buffer.add_string buf "()"
-  | List (_, children) ->
-      if children = [] then Buffer.add_string buf "()"
-      else begin
-        let keyword =
-          match children with
-          | [Atom (_, "doc") | Atom (_, "status"); _] -> ""
-          | Atom (_, k) :: _ -> k
-          | _ -> ""
-        in
-        let has_keyword = keyword <> "" && keyword <> "doc" && keyword <> "status" in
-        if has_keyword then begin
-          Buffer.add_char buf '(';
-          Buffer.add_string buf keyword;
-          let rest = match children with _ :: tl -> tl | [] -> [] in
-          (* First child is the name — keep it inline *)
-          (* Only keep Atom names inline; lists go on their own line *)
-          let further = match rest with
-            | [] -> []
-            | [Atom (_, n)] ->
-                Buffer.add_string buf " ";
-                Buffer.add_string buf n; []
-            | Atom (_, n) :: tl ->
-                Buffer.add_string buf " ";
-                Buffer.add_string buf n; tl
-            | _ -> rest
-          in
-          further |> List.iter (fun child ->
-            Buffer.add_char buf '\n';
-            Buffer.add_string buf (spaces (indent + 1));
-            print_sexp (indent + 1) buf child
-          );
-          Buffer.add_char buf '\n';
-          Buffer.add_string buf (spaces indent);
-          Buffer.add_char buf ')'
-        end else begin
-          match children with
-          | [Atom (_, "doc"); String (_, v)] ->
-              Buffer.add_string buf "(doc ";
-              Buffer.add_string buf (string_of_string_value v);
-              Buffer.add_char buf ')'
-          | [Atom (_, "status"); Atom (_, v)] ->
-              Buffer.add_string buf "(status ";
-              Buffer.add_string buf v;
-              Buffer.add_char buf ')'
-          | hd :: tl ->
-              Buffer.add_char buf '(';
-              print_sexp (indent + 1) buf hd;
-              tl |> List.iter (fun child ->
-                Buffer.add_char buf '\n';
-                Buffer.add_string buf (spaces (indent + 1));
-                print_sexp (indent + 1) buf child
-              );
-              Buffer.add_char buf '\n';
-              Buffer.add_string buf (spaces indent);
-              Buffer.add_char buf ')'
-          | _ -> Buffer.add_string buf "()"
-        end
-      end
-
-(* agent note (|
  *   WHAT: Convert a plain comment to its string representation
  *   with semicolon prefix.
  *
@@ -160,6 +86,98 @@ let print_comment_attachment = function
   | Plain c -> print_plain_comment c
   | Annotated c -> print_annotated_comment c
 
+let drain_comments indent buf pending offset_limit =
+  let rec loop () =
+    match !pending with
+    | (cpos, c) :: rest when cpos.offset < offset_limit ->
+        Buffer.add_char buf '\n';
+        Buffer.add_string buf (spaces (indent + 1));
+        Buffer.add_string buf (print_comment_attachment c);
+        pending := rest;
+        loop ()
+    | _ -> ()
+  in
+  loop ()
+
+(* agent note (|
+ *   WHAT: Recursively pretty-print a single sexp with indentation.
+ *   Handles atoms, strings, and nested lists with proper formatting.
+ *
+ *   WHY: Core pretty-printing for the AST. Formats lists with keywords
+ *   differently from plain lists, adding newlines for readability.
+ * |) *)
+let rec print_sexp indent buf pending sexp =
+  match sexp with
+  | Atom (_, sym) ->
+      Buffer.add_string buf sym
+  | String (_, sv) ->
+      Buffer.add_string buf (string_of_string_value sv)
+  | List (_, []) ->
+      Buffer.add_string buf "()"
+  | List (_, children) ->
+      if children = [] then Buffer.add_string buf "()"
+      else begin
+        let keyword =
+          match children with
+          | [Atom (_, "doc") | Atom (_, "status"); _] -> ""
+          | Atom (_, k) :: _ -> k
+          | _ -> ""
+        in
+        let has_keyword = keyword <> "" && keyword <> "doc" && keyword <> "status" in
+        if has_keyword then begin
+          Buffer.add_char buf '(';
+          Buffer.add_string buf keyword;
+          let rest = match children with _ :: tl -> tl | [] -> [] in
+          (* First child is the name — keep it inline *)
+          (* Only keep Atom names inline; lists go on their own line *)
+          let further = match rest with
+            | [] -> []
+            | [Atom (_, n)] ->
+                Buffer.add_string buf " ";
+                Buffer.add_string buf n; []
+            | Atom (_, n) :: tl ->
+                Buffer.add_string buf " ";
+                Buffer.add_string buf n; tl
+            | _ -> rest
+          in
+          further |> List.iter (fun child ->
+            drain_comments indent buf pending (Ast.start_pos_of child).offset;
+            Buffer.add_char buf '\n';
+            Buffer.add_string buf (spaces (indent + 1));
+            print_sexp (indent + 1) buf pending child
+          );
+          drain_comments indent buf pending (Ast.end_pos_of sexp).offset;
+          Buffer.add_char buf '\n';
+          Buffer.add_string buf (spaces indent);
+          Buffer.add_char buf ')'
+        end else begin
+          match children with
+          | [Atom (_, "doc"); String (_, v)] ->
+              Buffer.add_string buf "(doc ";
+              Buffer.add_string buf (string_of_string_value v);
+              Buffer.add_char buf ')'
+          | [Atom (_, "status"); Atom (_, v)] ->
+              Buffer.add_string buf "(status ";
+              Buffer.add_string buf v;
+              Buffer.add_char buf ')'
+          | hd :: tl ->
+              Buffer.add_char buf '(';
+              drain_comments indent buf pending (Ast.start_pos_of hd).offset;
+              print_sexp (indent + 1) buf pending hd;
+              tl |> List.iter (fun child ->
+                drain_comments indent buf pending (Ast.start_pos_of child).offset;
+                Buffer.add_char buf '\n';
+                Buffer.add_string buf (spaces (indent + 1));
+                print_sexp (indent + 1) buf pending child
+              );
+              drain_comments indent buf pending (Ast.end_pos_of sexp).offset;
+              Buffer.add_char buf '\n';
+              Buffer.add_string buf (spaces indent);
+              Buffer.add_char buf ')'
+          | _ -> Buffer.add_string buf "()"
+        end
+      end
+
 (* agent note (|
  *   WHAT: Pretty-print an entire borge AST to a string with
  *   proper formatting and indentation.
@@ -169,6 +187,10 @@ let print_comment_attachment = function
  * |) *)
 let print_file f =
   let buf = Buffer.create 4096 in
+  let sorted_nested =
+    List.stable_sort (fun (p1, _) (p2, _) -> compare p1.offset p2.offset) f.nested_comments
+  in
+  let pending = ref sorted_nested in
 
   List.iter (fun c ->
     Buffer.add_string buf (print_comment_attachment c);
@@ -180,7 +202,7 @@ let print_file f =
       Buffer.add_string buf (print_comment_attachment c);
       Buffer.add_char buf '\n'
     ) comments_before;
-    print_sexp 0 buf node;
+    print_sexp 0 buf pending node;
     Buffer.add_char buf '\n'
   ) f.top_level;
 
@@ -188,5 +210,9 @@ let print_file f =
     Buffer.add_string buf (print_comment_attachment c);
     Buffer.add_char buf '\n'
   ) f.trailing_comments;
+
+  (* Defensive drain for any nested comment that was not emitted
+     inside a list. By construction this should be empty. *)
+  drain_comments 0 buf pending max_int;
 
   Buffer.contents buf

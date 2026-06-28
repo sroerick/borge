@@ -32,11 +32,13 @@ let rec end_pos_of_sexp = function
 
 file:
   | top = comment_list sexps = sexp_with_comments_list EOF
-    { { top_level_comments = top;
+    { let nc = List.sort (fun (p1, _) (p2, _) -> compare p1.offset p2.offset) !nested_comments_acc in
+      { top_level_comments = top;
         top_level = sexps;
-        trailing_comments = [] } }
+        trailing_comments = [];
+        nested_comments = nc } }
   | EOF
-    { { top_level_comments = []; top_level = []; trailing_comments = [] } }
+    { { top_level_comments = []; top_level = []; trailing_comments = []; nested_comments = [] } }
 
 sexp_with_comments_list:
   | { [] }
@@ -56,10 +58,13 @@ comment_list:
 
 comment:
   | t = SEMICOLON
-    { Plain { text = t; line = 0 } }
+    { let p = pos_of_lexing $startpos in
+      Plain { text = t; line = p.line } }
   | HASH_LPAREN a = author_list ty = comment_type_opt v = comment_value STAR_RPAREN
-    { Annotated { authorship = a; comment_type = ty; value = v;
-                   start_line = 0; end_line = 0 } }
+    { let sp = pos_of_lexing $startpos in
+      let ep = pos_of_lexing $endpos in
+      Annotated { authorship = a; comment_type = ty; value = v;
+                   start_line = sp.line; end_line = ep.line } }
 
 author_list:
   | s = SYMBOL { Single s }
@@ -94,9 +99,11 @@ sexp_list:
   | { [] }
   | _cs = inner_comment_list x = sexp xs = sexp_list { x :: xs }
 
-(** Comments inside lists are discarded. *)
+(** Comments inside lists are captured into nested_comments_acc. *)
 inner_comment_list:
   | { () }
-  | comment inner_comment_list { () }
+  | c = comment _rest = inner_comment_list
+    { let p = pos_of_lexing $startpos in
+      nested_comments_acc := (p, c) :: !nested_comments_acc }
 
 %%

@@ -44,6 +44,11 @@
  )
 
  (section philosophy
+  (* agent note (|
+     roerick (2026-05-22), setting the frame for the whole DB DSL:
+     "The db.borg spec is the source of truth. The DB DSL does NOT
+     generate SQL or code — the spec IS the artifact."
+   |) *)
   (doc (|
     Borge DB describes database intent, not SQL. SQL is the
     implementation — it's the how. The spec is the what:

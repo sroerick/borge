@@ -37,19 +37,15 @@ let pos_of_sexp = function
 
 (** Check for invalid status values *)
 let check_invalid_statuses path file =
-  let rec walk_sexp = function
+  let issues = ref [] in
+  Ast.iter_sexps file (function
     | Ast.List (_, Ast.Atom (_, "status") :: Ast.Atom (p, v) :: _) ->
         (match Spec.status_of_string v with
-         | Some _ -> []
-         | None -> [Invalid_status { path; value = v; line = p.Ast.line; col = p.Ast.col }])
-    | Ast.List (_, children) -> List.concat_map walk_sexp children
-    | _ -> []
-  in
-  let rec walk_file : Ast.sexp_with_comments list -> lint_issue list = function
-    | [] -> []
-    | { Ast.node; _ } :: rest -> walk_sexp node @ walk_file rest
-  in
-  walk_file file.Ast.top_level
+         | Some _ -> ()
+         | None -> issues := Invalid_status { path; value = v; line = p.Ast.line; col = p.Ast.col } :: !issues)
+    | _ -> ()
+  );
+  List.rev !issues
 
 (** Check for duplicate project names across files *)
 let check_duplicate_names file_stats =
@@ -78,7 +74,7 @@ let authorship_string = function
 (** Check annotated comments for unknown types and missing values *)
 let check_annotated_comments path file =
   let issues = ref [] in
-  let visit_comment = function
+  Ast.iter_comments file (function
     | Ast.Annotated ac ->
         let valid_types = ["note"; "design"; "ask"; "response"; "todo"] in
         (match ac.Ast.comment_type with
@@ -94,21 +90,7 @@ let check_annotated_comments path file =
              } :: !issues
          | _ -> ())
     | _ -> ()
-  in
-  let rec visit_comments = function
-    | [] -> ()
-    | c :: cs -> visit_comment c; visit_comments cs
-  in
-  let rec visit_from_sexp = function
-    | Ast.List (_, children) -> List.iter visit_from_sexp children
-    | _ -> ()
-  in
-  visit_comments file.Ast.top_level_comments;
-  List.iter (fun (swc : Ast.sexp_with_comments) ->
-    visit_comments swc.Ast.comments_before;
-    visit_from_sexp swc.Ast.node
-  ) file.Ast.top_level;
-  visit_comments file.Ast.trailing_comments;
+  );
   List.rev !issues
 
 (** Check for pending ask comments with empty response slots *)
@@ -116,22 +98,14 @@ let check_annotated_comments path file =
 let check_pending_responses path file =
   let asks = ref [] in
   let responses = ref [] in
-  let visit_comment = function
+  Ast.iter_comments file (function
     | Ast.Annotated ac ->
         (match ac.Ast.comment_type with
          | Ast.Typed "ask" -> asks := ac :: !asks
          | Ast.Typed "response" -> responses := ac :: !responses
          | _ -> ())
     | _ -> ()
-  in
-  let rec visit_comments = function
-    | [] -> ()
-    | c :: cs -> visit_comment c; visit_comments cs
-  in
-  visit_comments file.Ast.top_level_comments;
-  List.iter (fun (swc : Ast.sexp_with_comments) ->
-    visit_comments swc.Ast.comments_before
-  ) file.Ast.top_level;
+  );
   (* An ask is "pending" if it has no response after it *)
   List.filter_map (fun ask ->
     let has_response = List.exists (fun resp ->

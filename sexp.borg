@@ -27,7 +27,15 @@
         Positions: every sexp node carries a pos record with
         { line: int; col: int; offset: int }. The file type
         holds top_level_comments, top_level sexp_with_comments,
-        and trailing_comments for round-tripping.
+        trailing_comments, and nested_comments for round-tripping.
+        nested_comments is a position-pinned list of comments that
+        appear inside list forms (before any child sexp). See the
+        comment-attachment section for why this is stored as side
+        data and not as per-child comments_before. The module also
+        exposes fold_comments and iter_comments, single traversals
+        over all comments in a file (top-level, before each node,
+        nested, trailing) used by lint and the book renderer so
+        the walk is defined once.
       |))
   )
  )
@@ -109,6 +117,15 @@
             type       ::= /* empty */ | SYMBOL
             value      ::= /* empty */ | string
 
+          Nested comments: comments appearing inside a list (between
+          child sexps) are captured into file.nested_comments as a
+          position-pinned (pos * comment_attachment) list, rather
+          than discarded. The list spine (LPAREN sexp* RPAREN) is
+          unchanged — comments remain side data, not children.
+          Comment start_line/end_line are now filled from menhir
+          $startpos/$endpos (previously hardcoded to 0). See
+          comment-attachment for the future child-attachment plan.
+
           The .mly becomes the canonical language definition —
           the spec IS the grammar. This is recursive: borge.borg
           describes the .borg format, and the .mly IS the .borg
@@ -143,10 +160,60 @@
         during printing, never stored in v_content.
 
         Comments: plain as ;text, annotated as (* author type value *).
-        The file type (with top_level_comments, trailing_comments)
-        enables full round-tripping: parse -> print produces
-        diffable output.
+        The file type (with top_level_comments, trailing_comments,
+        and nested_comments) enables full round-tripping: parse ->
+        print produces diffable output. Nested comments are re-emitted
+        in source position order so their lexical placement is
+        preserved.
       |))
+  )
+ )
+ (section comment-attachment
+  (doc "Preserve and traverse comments inside nested lists")
+  (status implemented)
+  (details
+   (doc (|
+        Most .borg files wrap everything in a single (project ...)
+        or (section ...) form. Ordinary top-level comments live in
+        file.top_level_comments and file.trailing_comments, and
+        comments_before on sexp_with_comments handles comments before
+        each top-level node. But comments inside those top-level forms
+        — before a (section ...) child inside (project ...), for
+        example — are comments inside a list. Historically the parser
+        discarded them via inner_comment_list. borge now captures
+        them in file.nested_comments instead.
+      |))
+  )
+  (subsection position-pinned
+   (doc "Nested comments as position-ordered side data")
+   (status implemented)
+   (details
+    (doc (|
+          Implemented approach: nested comments are stored as a flat
+          list keyed by their source position. They are re-emitted
+          during print by interleaving them with the node stream in
+          position order. This is sufficient for round-tripping and
+          for consumers (lint, book renderer) that only need to see
+          every comment once in source order. It does not model
+          semantic attachment of a comment to a specific child node;
+          that is deferred to future work (child-attachment).
+      |))
+   )
+  )
+  (subsection child-attachment
+   (doc "Future: make List children carry comments_before directly")
+   (status planned)
+   (details
+    (doc (|
+          Long-term design: change Ast.sexp List children from bare
+          sexp to sexp_with_comments, so every child in a list has
+          its own comments_before. This is the principled data model:
+          a comment before (section foo ...) becomes structurally
+          attached to that section. The migration is larger (~3-digit
+          pattern sites in drift/lint/balance visitors) and will be
+          done as a separate refactor.
+      |))
+   )
   )
  )
  (section balance

@@ -357,11 +357,22 @@ let render_borg_comment buf c =
       Buffer.add_string buf "\\end{quote}\n\n"
     end
 
-let rec render_borg_node buf depth node =
+let rec render_borg_node buf depth pending node =
   let open Borge_lang.Ast in
+  let drain limit =
+    let rec loop () =
+      match !pending with
+      | (cpos, c) :: rest when cpos.offset < limit ->
+          render_borg_comment buf c;
+          pending := rest;
+          loop ()
+      | _ -> ()
+    in
+    loop ()
+  in
   match node with
   | Atom _ | String _ -> ()
-  | List (_, children) ->
+  | List (_pos, children) as lst ->
     let head_is s = match children with Atom (_, x) :: _ -> x = s | _ -> false in
     let rest = match children with _ :: r -> r | [] -> [] in
     if head_is "project" || head_is "section" || head_is "subsection" then begin
@@ -371,14 +382,30 @@ let rec render_borg_node buf depth node =
         else if head_is "section" then "subsection*"
         else "subsubsection*"
       in
+      (* Drain nested comments that appear after the keyword atom but
+         before the name atom (or first inner child). *)
+      (match rest with
+       | Atom (p, _) :: _ -> drain p.offset
+       | child :: _ -> drain (start_pos_of child).offset
+       | [] -> drain (end_pos_of lst).offset);
       Printf.bprintf buf "\\%s{%s}\n" cmd (escape_text name);
       let inner = match rest with _ :: r -> r | _ -> [] in
-      List.iter (render_borg_node buf (depth + 1)) inner
+      List.iter (fun child ->
+        drain (start_pos_of child).offset;
+        render_borg_node buf (depth + 1) pending child
+      ) inner;
+      drain (end_pos_of lst).offset
     end
     else if head_is "doc" then begin
       match rest with String (_, v) :: _ -> render_prose buf (string_value_text v) | _ -> ()
     end
-    else if head_is "details" then List.iter (render_borg_node buf depth) rest
+    else if head_is "details" then begin
+      List.iter (fun child ->
+        drain (start_pos_of child).offset;
+        render_borg_node buf depth pending child
+      ) rest;
+      drain (end_pos_of lst).offset
+    end
     else if head_is "status" then begin
       match rest with Atom (_, s) :: _ ->
         Printf.bprintf buf "\\textit{[status: %s]}\n" (escape_text s)
@@ -392,15 +419,20 @@ let rec render_borg_node buf depth node =
     else ()   (* skip structural forms: verify, depends-on, convention, ... *)
 
 let borg_to_latex ~content =
+  let open Borge_lang.Ast in
   let file =
     try Borge_lang.Parse.parse_file content
     with _ -> raise Fallback_raw
   in
   let buf = Buffer.create 4096 in
+  let sorted_nested =
+    List.stable_sort (fun (p1, _) (p2, _) -> compare p1.offset p2.offset) file.nested_comments
+  in
+  let pending = ref sorted_nested in
   List.iter (render_borg_comment buf) file.Borge_lang.Ast.top_level_comments;
   List.iter (fun swc ->
     List.iter (render_borg_comment buf) swc.Borge_lang.Ast.comments_before;
-    render_borg_node buf 0 swc.Borge_lang.Ast.node
+    render_borg_node buf 0 pending swc.Borge_lang.Ast.node
   ) file.Borge_lang.Ast.top_level;
   Buffer.contents buf
 

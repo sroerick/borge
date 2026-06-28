@@ -1,10 +1,4 @@
-(** Parse .borg files using the menhir-generated parser and sedlex lexer.
-
-    Provides the same interface as the old hand-written parser:
-    parse_file : string -> Ast.file.
-
-    Error handling: parse errors are caught and re-raised as
-    Error.Parse_error for compatibility with downstream code. *)
+(** Parse .borg files using the menhir-generated parser and sedlex lexer. *)
 
 open Ast [@@warning "-33"]
 
@@ -37,22 +31,25 @@ let read_token (lexbuf : Sedlexing.lexbuf) : Parser.token =
   | Lexer.SEMICOLON s -> SEMICOLON s
   | Lexer.EOF -> EOF
 
-(** Bridge: menhir expects Lexing.lexbuf but we use Sedlexing.lexbuf.
-    We pass the Sedlexing.lexbuf through a ref cell. *)
+(** Bridge: menhir expects a Lexing.lexbuf, but our lexer uses Sedlexing.
+    We adapt tokens and copy Sedlexing positions into the dummy Lexing
+    lexbuf so menhir can report accurate $startpos/$endpos/$loc. *)
 let parse_file input =
-  let lexbuf = make_lexbuf input in
-  let token_reader (_lb : Lexing.lexbuf) =
-    read_token lexbuf
+  let sedlex_lexbuf = make_lexbuf input in
+  reset_nested_comments ();
+  let token_reader (lb : Lexing.lexbuf) =
+    let tok = read_token sedlex_lexbuf in
+    let start_p, end_p = Sedlexing.lexing_positions sedlex_lexbuf in
+    lb.Lexing.lex_start_p <- start_p;
+    lb.Lexing.lex_curr_p <- end_p;
+    tok
   in
-  (* We need to create a dummy Lexing.lexbuf for menhir's API.
-     Menhir's traditional API requires one, but we only use it
-     for position info which we track via Sedlexing. *)
   let dummy_lb = Lexing.from_string "" in
   try
     Parser.file token_reader dummy_lb
   with
   | Parser.Error ->
-      let pos = Sedlexing.lexing_position_start lexbuf in
+      let pos, _ = Sedlexing.lexing_positions sedlex_lexbuf in
       Error.error ~line:pos.Lexing.pos_lnum ~column:(pos.Lexing.pos_cnum - pos.Lexing.pos_bol)
         "Parse error"
 

@@ -95,7 +95,12 @@
          Checks: invalid status values, duplicate project names,
          unknown comment types, missing comment values, deleted
          human comments (against git HEAD), pending ask/response
-         slots, orphaned files.
+         slots, orphaned files. Since nested comments are now
+         captured in the AST (see sexp.borg comment-attachment),
+         lint inspects them as well through a single shared
+         Borge_lang.Ast.iter_comments traversal — no duplicated
+         comment-walking boilerplate, and no blind spot inside
+         (section ...) or (project ...) forms.
        |))
    )
   )

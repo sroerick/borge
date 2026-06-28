@@ -10,6 +10,24 @@
   and I guess that's true. 
   |)
  )
+ (* agent note (|
+   roerick, on what borge is for (2026-05-17): "Other people are
+   solving this problem by spawning dozens of agents and having them
+   work in parallel and at cross purposes. But I think we can achieve
+   the same thing with massively fewer tokens by simply restricting
+   and gating what the agent is allowed to do during a certain
+   implementation phase. And the fact that we are adhering to spec as
+   our source of truth is what's going to hopefully prevent a lot of
+   the total running amok that we do tend to see with these agents."
+
+   The first spark was a question asked a few days earlier
+   (2026-05-15): "is it possible to get postgres to output sexps as
+   data." That sexp format became the through-line — the same
+   structured language could flow from database to spec to parser to
+   code to printed book. borge is the union of that format and this
+   discipline: a spec-first verification toolkit that keeps agents
+   aligned by gates rather than swarms.
+ |) *)
  (section program-architecture
   (doc "How borge is structured: one root spec, inlined sub-specs, no orphans")
   (status implemented)
@@ -473,8 +491,11 @@
 
         borge lint (legacy) compares the working tree against git HEAD.
         If a human-authored comment is present in HEAD but missing in the
-        working tree, lint emits a deletion warning. This still works for
-        non-agent editing but is redundant when the agent workflow is used.
+        working tree, lint emits a deletion warning. Nested comments are
+        now captured by the parser and inspected by lint, so this no
+        longer has the historical blind spot inside (project ...) or
+        (section ...) forms. This still works for non-agent editing but
+        is redundant when the agent workflow is used.
 
         borge normalize is the human saying "I made changes on purpose."
         It runs borge fmt, then accepts all comment deletions as
@@ -1141,6 +1162,17 @@
  (section execute
   (doc "Make code match spec — interactive agent mode with role-gated behavior")
   (status implemented)
+  (* agent note (|
+     roerick, on the envisioned workflow (2026-05-17): "I'm kind of
+     envisioning a workflow where we go like, okay, generate the code
+     based on the spec. Okay, review the code that was created to
+     determine if we've drifted from spec. Okay, fix any drift from
+     the spec. Okay, review the code that's created again. And
+     hopefully get to something that resembles the code. My hope is
+     that we can achieve like a lot of development this way, basically
+     by running Ralph loops over with using the spec as a source of
+     truth."
+   |) *)
   (details
    (doc (|
         Agent-driven commands open pi interactively with a minimal
@@ -1756,6 +1788,23 @@
  (section literate-programming
   (doc "The borge philosophy: spec is the primary artifact, code is derived")
   (status implemented)
+  (* agent note (|
+     roerick, on the original goal (2026-05-28): "we were initially
+     going to build out a feature set where we A. implement a policy of
+     comments for every function in our analyzed code and B. implement
+     a static analysis linter to make sure that each function has
+     comments, a la literate programming. this way we can determine if
+     functions are doing what they say, and better analyze drift."
+
+     The ambition grew beyond mechanical coverage (2026-06-19):
+     "I'm generally not thrilled with the amount and quality of
+     comments in the code. they're nice. but they feel like a
+     checkbox, rather than like a living book or document which i
+     can read to understand the codebase... maybe a scoring metric
+     to show 'how effectively does this comment tell our story'."
+     That tension — between checkbox coverage and readable
+     narrative — is the animating problem of this section.
+   |) *)
   (details
    (doc (|
         In a borge project, the spec is not documentation — it IS the
@@ -1788,6 +1837,13 @@
  (section book
   (doc "Print the codebase as a paginated book, with a round trip back to the spec via the inbox")
   (status implemented)
+  (* agent note (|
+     Origin (roerick, 2026-06-27): "I want to print codebases. like
+     i want to order them linearly from start to finish, and read them
+     like a book. this is literate programming. i want to be able to
+     print them out, with page numbers, then scan them back in as
+     feedback to the LLM and have it spec changes."
+   |) *)
   (* agent note (|
      verified at this commit: print + manifest implemented. build-pass,
      runtest-pass, smoke-pass (borge book print . -> 363-page A4 PDF +
@@ -2021,6 +2077,18 @@
  (section agent-discipline
   (doc "Rules for AI agents working in borge — operationalizing spec-first development")
   (status implemented)
+  (* agent note (|
+     roerick, on the design choice that sets borge apart (2026-05-17):
+     "Other people are solving this problem by spawning dozens of
+     agents and having them work in parallel and at cross purposes.
+     But I think we can achieve the same thing with massively fewer
+     tokens by simply restricting and gating what the agent is
+     allowed to do during a certain implementation phase."
+
+     The rules below are the operational form of that intuition:
+     gating what an agent may touch is cheaper than orchestrating a
+     swarm, and the spec is the gate.
+   |) *)
   (details
    (doc (|
         The literate-programming section declares the philosophy. This
