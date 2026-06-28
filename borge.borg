@@ -1855,16 +1855,30 @@
          numbers, line numbers on every page, and a right-hand
          margin wide enough to write in.
 
-         Ordering is filesystem-order in v1: a deterministic,
-         lexical walk of the source tree (lib/, bin/, test/, each
-         directory sorted). This is the fast path to a book in
-         hand — the codebase read in order, not interleaved with
-         the spec. Spec-order — where the .borg section tree is
-         the table of contents and each chapter is the code a
-         section covers — is the long-tail feature, along with
-         page-number cross-references for links between sections.
-         --section NAME is a no-op in v1 (filesystem order has no
-         chapters yet); it lands with spec-order.
+         Ordering is four-tier, data-driven from the project's own
+         structure, so the book reads like a book rather than a
+         lexical file dump:
+
+           tier 0: root .borg file (the architecture / introduction)
+                   via Project.find_roots.
+           tier 1: other top-level .borg files (the design docs:
+                   cli.borg, lib.borg, db.borg, ui.borg, ...).
+           tier 2: .mli files (module signatures — the interface
+                   layer; empty in this repo until interfaces are added).
+           tier 3: .ml files (implementations), plus any
+                   sub-directory .borg files, walked in lexical order
+                   grouped by lib/, bin/, test/.
+
+         Tier 0 makes the book open with the spec — the primary
+         artifact per literate-programming — not an alphabetical
+         accident. Tiers 1-2 give the design and interface layer
+         before the implementations. Within a tier, files sort by
+         directory group then lexical. Full spec-order — where the
+         .borg section tree is the table of contents and each chapter
+         is the code a section covers — remains the long-tail feature,
+         along with page-number cross-references for links between
+         sections. --section NAME is a no-op in v1; it lands with
+         spec-order.
 
          Rendering target: LaTeX with the listings package — line
          numbers, framed code blocks, and a right-hand marginnote

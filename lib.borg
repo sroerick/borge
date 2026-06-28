@@ -1077,37 +1077,49 @@
   (doc "Codebase book printer. lib/book/")
   (status planned)
   (subsection book-print-impl
-   (doc "Linearize source files to a paginated PDF (filesystem-order, code-only)")
+   (doc "Linearize source files to a paginated PDF (four-tier order: root .borg, other top-level .borg, .mli, .ml)")
    (status implemented)
    (* agent note (|
      verified at this commit: build-pass, smoke-pass (borge book print
-     . produces a 363-page A4 PDF with line numbers on every page;
-     tree_checksum deterministic across runs). Uses lstinputlisting
-     with sanitized temp files to dodge the UTF-8 and
-     \end{lstlisting}-in-source problems.
+     . opens with borge.borg as the introduction, then the other 8
+     top-level .borg design docs, then .ml implementations; line
+     numbers on every page; tree_checksum deterministic across runs).
+     Uses lstinputlisting with sanitized temp files to dodge the UTF-8
+     and \end{lstlisting}-in-source problems.
    |) *)
    (verify (build) (smoke "borge book print"))
    (details
     (doc (|
          lib/book/print.ml — the v1 linearizer and LaTeX emitter.
 
-         v1 scope: filesystem-order, code-only, no spec-order, no
-         --section, no --woven. Walk the source tree deterministically,
-         read each .ml/.mli, emit one LaTeX document, run pdflatex.
+         v1 scope: four-tier data-driven ordering (root .borg ->
+         other top-level .borg -> .mli -> .ml), no full spec-order,
+         no --section, no --woven. The root .borg (via
+         Project.find_roots) opens the book as the introduction;
+         other top-level .borg files follow as design docs; then
+         .mli interfaces; then .ml implementations. Each file is
+         read, sanitized, emitted as one LaTeX document, run through
+         pdflatex.
 
          Pipeline:
          1. collect_files : dir -> string list
-              Deterministic lexical walk. Skip _build/, .git/,
-              and anything in .gitignore's build-artifact set.
-              Order: lib/ then bin/ then test/, each dir sorted.
+              Roots via Project.find_roots, normalized to paths
+              relative to dir. Then a deterministic lexical walk
+              of all .borg (excl. .borg.meta), .mli, .ml files.
+              Dedup roots from the walk. Sort by tier_of then
+              dir_group then lexical:
+                tier 0 = root .borg, tier 1 = other top-level .borg,
+                tier 2 = .mli, tier 3 = .ml (and sub-dir .borg).
+              Within a tier: lib/ then bin/ then test/ then other.
+              Skip _build/, .git/, and .gitignore build artifacts.
          2. file_to_latex : path -> lines -> string
               Emit \section{path} + \begin{lstlisting} block:
               numbers=left, frame=single, basicstyle mono, break
               lines, wide right margin for marginnote annotations.
          3. render : dir -> stem -> unit
               Assemble preamble + body + \end{document}, shell out
-              to pdflatex (two passes for TOC/page refs), write the
-              manifest sidecar via book-manifest-impl.
+              to pdflatex (loop passes until .aux/.toc stabilize),
+              write the manifest sidecar via book-manifest-impl.
 
          Backend selection at runtime: pdflatex on PATH -> LaTeX;
          else groff on PATH -> groff/ms; else error. Not config.

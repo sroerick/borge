@@ -15,15 +15,66 @@ let skip_dirs =
    "_build_test"; "node_modules"; "_opam"; ".opamswitch"]
 
 let is_source name =
-  Filename.check_suffix name ".ml" || Filename.check_suffix name ".mli"
+  (* .borg yes; .borg.meta no — that's machine-generated, not the spec *)
+  (Filename.check_suffix name ".borg"
+   && not (Filename.check_suffix name ".borg.meta"))
+  || Filename.check_suffix name ".ml"
+  || Filename.check_suffix name ".mli"
 
-(* lib/ first, then bin/, then test/, then everything else. *)
-let dir_priority p =
+(* Ordering tiers (lower sorts first):
+     0 = root .borg file (the architecture / introduction)
+     1 = other top-level .borg files (direct sub-specs, design docs)
+     2 = .mli files (module signatures — interface layer)
+     3 = .ml files (implementations)
+   Within a tier, sort by directory group (lib/, bin/, test/) then lexical. *)
+let is_top_level_borg p =
+  not (String.contains p '/') && Filename.check_suffix p ".borg"
+
+let dir_group p =
   let len = String.length p in
   if len >= 4 && String.sub p 0 4 = "lib/" then 0
   else if len >= 4 && String.sub p 0 4 = "bin/" then 1
   else if len >= 5 && String.sub p 0 5 = "test/" then 2
   else 3
+
+let file_kind p =
+  if Filename.check_suffix p ".mli" then `Mli
+  else if Filename.check_suffix p ".ml" then `Ml
+  else `Borg
+
+let tier_of ?(roots=[]) p =
+  if List.mem p roots then 0
+  else if is_top_level_borg p then 1
+  else match file_kind p with
+    | `Borg -> 3   (* sub-directory .borg falls in with code *)
+    | `Mli -> 2
+    | `Ml -> 3
+
+let compare_paths ~roots a b =
+  let ta = tier_of ~roots a and tb = tier_of ~roots b in
+  if ta <> tb then compare ta tb
+  else begin
+    let ga = dir_group a and gb = dir_group b in
+    if ga <> gb then compare ga gb else compare a b
+  end
+
+(* Root .borg files (the spec — the primary artifact) relative to dir.
+   These become the introduction / front matter, ahead of the code. *)
+let collect_borg_roots ~dir =
+  let roots = Project.find_roots dir in
+  List.filter_map (fun p ->
+    (* find_roots returns paths like "dir/borge.borg" or "borge.borg";
+       normalize to a path relative to dir, matching collect's output. *)
+    let d = Filename.concat dir "" in
+    let dlen = String.length d in
+    let rel =
+      if String.length p >= dlen && String.sub p 0 dlen = d
+      then String.sub p dlen (String.length p - dlen)
+      else if p = Filename.concat dir p then p
+      else p
+    in
+    if is_top_level_borg rel then Some rel else None
+  ) roots
 
 let rec collect ~root ~rel acc =
   let dir = if rel = "" then root else Filename.concat root rel in
@@ -43,11 +94,17 @@ let rec collect ~root ~rel acc =
   ) acc (List.sort compare entries)
 
 let collect_files dir =
-  let files = collect ~root:dir ~rel:"" [] in
-  List.sort (fun a b ->
-    let pa = dir_priority a and pb = dir_priority b in
-    if pa <> pb then compare pa pb else compare a b
-  ) files
+  let roots = collect_borg_roots ~dir in
+  let code = collect ~root:dir ~rel:"" [] in
+  (* Roots are also picked up by the tree walk (is_source includes .borg);
+     dedup so the root .borg doesn't appear twice. The tier_of / compare_paths
+     functions then sort the whole list: root(s) first, other top-level .borg,
+     then .mli, then .ml. *)
+  let roots = List.sort_uniq compare roots in
+  let is_root p = List.mem p roots in
+  let code = List.filter (fun p -> not (is_root p)) code in
+  let files = roots @ code in
+  List.sort (compare_paths ~roots) files
 
 (* Escape LaTeX special chars for use in \section{}, \markboth{}, headers.
    Paths contain _, ., /, alphanumerics — only _ needs escaping,
