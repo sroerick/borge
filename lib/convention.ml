@@ -119,3 +119,68 @@ let resolve dir =
   match roots with
   | [] -> Ocaml_dune
   | root :: _ -> resolve_from_file root
+
+(* agent note (|
+ *   WHAT: Convert a section name to expected module name.
+ *   For ocaml-dune: converts hyphenated sections to snake_case,
+ *   then capitalizes to match OCaml module naming conventions.
+ *   Example: "ui-dream" → "Ui_dream".
+ *
+ *   WHY: The drift detector needs to know which module a section
+ *   corresponds to. This is the convention-derived default mapping.
+ *   Explicit (implements ...) declarations override this.
+ * |) *)
+let section_to_module_name = function
+  | Ocaml_dune ->
+      fun name ->
+        let normalized = String.map (fun c ->
+          if c = '-' then '_' else c
+        ) name in
+        String.capitalize_ascii normalized
+  | Go_standard ->
+      (* Go uses directories as package names; module name is just
+         the normalized section name. *)
+      fun name -> name
+
+(* agent note (|
+ *   WHAT: Suggest source file paths for a section based on convention.
+ *   Returns relative paths (e.g. ["lib/ui/ui_dream.ml"]).
+ *   The caller resolves these against the project root.
+ *
+ *   WHY: This is the convention's default mapping. Agents may
+ *   override with explicit (implements ...) declarations in .borg.
+ *   For ocaml-dune, we look at dune module lists to find which
+ *   library/directory contains the normalized module name.
+ * |) *)
+let suggest_module_files _t ~section_name ~dune_modules =
+  (* dune_modules is a list of (library_name, module_name, file_path) triples
+     produced by drift.ml from dune file parsing. *)
+  let normalized = String.map (fun c ->
+    if c = '-' then '_' else c
+  ) section_name in
+  let lookup = String.capitalize_ascii normalized in
+  List.filter_map (fun (_lib, mod_name, path) ->
+    if mod_name = lookup then Some path else None
+  ) dune_modules
+
+(* agent note (|
+ *   WHAT: Normalize a section name for convention comparison.
+ *   Always returns lowercase with hyphens replaced by underscores.
+ *   Used by drift detection when matching spec sections to code.
+ * |) *)
+let normalize_section_name name =
+  String.map (fun c -> if c = '-' then '_' else Char.lowercase_ascii c) name
+
+(* agent note (|
+ *   WHAT: Return valid verify methods for a convention.
+ *   Verify methods define how a section's correctness is confirmed.
+ *   ocaml-dune supports: build, test, smoke, visual, flow.
+ *   go-standard supports: build, test, bench.
+ *
+ *   WHY: Lint uses this to validate (verify ...) stanzas in .borg files.
+ *   Unknown methods are flagged as lint errors. Methods are
+ *   convention-defined, not hardcoded into borge core.
+ * |) *)
+let verify_methods = function
+  | Ocaml_dune -> ["build"; "test"; "smoke"; "visual"; "flow"]
+  | Go_standard -> ["build"; "test"; "bench"]

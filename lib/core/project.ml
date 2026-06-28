@@ -104,6 +104,7 @@ let tree_status_counts node =
   walk node;
   let all_files = Hashtbl.fold (fun path _ acc -> path :: acc) visited [] in
   let impl = ref 0 in
+  let veri = ref 0 in
   let prog = ref 0 in
   let plan = ref 0 in
   List.iter (fun path ->
@@ -112,11 +113,12 @@ let tree_status_counts node =
       let file = Borge_lang.Parse.parse_file input in
       let counts = Spec.status_counts file in
       impl := !impl + (match List.assoc_opt Spec.Implemented counts with Some v -> v | None -> 0);
+      veri := !veri + (match List.assoc_opt Spec.Verified counts with Some v -> v | None -> 0);
       prog := !prog + (match List.assoc_opt Spec.In_progress counts with Some v -> v | None -> 0);
       plan := !plan + (match List.assoc_opt Spec.Planned counts with Some v -> v | None -> 0);
     with _ -> ()
   ) all_files;
-  (!impl, !prog, !plan)
+  (!impl, !veri, !prog, !plan)
 
 (** Format the tree as indented text *)
 let rec format_tree ?(indent=0) node =

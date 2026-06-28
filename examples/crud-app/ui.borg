@@ -1,4 +1,7 @@
-(ui task-tracker
+(project crud-app-ui
+ (doc "Example UI spec for a task tracker")
+ (no-inline)
+ (ui task-tracker
   (theme
     (palette bg "#f8f9fa")
     (palette bg-surface "#ffffff")
@@ -114,4 +117,4 @@
   (routes
     (route "/" projects)
     (route "/tasks" tasks)
-    (route "/tasks/:id" task-detail)))
+    (route "/tasks/:id" task-detail))))

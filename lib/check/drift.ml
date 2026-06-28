@@ -1,5 +1,18 @@
 open Borge_lang
 
+(** Extract position info from a sexp node *)
+let pos_of_sexp = function
+  | Ast.Atom (p, _) -> p
+  | Ast.String (p, _) -> p
+  | Ast.List (p, _) -> p
+
+(** Check if string contains a substring *)
+let contains_sub s substr =
+  try
+    let _ = Str.search_forward (Str.regexp_string substr) s 0 in
+    true
+  with Not_found -> false
+
 (** {1 Types} *)
 
 type spec_drift = {
@@ -90,7 +103,7 @@ let find_implemented_features file =
         let status = find_status rest_children in
         let doc = find_doc rest_children in
         (match name, status with
-         | Some n, Some Spec.Implemented ->
+         | Some n, Some (Spec.Implemented | Spec.Verified) ->
              results := (n, doc) :: !results
          | _ -> ());
         List.iter walk_sexp rest_children
@@ -106,9 +119,141 @@ let find_implemented_features file =
   List.rev !results
 
 (* agent note (|
+ *   WHAT: Check if the raw text of a section (from its first line
+ *   to the closing of its list form) contains an agent note mentioning
+ *   verification or "verified".
+ *
+ *   WHY: Implemented sections with (verify ...) stanzas should have
+ *   agent notes claiming verification was run. This is a coarse
+ *   text check — it scans for "agent note" and "verified|verif|verify"
+ *   in the same block without full AST traversal.
+ * |) *)
+let section_has_verified_note section_text =
+  let text = String.lowercase_ascii section_text in
+  let has_agent = contains_sub text "agent note" || contains_sub text "agent response" in
+  let has_verify = contains_sub text "verified" || contains_sub text "verif" in
+  has_agent && has_verify
+
+(** Get raw text for each section from file content.
+    Returns (name, start_line, end_line) triples.*)
+let extract_section_ranges (file : Ast.file) : (string * int * int) list =
+  let rec walk_sexp start_line acc = function
+    | Ast.List (_, Ast.Atom (_, kind) :: Ast.Atom (_, name) :: rest)
+      when kind = "subsection" || kind = "section" || kind = "subsubsection" ->
+        let end_line = List.fold_left (fun max_line sexp ->
+          max max_line (walk_end sexp)
+        ) start_line rest in
+        (name, start_line, end_line) :: List.fold_left (walk_child start_line) acc rest
+    | Ast.List (_, children) ->
+        List.fold_left (walk_child start_line) acc children
+    | _ -> acc
+  and walk_child _ acc node =
+    match node with
+    | Ast.List (_, Ast.Atom (_, kind) :: Ast.Atom (_, name) :: rest)
+      when kind = "subsection" || kind = "section" || kind = "subsubsection" ->
+        let start_line = (pos_of_sexp node).Ast.line in
+        let end_line = List.fold_left (fun max_line sexp ->
+          max max_line (walk_end sexp)
+        ) start_line rest in
+        (name, start_line, end_line) :: List.fold_left (walk_child start_line) acc rest
+    | Ast.List (_, children) ->
+        List.fold_left (walk_child 0) acc children
+    | _ -> acc
+  and walk_end = function
+    | Ast.Atom (p, _) | Ast.String (p, _) -> p.Ast.line
+    | Ast.List (p, []) -> p.Ast.line
+    | Ast.List (_, children) ->
+        List.fold_left (fun acc child -> max acc (walk_end child)) 0 children
+  in
+  let rec walk_top = function
+    | [] -> []
+    | { Ast.node; _ } :: rest ->
+        let line = (pos_of_sexp node).Ast.line in
+        walk_sexp line [] node @ walk_top rest
+  in
+  walk_top file.top_level
+
+(** Extract raw text between start_line and end_line from file content. *)
+let text_between_lines content start_line end_line =
+  let lines = String.split_on_char '\n' content in
+  let rec take acc curr = function
+    | [] -> List.rev acc
+    | line :: rest ->
+        if curr >= start_line && curr <= end_line then
+          take (line :: acc) (curr + 1) rest
+        else if curr > end_line then
+          List.rev acc
+        else
+          take acc (curr + 1) rest
+  in
+  String.concat "\n" (take [] 1 lines)
+
+(** Find implemented sections with verify but no verified agent note. *)
+let check_missing_verify_notes path file_content file =
+  let mappings = Spec.extract_section_mappings file in
+  let impl_with_verify = List.filter (fun (m : Spec.section_mapping) ->
+    match m.status with
+    | Some (Spec.Implemented | Spec.Verified) -> m.verify <> []
+    | _ -> false
+  ) mappings in
+  if impl_with_verify = [] then []
+  else begin
+    let ranges = extract_section_ranges file in
+    List.filter_map (fun (m : Spec.section_mapping) ->
+      match List.find_opt (fun (name, _, _) -> name = m.name) ranges with
+      | Some (_, start_line, end_line) ->
+          let section_text = text_between_lines file_content start_line end_line in
+          if section_has_verified_note section_text then None
+          else Some { path; section_name = m.name;
+            description = "Implemented section with verify stanza has no agent verification note" }
+      | None -> None
+    ) impl_with_verify
+  end
+
+(** Read file content from git HEAD *)
+let read_git_head path =
+  let cmd = Printf.sprintf "git show HEAD:%s 2>/dev/null" (Filename.quote path) in
+  let ic = Unix.open_process_in cmd in
+  let buf = Buffer.create 1024 in
+  (try while true do Buffer.add_string buf (input_line ic ^ "\n") done with End_of_file -> ());
+  match Unix.close_process_in ic with
+  | Unix.WEXITED 0 -> Some (Buffer.contents buf)
+  | _ -> None
+
+(** Compare verify stanzas between current and HEAD.
+    Returns spec_drift items for any existing section whose verify changed. *)
+let check_verify_drift path file =
+  let current =
+    try Spec.extract_section_mappings file
+    with _ -> []
+  in
+  let head = match read_git_head path with
+    | Some content ->
+        (try
+          let head_file = Parse.parse_file content in
+          Spec.extract_section_mappings head_file
+        with _ -> [])
+    | None -> []
+  in
+  let head_map = Hashtbl.create 16 in
+  List.iter (fun (m : Spec.section_mapping) ->
+    Hashtbl.replace head_map m.name m.verify
+  ) head;
+  List.filter_map (fun (m : Spec.section_mapping) ->
+    let head_verify = try Hashtbl.find head_map m.name with Not_found -> [] in
+    if head_verify = [] then None  (* section didn't exist at HEAD *)
+    else if head_verify <> m.verify then
+      Some { path; section_name = m.name;
+        description = "Verify stanza was modified since HEAD" }
+    else None
+  ) current
+
+(* agent note (|
  *   WHAT: Check for spec drift in a directory.
  *   Finds all .borg files, extracts implemented features,
  *   and reports any that don't correspond to real commands.
+ *   Also checks: verify stanzas modified since HEAD, and
+ *   implemented sections with verify missing agent notes.
  *   WHY: One of the three drift detection modes in borge.
  * |) *)
 let check_spec_drift dir =
@@ -121,44 +266,55 @@ let check_spec_drift dir =
          | Ok tree -> Project.tree_paths tree
          | Error _ -> File_utils.find_borg_files dir)
   in
-  List.concat_map (fun path ->
+  let basic_drift = List.concat_map (fun path ->
     try
       let input = File_utils.read_file path in
       let file = Parse.parse_file input in
       let sections = find_implemented_features file in
-      List.filter_map (fun (name, desc) ->
+      let missing_notes = check_missing_verify_notes path input file in
+      let verify_changed = check_verify_drift path file in
+      let feature_check = List.filter_map (fun (name, desc) ->
         match feature_exists name with
         | Some false ->
             Some { path; section_name = name; description = desc }
-        | Some true -> None
-        | None -> None
-      ) sections
+        | Some true | None -> None
+      ) sections in
+      feature_check @ missing_notes @ verify_changed
     with _ -> []
-  ) tree_result
+  ) tree_result in
+  basic_drift
 
 (** {1 Dune-aware code drift} *)
 
-(** Build a set of module names covered by .borg sections *)
+(** Build a set of module names covered by .borg sections.
+    Uses explicit (implements ...) declarations when present,
+    falls back to convention-derived name normalization. *)
 let build_covered_modules borg_files =
   let names = Hashtbl.create 16 in
   List.iter (fun path ->
     try
       let input = File_utils.read_file path in
       let file = Parse.parse_file input in
-      let rec walk_sexp = function
-        | Ast.List (_, Ast.Atom (_, kind) :: Ast.Atom (_, name) :: rest)
-          when kind = "subsection" || kind = "section" || kind = "subsubsection" ->
-            let normalized = String.map (fun c ->
-              if c = '-' then '_' else Char.lowercase_ascii c
-            ) name in
-            let mod_name = String.capitalize_ascii normalized in
-            Hashtbl.replace names mod_name true;
-            List.iter walk_sexp rest
-        | Ast.List (_, children) ->
-            List.iter walk_sexp children
-        | _ -> ()
-      in
-      List.iter (fun { Ast.node; _ } -> walk_sexp node) file.Ast.top_level
+      (* Use the new extract_section_mappings which handles both
+         explicit (implements ...) and implicit section names *)
+      let mappings = Spec.extract_section_mappings file in
+      List.iter (fun (m : Spec.section_mapping) ->
+        if m.implements <> [] then
+          (* Explicit mapping: (implements lib/ui/ui_dream.ml) → derive module name from filename *)
+          List.iter (fun impl_path ->
+            try
+              let base = Filename.basename impl_path in
+              let mod_name = String.capitalize_ascii
+                (Filename.remove_extension base) in
+              Hashtbl.replace names mod_name true
+            with _ -> ()
+          ) m.implements
+        else
+          (* Convention-derived: section "ui-dream" → "Ui_dream" *)
+          let normalized = Convention.normalize_section_name m.name in
+          let mod_name = String.capitalize_ascii normalized in
+          Hashtbl.replace names mod_name true
+      ) mappings
     with _ -> ()
   ) borg_files;
   names

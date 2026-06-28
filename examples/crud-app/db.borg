@@ -1,4 +1,7 @@
-(db task-tracker
+(project crud-app-db
+ (doc "Example DB spec for a task tracker")
+ (no-inline)
+ (db task-tracker
   (table users
     (column id (type uuid) (primary-key) (default gen_random_uuid))
     (column email (type text) (unique) (not-null))
@@ -57,4 +60,4 @@
     (group viewer
       (can tasks (read))
       (can projects (read))
-      (can comments (read)))))
+      (can comments (read))))))

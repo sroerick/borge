@@ -14,6 +14,8 @@ let run dir json quiet code_doc mechanical literacy =
         Printf.printf "  ✗ duplicate project name '%s' in: %s\n" name (String.concat ", " paths)
     | Lint.Orphaned_file { path } ->
         Printf.printf "  ✗ %s: orphaned .borg file\n" path
+    | Lint.Invalid_verify_method { path; method_; line } ->
+        Printf.printf "  ✗ %s:%d: invalid verify method '%s'\n" path line method_
     | Lint.Unknown_comment_type { path; type_name; line } ->
         Printf.printf "  ⚠ %s:%d: unknown comment type '%s'\n" path line type_name
     | Lint.Missing_comment_value { path; author; type_name; line } ->
@@ -50,7 +52,7 @@ let run dir json quiet code_doc mechanical literacy =
     (* In quiet mode, only print errors to stderr, suppress warnings *)
     List.iter (fun issue ->
       match issue with
-      | Lint.Invalid_status _ | Lint.Duplicate_project_name _ | Lint.Orphaned_file _
+      | Lint.Invalid_status _ | Lint.Duplicate_project_name _ | Lint.Orphaned_file _ | Lint.Invalid_verify_method _
       | Lint.Unsafe_call { severity = `Error; _ } ->
           print_issue issue
       | _ -> ()

@@ -21,26 +21,26 @@ let run dir json quiet =
     in
     max acc (String.length display)
   ) 10 result.files in
-  Printf.printf "%s  implemented  in-progress  planned\n" (pad_right max_name "file");
-  Printf.printf "%s\n" (String.make (max_name + 30) '-');
+  Printf.printf "%s  implemented  verified  in-progress  planned\n" (pad_right max_name "file");
+  Printf.printf "%s\n" (String.make (max_name + 38) '-');
   List.iter (fun (r : Report.file_stats) ->
     let display = match r.project_name with
       | Some n -> Printf.sprintf "%s (%s)" (Filename.basename r.path) n
       | None -> Filename.basename r.path
     in
-    Printf.printf "%s      %3d          %3d       %3d\n"
-      (pad_right max_name display) r.implemented r.in_progress r.planned
+    Printf.printf "%s      %3d        %3d        %3d       %3d\n"
+      (pad_right max_name display) r.implemented r.verified r.in_progress r.planned
   ) result.files;
   if result.files <> [] then (
-    Printf.printf "%s\n" (String.make (max_name + 30) '-');
-    Printf.printf "%s      %3d          %3d       %3d\n"
-      (pad_right max_name "total") result.totals.implemented result.totals.in_progress result.totals.planned
+    Printf.printf "%s\n" (String.make (max_name + 38) '-');
+    Printf.printf "%s      %3d        %3d        %3d       %3d\n"
+      (pad_right max_name "total") result.totals.implemented result.totals.verified result.totals.in_progress result.totals.planned
   );
-  let total = result.totals.implemented + result.totals.in_progress + result.totals.planned in
-  Printf.printf "\n%d implemented | %d in-progress | %d planned | %d total tracked\n"
-    result.totals.implemented result.totals.in_progress result.totals.planned total;
+  let total = result.totals.implemented + result.totals.verified + result.totals.in_progress + result.totals.planned in
+  Printf.printf "\n%d implemented | %d verified | %d in-progress | %d planned | %d total tracked\n"
+    result.totals.implemented result.totals.verified result.totals.in_progress result.totals.planned total;
   if result.totals.planned > 0 then (
-    let pct = float_of_int result.totals.implemented *. 100.0 /. float_of_int total in
+    let pct = float_of_int (result.totals.implemented + result.totals.verified) *. 100.0 /. float_of_int total in
     Printf.printf "Completion: %.1f%%\n" pct
   );
   if result.orphans <> [] then begin

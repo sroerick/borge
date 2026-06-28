@@ -10,6 +10,7 @@ type lint_issue =
   | Inserted_human_comment of { path : string; author : string; line : int }
   | Pending_response of { path : string; author : string; line : int; question : string }
   | Orphaned_file of { path : string }
+  | Invalid_verify_method of { path : string; method_ : string; line : int }
   | Db_validation of { path : string; severity : [ `Error | `Warning ]; message : string }
   | Ui_validation of { path : string; severity : [ `Error | `Warning ]; message : string }
   | Undocumented_binding of { path : string; name : string; line : int }
@@ -338,6 +339,30 @@ let check_literacy dir =
   List.rev !issues
 
 (* agent note (|
+ *   WHAT: Check for invalid verify methods in (verify ...) stanzas.
+ *   Walks each .borg file, extracts section mappings with verify items,
+ *   and confirms each method is in the convention's allowed list.
+ *   Returns Invalid_verify_method findings with line numbers.
+ *   WHY: Verify stanzas use convention-defined vocabulary. Unknown
+ *   methods indicate typos or wrong convention declarations.
+ * |) *)
+let check_invalid_verify dir path file =
+  let convention = Convention.resolve dir in
+  let valid_methods = Convention.verify_methods convention in
+  let mappings = Spec.extract_section_mappings file in
+  let issues = ref [] in
+  List.iter (fun (m : Spec.section_mapping) ->
+    List.iter (fun (v : Spec.verify_item) ->
+      if not (List.mem v.method_ valid_methods) then begin
+        (* line number: we don't have exact line from verify_item,
+           so we report the section name's approximate position. *)
+        issues := Invalid_verify_method { path; method_ = v.method_; line = 0 } :: !issues
+      end
+    ) m.verify
+  ) mappings;
+  List.rev !issues
+
+(* agent note (|
  *   WHAT: Run lint checks on all .borg files in a directory.
  *   Performs validation: status values, duplicate names, annotated
  *   comments, pending responses, orphans, and optional code-doc checks.
@@ -373,6 +398,9 @@ let run ~code_doc ~mechanical ~literacy dir =
   let ui_issues = List.concat_map (fun (path, _, file) ->
     check_ui_specs path file
   ) file_stats in
+  let verify_issues = List.concat_map (fun (path, _, file) ->
+    check_invalid_verify dir path file
+  ) file_stats in
   let (db_issues, ui_issues) = (db_issues, ui_issues) in
   let code_doc_issues = if code_doc then check_code_doc dir else [] in
   let mechanical_issues = if mechanical then
@@ -387,9 +415,9 @@ let run ~code_doc ~mechanical ~literacy dir =
     ) (Code_quality.run dir)
   else [] in
   let literacy_issues = if literacy then check_literacy dir else [] in
-  let all_issues = status_issues @ name_issues @ comment_issues @ pending_issues @ orphan_issues @ db_issues @ ui_issues @ code_doc_issues @ mechanical_issues @ literacy_issues in
+  let all_issues = status_issues @ name_issues @ comment_issues @ pending_issues @ orphan_issues @ verify_issues @ db_issues @ ui_issues @ code_doc_issues @ mechanical_issues @ literacy_issues in
   let errors = List.filter (function
-    | Invalid_status _ | Duplicate_project_name _ | Orphaned_file _
+    | Invalid_status _ | Duplicate_project_name _ | Orphaned_file _ | Invalid_verify_method _
     | Db_validation { severity = `Error; _ }
     | Ui_validation { severity = `Error; _ }
     | Unsafe_call { severity = `Error; _ } -> true

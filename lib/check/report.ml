@@ -4,12 +4,14 @@ type file_stats = {
   path : string;
   project_name : string option;
   implemented : int;
+  verified : int;
   in_progress : int;
   planned : int;
 }
 
 type totals = {
   implemented : int;
+  verified : int;
   in_progress : int;
   planned : int;
 }
@@ -34,9 +36,10 @@ let stats_of_file path =
     let name = Spec.project_name file in
     let counts = Spec.status_counts file in
     let impl = match List.assoc_opt Spec.Implemented counts with Some v -> v | None -> 0 in
+    let veri = match List.assoc_opt Spec.Verified counts with Some v -> v | None -> 0 in
     let plan = match List.assoc_opt Spec.Planned counts with Some v -> v | None -> 0 in
     let prog = match List.assoc_opt Spec.In_progress counts with Some v -> v | None -> 0 in
-    Some { path; project_name = name; implemented = impl; in_progress = prog; planned = plan }
+    Some { path; project_name = name; implemented = impl; verified = veri; in_progress = prog; planned = plan }
   with _ -> None
 
 (** Run report with inline-tree awareness.
@@ -59,6 +62,7 @@ let run dir =
   (* Build per-file stats only for tree paths *)
   let rows = List.filter_map stats_of_file tree_paths in
   let tot_impl : int = List.fold_left (fun acc (r : file_stats) -> acc + r.implemented) 0 rows in
+  let tot_veri : int = List.fold_left (fun acc (r : file_stats) -> acc + r.verified) 0 rows in
   let tot_plan : int = List.fold_left (fun acc (r : file_stats) -> acc + r.planned) 0 rows in
   let tot_prog : int = List.fold_left (fun acc (r : file_stats) -> acc + r.in_progress) 0 rows in
-  { files = rows; totals = { implemented = tot_impl; in_progress = tot_prog; planned = tot_plan }; orphans }
+  { files = rows; totals = { implemented = tot_impl; verified = tot_veri; in_progress = tot_prog; planned = tot_plan }; orphans }

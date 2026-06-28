@@ -1,5 +1,5 @@
 (project borge
- (doc "A spec-driven code orchestrator")
+ (doc "A spec-first verification toolkit and gated agent loop that keeps spec and code aligned across commits — not an orchestrator")
  (status in-progress)
  (convention ocaml-dune
  )
@@ -31,9 +31,16 @@
         no-inline itself. A .borg file with no parent and no no-inline
         declaration is orphaned — this is structural drift.
 
-        The inline directive is by filename: (inline cli.borg) means
-        the file cli.borg is a sub-spec of this project. The parent owns
-        the architectural relationship. The child owns the detail.
+        The inline directive is by filename and supports two target formats:
+          (inline cli.borg)  — the target is a .borg file containing the spec
+          (inline login.mli)  — the target is a .mli file; the spec lives in
+                                 a (* borge (subsection ...) *) comment at the
+                                 top of the .mli. The .mli's type declarations
+                                 serve as the specification's structural
+                                 contract; the borge comment adds status,
+                                 verification criteria, and section nesting.
+        The parent owns the architectural relationship. The child owns
+        the detail.
 
         Drift detection covers three layers:
           1. Spec drift: .borg file describes something not in the code
@@ -41,6 +48,41 @@
           3. Structural drift: code organization violates the convention
              (e.g. domain logic in bin/ when ocaml-dune says lib/ owns it)
       |))
+  )
+  (subsection spec-interface-implementation-layers
+   (doc "The .borg → .mli → .ml layering borge is aware of")
+   (status planned)
+   (details
+    (doc (|
+         Borge's project hierarchy has three layers, and borge is
+         aware of each at the level appropriate to it:
+
+           .borg   — intent. Borge OWNS this layer: reads, writes,
+                     validates, formats it. The spec is primary.
+           .mli    — interface contract. Borge is AWARE of this layer:
+                     reads it for drift checks, never restates it in
+                     the spec. The .mli is the integration contract
+                     between subtrees — what one module owes another.
+           .ml     — implementation. Borge CHECKS this layer against
+                     both .borg (does it match the intent?) and .mli
+                     (does it match the interface?). The .ml is the
+                     disposable, regenerable artifact.
+
+         The inline tree (root .borg inlines child .borg files) is the
+         top of this hierarchy. Below it, each library's .borg is aware
+         of the .mli files in its scope and reads them as drift inputs.
+         Borge does not duplicate .mli content into .borg — the .mli
+         is the authoritative interface; the .borg is the authoritative
+         intent; restating either in the other creates drift by design.
+
+         Formal requirement (planned): every dune library has a .borg
+         file that is inlined by the root, and each such .borg is
+         aware of the .mli files in its scope. A library with no .borg,
+         or a .borg that ignores its .mli files, is structural drift.
+         This keeps the loose tree loose (per-library .borg, writable
+         by humans) while making the coverage complete.
+       |))
+   )
   )
  )
  (section modules
@@ -99,6 +141,51 @@
         this project has no sub-specs. This is the legitimate standalone
         case. Every .borg file must either be inlined by a parent or
         declare no-inline. Any other .borg file is orphaned.
+      |))
+  )
+ )
+ (section verification
+  (doc "Per-section acceptance criteria: how to know a feature works")
+  (status implemented)
+  (details
+   (doc (|
+        The (verify ...) stanza defines acceptance criteria for a section.
+        It lives inside any (section ...) or (subsection ...) form.
+
+        Syntax:
+          (subsection login-page
+            (status implemented)
+            (verify
+              (test "test/auth.ml")
+              (build)
+              (smoke "POST /api/login")
+              (visual "/login")))
+
+        Vocabulary is convention-defined:
+          - ocaml-dune: build, test, smoke, visual, flow
+          - go-standard: build, test, bench
+
+        Immutability:
+          Verify stanzas are part of the spec. Agents MAY NOT add,
+          modify, or remove verify items. Only humans edit verify.
+          borge lint --verify checks for invalid methods.
+          borge drift detects verify stanza modifications.
+
+        Execution model:
+          borge does NOT run verification. It validates that:
+          1. Methods are valid for the convention (lint)
+          2. Verify stanzas are not modified by agents (drift)
+          3. Implemented sections with verify have agent notes (drift)
+
+        Agent workflow:
+          When marking a section (status implemented), the agent reads
+          the verify stanza, runs each check, and writes:
+            (* agent note (|
+              verified at commit abc123: build-pass, test-pass (22/22),
+              smoke-pass (200 OK), visual-pass (login form visible)
+            |) *)
+          Verification claims are git-bound; freshness is computed
+          from file hashes, not stored in .borg.
       |))
   )
  )
@@ -221,7 +308,7 @@
    (details
     (doc (|
           borge lint checks for:
-          - Invalid status values (not planned/in-progress/implemented/etc)
+          - Invalid status values (not planned/in-progress/implemented/verified/etc)
           - Duplicate project names across .borg files
           - Orphaned .borg files (no inline parent, no no-inline)
           - Unknown comment types in annotated comments
@@ -324,6 +411,44 @@
             --mechanical with AST walker. Exception: state-
             machine patterns (e.g., balance checker).
         |))
+   )
+  )
+  (subsection dead-code-integration
+   (doc "Enrich drift findings with dead_code_analyzer liveness data")
+   (status planned)
+   (details
+    (doc (|
+         The dead_code_analyzer identifies OCaml functions that are
+         never transitively called. Integrating its output into borge
+         drift adds a liveness dimension to the existing spec-coverage
+         analysis, producing four categories instead of two:
+
+           Spec'd + Alive    -> healthy
+           Spec'd + Dead     -> spec rot: planned code that nobody uses
+           Unspec'd + Alive  -> doc gap (already flagged by drift)
+           Unspec'd + Dead   -> strong removal candidate
+
+         Integration approach (low effort):
+         1. borge drift shells out to dead_code_analyzer on the project
+         2. Parses its output to build a map of function_name -> dead|alive
+         3. Cross-references against the module surface already extracted
+            by drift (lib/check/surface.ml)
+         4. Tags each function in .borg.meta with (dead true) or (dead false)
+         5. Upgrades drift findings: spec'd-but-dead functions become a
+            new finding type (SpecRot) with higher severity
+
+         No new data model is needed — .borg.meta already carries
+         per-function metadata. The dead_code_analyzer is maintained,
+         works on modern OCaml, and is available via opam.
+
+         Future directions (separate subsections):
+         - Clone detection (asak/inzad): find duplicated implementations
+           that should share a single spec section
+         - Exception tracking (Salto/reanalyze): verify that spec claims
+           about error handling match the actual exception surface
+         - AST-level pattern matching (ocamlgrep/osemgrep): upgrade
+           code_quality.ml from regex to Parsetree-level matching
+       |))
    )
   )
  )
@@ -815,7 +940,8 @@
         implementation. It opens a pi session with a prompt built from
         the spec, convention rules, existing code context, and the
         declared role. The agent writes code interactively; borge
-        journals and commits after.
+        commits after (the journal is currently scaffolded — see
+        lock-mechanism).
 
         borge make
           Open pi to implement planned sections. The agent reads the
@@ -827,6 +953,13 @@
           Single-shot spec generation. Not interactive. The agent
           produces a (status planned) section from a description.
           For interactive spec editing, use borge plan instead.
+
+        NOTE on the lockless single-shot path: borge generate code
+        (aliased as borge execute) is a SEPARATE single-shot path
+        that calls pi -p, prints code to stdout, and does NOT create
+        a lock, run integrity checks, or commit. It is distinct from
+        the gated make/plan/drift --agent loop above. Use it for
+        quick one-off generation; use the gated loop for tracked work.
 
         borge drift --agent [--fix]
           Open pi to check alignment between spec and code. Read-only
@@ -851,8 +984,10 @@
     (doc (|
          borge make: open pi with the implementer role. The agent
          reads the entire spec, identifies planned sections that are
-         ready to implement, writes code and tests, adds journal
-         entries. On clean exit: borge validates, commits.
+         ready to implement, writes code and tests. On clean exit:
+         borge validates, commits. (The journal is scaffolded but not
+         yet written — the commit message is a file list, not a
+         journal-derived summary.)
          On error or --no-commit: lock stays, user reviews.
        |))
    )
@@ -965,6 +1100,43 @@
        |))
    )
   )
+  (subsection loops-module
+   (doc "Extract the shared create/launch/teardown loop into a named, navigable module")
+   (status planned)
+   (details
+    (doc (|
+         Today the agent loop is duplicated across bin/cmd/Make.ml,
+         Plan.ml, and Drift.ml (run_agent) — the identical sequence of
+         Lock.create → write prompt → Lock_pi_launch.launch → on exit
+         0 Lock.teardown ~commit:true / Lock.remove, on failure keep
+         lock. The loop exists but is not named; editing it means
+         editing three copies.
+
+         Planned: lift the loop into lib/loop/ as a first-class module.
+         Each command (make, plan, drift --agent, and the proposed
+         regenerate) becomes a thin wrapper that instantiates and runs
+         a named loop. Shared primitives — checkpoint (wait for user
+         confirmation), run_to_completion (bounded loop with a
+         completion criterion), gate_enforce (mode rules), verify
+         (compile/drift/check at boundaries), build_context (per-role
+         minimal context), invoke_agent (pi call now, rein phase
+         later) — become small composable functions the loops compose.
+
+         A concrete loop is a record of params (role, gate mode,
+         completion criterion, verification steps, checkpoint policy,
+         context recipe) plus a body composing the primitives. Editing
+         a loop edits its params; adding a loop instantiates the
+         template.
+
+         This is future work that leans on rein: when borge migrates
+         from pi to rein, these loop primitives map onto rein's effects
+         (call_llm, call_tool, checkpoint, spawn_phase, telemetry,
+         yield_artifact) with minimal rewrite. Building the module now
+         against pi makes that migration a primitive swap, not a
+         restructure. See future-work for the migration note.
+       |))
+   )
+  )
  )
  (section execute
   (doc "Make code match spec — interactive agent mode with role-gated behavior")
@@ -1030,15 +1202,24 @@
   )
  )
  (section inbox
-  (doc "Unified triage queue for scope changes, bugs, TODOs, and escalation reports")
+  (doc "The outlet the gate creates — agent feedback queued for human triage")
   (status planned)
   (details
    (doc (|
-        The inbox absorbs the old issue-tracker section. Everything
-        that needs human attention before it becomes a spec change
-        goes through the inbox — bugs, drift findings, scope
-        concerns, TODOs, external reports. One queue, one format,
-        one lifecycle.
+        The inbox exists because the gate exists. Borge gates spec
+        edits during build turns to stop the failure mode where an
+        agent builds X and then rewrites the spec to match X. But a
+        gated agent still needs a way to signal that the spec is
+        wrong, incomplete, or ambiguous. The inbox is that outlet:
+        it turns a forbidden action (edit the spec mid-turn) into a
+        queued one (file a concern for human review). It is a routing
+        layer, not a preservation layer.
+
+        As a consequence of being the gate's outlet, the inbox also
+        absorbs the old issue-tracker section. Everything that needs
+        human attention before it becomes a spec change goes through
+        the inbox — bugs, drift findings, scope concerns, TODOs,
+        external reports. One queue, one format, one lifecycle.
 
         Why the inbox replaced the old bug tracker:
         The old .borge-bug format and the inbox concept were the
@@ -1479,10 +1660,11 @@
   (details
    (doc (|
         Every agent-driven command (make, plan, drift --agent) creates
-        a .borge.lock/ directory. The lock is a transaction log and
-        metadata store, NOT a workspace. The agent edits .borg files
-        directly in the repo. The lock captures the session for audit,
-        integrity checking, and abort/restore.
+        a .borge.lock/ directory. The lock is a metadata store, NOT a
+        workspace (the journal is scaffolded but not yet written — see
+        known limitations below). The agent edits .borg files directly
+        in the repo. The lock captures the session for audit, integrity
+        checking, and abort/restore.
 
         The agent's workspace IS the repo. The lock provides:
 
@@ -1506,16 +1688,17 @@
            - role: the role declaration for the session
            - state: running | completed | failed
 
-        5. Commit message construction. The journal provides the
-           summary for the auto-generated git commit message. Each
-           entry includes the reason for the change.
+        5. Commit message construction. Currently the commit message
+           is a list of changed files. The journal is scaffolded (the
+           path exists) but not yet written — a future version will
+           derive the commit summary from a real journal.
 
         Lock directory layout:
           .borge.lock/
             original/            # snapshot of all .borg files at lock time
             role                 # role declaration (text + sexp)
             prompt.md            # prompt sent to pi
-            journal              # structured session log
+            journal              # structured session log (scaffolded, not yet written)
             state                # running | completed | failed
 
         Agent editing rules:
@@ -1525,6 +1708,15 @@
         - At commit: diff checks, fmt, balance, git commit.
         - At abort: restore .borg files from original/. Code files stay
           as-is; use git to undo if needed.
+
+        Known limitation — line-equality integrity check:
+        The integrity check compares original/ against the working tree
+        line by line (split on newline, List.mem membership). A
+        reformatted human comment — even a whitespace change — registers
+        as both a deleted and an inserted comment, producing false
+        positives. This is the source of the instability reported in
+        comment preservation. A future fix should normalize whitespace
+        and compare on author + comment body, not exact line text.
       |))
   )
  )
@@ -1591,6 +1783,194 @@
         implemented), every file has a code review, and borge drift
         reports zero items.
       |))
+  )
+ )
+ (section book
+  (doc "Print the codebase as a paginated book, with a round trip back to the spec via the inbox")
+  (status planned)
+  (details
+   (doc (|
+        The literate-programming section says the spec is the
+        primary artifact and code is derived. The book is the
+        physical reading surface for that derived artifact: a
+        paginated, linearly ordered rendering of the codebase that
+        a human can read away from a screen, mark up by hand, and
+        feed back into the spec pipeline.
+
+        The book is NOT a weave. Borge does not tangle code out of
+        prose and does not interleave spec and code the way WEB
+        does. The spec stays in .borg files; the book is a
+        read-only projection of already-written code. What makes
+        it literate is that its order is the spec's order: the
+        table of contents is the section tree, and each chapter is
+        the code a section covers. You read the codebase the way
+        it was specified.
+
+        The round trip:
+
+          code -> book (print) -> paper -> inbox (absorb) -> spec
+
+        Three of these four hops already exist. print produces the
+        paper. absorb reads marked-up scans back and files inbox
+        items; it does NOT edit the spec. The human triages the
+        inbox in Plan mode, the same way every other scope concern
+        becomes a spec change. A noisy OCR read produces a messy
+        inbox item that can be closed, not a corrupted spec.
+
+        Why the book earns its keep even without the round trip:
+        reading code on paper, in a fixed linear order, with no
+        scrollback and no folding, surfaces structure that the
+        editor hides. The absorb side is a bonus, not the
+        justification.
+
+        Two render modes, shipped in order:
+
+        1. code-only (MVP). Each page is source with line numbers
+           and a right-hand notes column. Ship this first.
+
+        2. woven (later). Interleave each section's spec text with
+           the code it covers, chapter by chapter. More work; only
+           worth it once code-only proves the book gets opened.
+
+        Scope: a chapter is the code covered by one .borg section.
+        Whole-codebase printing is print every chapter in spec
+        order, not a separate mode. Design for chapter-scoped
+        printing and let the whole book fall out of it.
+      |))
+  )
+  (subsection book-print
+   (doc "Render code to a paginated, annotated document")
+   (status planned)
+   (details
+    (doc (|
+         borge book print [--section NAME] [--woven] [-o FILE]
+
+         Linearizes code into a paginated document with page
+         numbers, line numbers on every page, and a right-hand
+         margin wide enough to write in.
+
+         Ordering is spec-order by default: walk the .borg section
+         tree as the table of contents, and within each section
+         emit the code files it covers, top to bottom by
+         declaration order. --section NAME prints a single chapter.
+         With no --section, print every chapter in spec order.
+
+         The section tree is the TOC. If two sections cover the
+         same file (a utility used across modules), emit the file
+         under the first section that claims it and cross-reference
+         it from later sections rather than duplicating source.
+
+         Rendering target: groff/ms on OpenBSD — in base, produces
+         real PostScript/PDF, page numbers and margins for free,
+         no Python or LaTeX dependency. Plain text plus form feeds
+         piped to enscript is the zero-dependency fallback. The
+         chosen backend is a build detail, not a spec invariant.
+         The invariant is: paginated, numbered, with a notes
+         column.
+
+         Page furniture, every page:
+         - page number (top or bottom corner)
+         - chapter name (the section title) and section path
+         - line numbers for the source on that page
+         - a right-hand notes column, blank, for hand annotations
+
+         Output is a document file (PDF/PS, or text) plus a
+         manifest sidecar (see book-manifest) on the same stem:
+         foo.book.pdf and foo.book.manifest.
+       |))
+   )
+  )
+  (subsection book-manifest
+   (doc "Sidecar mapping page N to file:lines, with a tree checksum")
+   (status planned)
+   (details
+    (doc (|
+         Every book print emits a manifest alongside the document:
+         <stem>.book.manifest. Default gitignored (it is a build
+         artifact); tracked only if the user wants a durable record.
+
+         The manifest is what makes the absorb round trip possible.
+         Without it, a margin note on page 14 is just a note on
+         page 14. With it, page 14 maps to lib/parser.ml lines
+         120-158 and the note becomes an inbox item scoped to the
+         right file.
+
+         Fields:
+         - stem: the document stem the manifest belongs to
+         - rendered_at: timestamp of the print run
+         - backend: the renderer used (groff-ms, enscript, ...)
+         - tree_checksum: digest of the exact tree printed (ordered
+           file list plus each file's content hash)
+         - pages: array of page entries, each with n (page number),
+           chapter (section title), section (.borg section path),
+           file (source path), and lines [first, last] inclusive
+           of the source lines on that page. Printed line numbers
+           correspond to source file line numbers, not a per-page
+           reset.
+
+         tree_checksum is the stale-book guard. On absorb, if the
+         working copy's checksum no longer matches the manifest,
+         the book is stale relative to the code and the absorb step
+         refuses. This stops a scan of a three-week-old book from
+         filing inbox items against line numbers that have since
+         moved.
+       |))
+   )
+  )
+  (subsection book-absorb
+   (doc "Read marked-up scans and file inbox items — never edit the spec")
+   (status planned)
+   (details
+    (doc (|
+         borge book absorb <scan...> [--stem NAME]
+
+         Takes scanned page images (PNG or PDF) of a previously
+         printed book, extracts the margin annotations, and files
+         one inbox item per annotation. It does NOT edit any .borg
+         file. The round trip ends at the inbox, by design — the
+         same place every other scope concern lands, and the only
+         place a spec change is allowed to start.
+
+         Items conform to the inbox file format (see the inbox
+         section). Pipeline per page:
+
+           1. A vision-capable LLM sees the page and returns the
+              page number from the header, the printed code on the
+              page for grounding, and each margin annotation with
+              the line it sits next to and its text.
+           2. Map page to file:lines via the manifest.
+           3. Resolve the annotation to a .borg section using the
+              manifest's section field.
+           4. Emit an inbox item:
+                source: scope-concern | bug-report | feature-request
+                         (best-effort from the note)
+                affects: section:"<section path from manifest>"
+                filed-by: agent:book-absorb
+                doc: the human's annotation, quoted verbatim, plus
+                     the file:lines it was anchored to
+
+         Fidelity is the real risk and is owned here, not elsewhere.
+         The two hard problems are handwriting legibility and which
+         line a scribble refers to. Mitigations, all on the print
+         side so the absorb side can stay dumb:
+         - structured annotation convention (circle the line, write
+           the change intent in the margin) — documented in print
+           output, not enforced
+         - line numbers on every page (book-print)
+         - generous line spacing and a wide notes column (book-print)
+         - short intents, not essays (documented convention)
+
+         Safety: absorb never writes .borg. A bad OCR read yields a
+         messy inbox item the human can close or edit; it cannot
+         corrupt the spec. A --apply bypass that writes spec diffs
+         directly is explicitly NOT in scope for v1; the inbox gate
+         is the whole point.
+
+         Stale-book guard: if the manifest's tree_checksum does not
+         match the working copy, absorb refuses and prints a message
+         telling the human to reprint and rescan.
+       |))
+   )
   )
  )
  (section agent-discipline
@@ -2084,32 +2464,39 @@
    )
   )
   (subsection victor-integration
-   (doc "IDE visibility into merge pipeline, not control")
+   (doc "IDE surface for the curation loop — Victor runs the loop, borge verifies")
    (status planned)
    (details
     (doc (|
-         Victor's role is OBSERVABILITY, not orchestration.
-         Borge owns the queue; Victor just shows it.
+         Victor's role is RUNNING THE CURATION LOOP, not passive
+         observability. The vision: an agent proposes a hierarchical
+         plan derived from the spec, and the human curates that plan
+         before execution — pruning, reordering, expanding, rejecting
+         branches. As inference cost trends toward zero, the human's
+         leverage moves from prompt engineering to plan editing.
+         Victor is the surface for that editing; borge remains the
+         verification layer (drift/check/review) and the spec remains
+         the source of truth.
 
-         UI ELEMENTS:
-         - Status bar: "🔄 3 pending merges" or "✅ Queue clear"
-         - Heatmap: Files with pending agent changes glow differently
-         - Popup on agent complete: "Submitted to merge queue #123"
-         - Diff preview: Click queue item → see what agent changed
-         - Emergency brake: "PAUSE ALL MERGES" button (sets borge flag)
+         The loop Victor runs:
+         1. Agent proposes a plan/tree derived from the spec
+         2. Human curates the tree in Victor (the editing primitives
+            are still being designed — reroll, expand, reject,
+            annotate are candidates, not settled)
+         3. Curated tree feeds back to the execution loop
+         4. borge verifies each node's output against its spec section
+         5. Human attention is routed to nodes that fail cheap
+            verification (compiler, drift) and need expensive review
 
-         NO APPLY/DISCARD BUTTONS:
-         - Agents don't ask "should I apply?"
-         - They submit to queue, queue processes when ready
-         - Human can still intervene via `borge merge-queue cancel 123`
-         - But default flow is: agent runs → submits → auto-merges
+         Victor does NOT own verification (borge does) and does NOT
+         own execution (the agent loop does, via pi now and rein
+         later). Victor owns the curation surface.
 
-         This separation keeps Victor simple:
-         - Victor = editor + visibility
-         - Borge = merge orchestration  
-         - Pi = isolated agent execution
-
-         Three layers, each with one job, clean interfaces.
+         NOTE: this revises the earlier framing — "Victor is
+         observability, not orchestration, no apply/discard buttons"
+         — which described a passive queue viewer. The curation vision
+         supersedes it: Victor participates in shaping the work before
+         it runs, not just watching it after.
          |))
    )
   )
@@ -2127,6 +2514,36 @@
         - Incremental parsing for editor integration
         - .borg language server protocol
         - Syntax highlighting definitions for common editors
+
+        Turn-level drift checking (future integration):
+        Borge currently checks spec/code alignment at the commit
+        boundary — after the agent session ends, before the git commit.
+        It does NOT check drift across turns within a session.
+        Turn-level gating (rejecting an edit that violates the spec
+        mid-session) is the role of a gate engine, which rein provides
+        and borge does not yet integrate. When borge migrates from pi
+        to rein, the loops-module primitives map onto rein's effects
+        (call_llm, call_tool, checkpoint) and turn-level checking
+        becomes available without restructuring.
+
+        Rejected alternative — multi-agent orchestration:
+        A multi-agent architecture (spawning a hierarchy of agents,
+        each owning a subtree, coordinating via a manager) was
+        considered and declined. Org structures exist primarily to
+        manage human cognitive limits — specialization because one
+        person cannot hold "great DBA" and "great security" in one
+        head. A frontier model does not share that constraint the same
+        way; role prompting ("you are an expert codemonkey") is context
+        priming, not a capability ceiling. Building an architecture
+        whose premise is a hierarchy of differently-specialized agents
+        encodes a limitation the underlying system does not have, and
+        the coordination overhead (merge, conflict, translation
+        losses, a manager agent worse at managing than doing) becomes
+        its own complexity sink. A single linear loop with boundary
+        verification is simpler and more LLM-native. Subagents remain
+        an occasional invocation-level tool (cheap model for a grep),
+        not the execution backbone. Model selection at call time, not
+        a permanent agent hierarchy.
       |))
   )
  )
