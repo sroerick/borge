@@ -1866,19 +1866,30 @@
            tier 2: .mli files (module signatures — the interface
                    layer; empty in this repo until interfaces are added).
            tier 3: .ml files (implementations), plus any
-                   sub-directory .borg files, walked in lexical order
-                   grouped by lib/, bin/, test/.
+                   sub-directory .borg files.
 
          Tier 0 makes the book open with the spec — the primary
          artifact per literate-programming — not an alphabetical
          accident. Tiers 1-2 give the design and interface layer
-         before the implementations. Within a tier, files sort by
-         directory group then lexical. Full spec-order — where the
-         .borg section tree is the table of contents and each chapter
-         is the code a section covers — remains the long-tail feature,
-         along with page-number cross-references for links between
-         sections. --section NAME is a no-op in v1; it lands with
-         spec-order.
+         before the implementations.
+
+         Within tier 3, code files are ordered by a dependency rank,
+         not lexically. The book parses `open X` and `Module.ref`
+         from each .ml file, maps module names to their directory,
+         and computes a longest-path rank per directory (lang has no
+         deps -> rank 0; core depends on lang -> rank 1; check
+         depends on core+lang -> rank 3; bin and test top the stack).
+         Stdlib/external names (Format, String, List, ...) are excluded
+         so a borge module that shadows a stdlib name (e.g. lib/format)
+         doesn't create a false dependency. Files then sort by
+         (rank, directory group lib/bin/test, lexical) — foundations
+         precede dependents, so the book reads like a stack.
+
+         Full spec-order — where the .borg section tree is the table
+         of contents and each chapter is the code a section covers —
+         remains the long-tail feature, along with page-number
+         cross-references for links between sections. --section NAME
+         is a no-op in v1; it lands with spec-order.
 
          Rendering target: LaTeX with the listings package — line
          numbers, framed code blocks, and a right-hand marginnote

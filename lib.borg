@@ -1104,14 +1104,22 @@
          Pipeline:
          1. collect_files : dir -> string list
               Roots via Project.find_roots, normalized to paths
-              relative to dir. Then a deterministic lexical walk
-              of all .borg (excl. .borg.meta), .mli, .ml files.
-              Dedup roots from the walk. Sort by tier_of then
-              dir_group then lexical:
-                tier 0 = root .borg, tier 1 = other top-level .borg,
-                tier 2 = .mli, tier 3 = .ml (and sub-dir .borg).
-              Within a tier: lib/ then bin/ then test/ then other.
-              Skip _build/, .git/, and .gitignore build artifacts.
+              relative to dir. Then a deterministic walk of all
+              .borg (excl. .borg.meta), .mli, .ml files. Dedup
+              roots from the walk. Sort by:
+                (a) tier_of: tier 0 = root .borg, tier 1 = other
+                    top-level .borg, tier 2 = .mli, tier 3 = .ml.
+                (b) within the code tier (2/3): a dependency rank
+                    computed from `open X` and `Module.ref` per
+                    file — module basenames map to directories; a
+                    longest-path rank per dir (lang=0, core=1, ...).
+                    Stdlib/external names are excluded so a project
+                    module that shadows a stdlib name (lib/format)
+                    doesn't create a false dep.
+                (c) then dir_group (lib/ then bin/ then test/).
+                (d) then lexical.
+              Foundations precede dependents. Skip _build/, .git/,
+              and .gitignore build artifacts.
          2. file_to_latex : path -> lines -> string
               Emit \section{path} + \begin{lstlisting} block:
               numbers=left, frame=single, basicstyle mono, break
