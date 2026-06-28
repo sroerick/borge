@@ -1,0 +1,241 @@
+(project borge-docs-merge
+ (section lock-mechanism
+  (doc "Transactional isolation for agent sessions — metadata, not workspace")
+  (status implemented)
+  (details
+   (doc (|
+        Every agent-driven command (make, plan, drift --agent) creates
+        a .borge.lock/ directory. The lock is a metadata store, NOT a
+        workspace (the journal is scaffolded but not yet written — see
+        known limitations below). The agent edits .borg files directly
+        in the repo. The lock captures the session for audit, integrity
+        checking, and abort/restore.
+
+        The agent's workspace IS the repo. The lock provides:
+
+        1. Concurrency prevention. If .borge.lock/ exists, refuse new
+           agent sessions. One agent at a time prevents conflicting
+           edits. The human can `borge abort` to clear a stale lock.
+
+        2. Snapshot for integrity check. On lock creation, all .borg
+           files are copied to .borge.lock/original/. At commit time,
+           borge diffs original/ against the working tree to detect
+           deletions of human-authored comments. If found, commit is
+           blocked unless --force.
+
+        3. Snapshot for abort. If the session goes wrong, `borge abort`
+           copies original/ back to the repo, restoring .borg files.
+           Code file changes are NOT reverted — git handles that.
+
+        4. Audit trail. The lock contains:
+           - prompt.md: the full prompt sent to pi
+           - journal: structured log of proposed changes
+           - role: the role declaration for the session
+           - state: running | completed | failed
+
+        5. Commit message construction. Currently the commit message
+           is a list of changed files. The journal is scaffolded (the
+           path exists) but not yet written — a future version will
+           derive the commit summary from a real journal.
+
+        Lock directory layout:
+          .borge.lock/
+            original/            # snapshot of all .borg files at lock time
+            role                 # role declaration (text + sexp)
+            prompt.md            # prompt sent to pi
+            journal              # structured session log (scaffolded, not yet written)
+            state                # running | completed | failed
+
+        Agent editing rules:
+        - .borg files: edit in place (repo root). The agent uses normal
+          paths like lib.borg, borge.borg, etc.
+        - Code files: edit in place (repo tree). Standard paths.
+        - At commit: diff checks, fmt, balance, git commit.
+        - At abort: restore .borg files from original/. Code files stay
+          as-is; use git to undo if needed.
+
+        Known limitation — line-equality integrity check:
+        The integrity check compares original/ against the working tree
+        line by line (split on newline, List.mem membership). A
+        reformatted human comment — even a whitespace change — registers
+        as both a deleted and an inserted comment, producing false
+        positives. This is the source of the instability reported in
+        comment preservation. A future fix should normalize whitespace
+        and compare on author + comment body, not exact line text.
+      |))
+  )
+ )
+ (section merge-queue
+  (doc "CI/CD pipeline for agentic development — isolated worktrees, batched merges")
+  (status planned)
+  (subsection agent-isolation
+   (doc "Every agent run is isolated in its own worktree and branch")
+   (status planned)
+   (details
+    (doc (|
+         PROBLEM: Agents running concurrently clobber each other's
+         changes, modify files directly in main worktree, create
+         chaos that humans must clean up.
+
+         SOLUTION: Pi harness enforces isolation at the tool level.
+         Every `pi --mode agent` invocation:
+
+         1. Creates unique branch: agent/run-{timestamp}-{uuid}
+         2. Creates worktree: .pi/worktrees/agent-{id}/
+         3. Runs entirely within that worktree
+         4. On completion: submits to borge merge-queue
+         5. On failure: preserves worktree for debugging
+
+         HARNESS RULES (enforced by pi, not optional):
+         - If .pi/concurrent.lock shows target files already locked,
+           queue behind existing agent or refuse to start
+         - If worktree creation fails, agent cannot proceed
+         - If branch already exists, agent cannot proceed
+         - Agent never modifies files outside its worktree
+
+         LOCKFILE FORMAT (.pi/concurrent.lock):
+         {
+           "active_runs": [
+             {"id": "agent-123", "branch": "agent/run-...", 
+              "files": ["lib/parser.ml"], "since": "2026-05-17T..."}
+           ]
+         }
+
+         This prevents conflicts BEFORE they happen, not after.
+         |))
+   )
+   (depends-on
+    "pi harness worktree support"
+   )
+  )
+  (subsection merge-queue
+   (doc "Central queue of pending agent changes, processed atomically")
+   (status planned)
+   (details
+    (doc (|
+         After agent completes in isolated worktree, it submits to
+         the merge queue rather than applying directly:
+
+         borge merge-queue submit \
+           --from-worktree .pi/worktrees/agent-123/ \
+           --summary "Generated parser section" \
+           --confidence 0.92 \
+           --affected-files lib/parser.ml,test/parser.ml
+
+         QUEUE STATE:
+         - PENDING: Submitted, waiting for merge
+         - READY: No conflicts with queued items before it
+         - BLOCKED: Conflicts with earlier queue item
+         - MERGING: Currently being processed
+         - MERGED: Successfully merged to main
+         - REJECTED: Merge failed, worktree preserved
+
+         CONFLICT DETECTION:
+         borge analyzes file overlap between queue items:
+         agent/run-123 touches lib/parser.ml
+         agent/run-124 touches lib/parser.ml  → BLOCKED behind 123
+         agent/run-125 touches lib/lexer.ml   → READY (no overlap)
+
+         Commands:
+         borge merge-queue list        # Show pending items
+         borge merge-queue show 123    # Diff for specific item
+         borge merge --next            # Merge first ready item
+         borge merge --all             # Merge all ready items
+         borge merge --dry-run         # Show what would happen
+
+         AUTO-MERGE AGENT (optional):
+         - Daemon that continuously runs `borge merge --all`
+         - Configurable policies: batch size, delay between merges
+         - Can pause on failure, wait for human review
+         |))
+   )
+   (depends-on
+    "git worktree management"
+    "conflict detection"
+   )
+  )
+  (subsection merge-strategies
+   (doc "How to integrate agent changes into main")
+   (status planned)
+   (details
+    (doc (|
+         MERGE STRATEGIES (configurable per project):
+
+         1. FAST-FORWARD (default for linear history):
+            - If main hasn't moved since agent branched: git merge --ff
+            - Cleanest history, no merge commits
+            - Fails if main has new commits (use rebase instead)
+
+         2. REBASE-THEN-MERGE:
+            - Rebase agent branch onto latest main
+            - Then fast-forward merge
+            - Linear history even when main moves
+            - Risk: conflicts during rebase need agent re-run
+
+         3. MERGE-COMMIT:
+            - Always create merge commit
+            - Preserves agent branch history
+            - Easier to revert entire agent run if needed
+
+         4. SQUASH:
+            - Squash all agent commits to single commit
+            - Clean history, lose agent's internal iterations
+            - Good for: simple changes, auto-accepted runs
+
+         ROLLBACK ON FAILURE:
+         If merge fails or CI rejects:
+         1. Revert merge commit (if created)
+         2. Mark queue item REJECTED
+         3. Preserve worktree for debugging
+         4. Notify agent owner (human or meta-agent)
+         5. Block dependent queue items
+
+         ATOMICITY:
+         Either entire agent run merges or none of it does.
+         No partial merges leaving codebase broken.
+         |))
+   )
+   (depends-on
+    "merge queue"
+    "git strategies"
+   )
+  )
+  (subsection victor-integration
+   (doc "IDE surface for the curation loop — Victor runs the loop, borge verifies")
+   (status planned)
+   (details
+    (doc (|
+         Victor's role is RUNNING THE CURATION LOOP, not passive
+         observability. The vision: an agent proposes a hierarchical
+         plan derived from the spec, and the human curates that plan
+         before execution — pruning, reordering, expanding, rejecting
+         branches. As inference cost trends toward zero, the human's
+         leverage moves from prompt engineering to plan editing.
+         Victor is the surface for that editing; borge remains the
+         verification layer (drift/check/review) and the spec remains
+         the source of truth.
+
+         The loop Victor runs:
+         1. Agent proposes a plan/tree derived from the spec
+         2. Human curates the tree in Victor (the editing primitives
+            are still being designed — reroll, expand, reject,
+            annotate are candidates, not settled)
+         3. Curated tree feeds back to the execution loop
+         4. borge verifies each node's output against its spec section
+         5. Human attention is routed to nodes that fail cheap
+            verification (compiler, drift) and need expensive review
+
+         Victor does NOT own verification (borge does) and does NOT
+         own execution (the agent loop does, via pi now and rein
+         later). Victor owns the curation surface.
+
+         NOTE: this revises the earlier framing — "Victor is
+         observability, not orchestration, no apply/discard buttons"
+         — which described a passive queue viewer. The curation vision
+         supersedes it: Victor participates in shaping the work before
+         it runs, not just watching it after.
+         |))
+   )
+  )
+ )
+)

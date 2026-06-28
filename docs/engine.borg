@@ -1,0 +1,409 @@
+(project borge-docs-engine
+ (section format
+  (doc "The file format")
+  (status implemented)
+  (details
+   (doc (|
+        Verbatim strings use open-pipe to open and pipe-close to close.
+        The parser tracks nesting depth. Content between the opening
+        delimiter and the final closing delimiter that returns depth
+        to 0 is v_content. The closing delimiter is NOT included in
+        v_content - it is a delimiter, not content. Nested delimiters
+        inside the content ARE included verbatim.
+
+        The inline directive: (inline filename.borg) declares that the
+        named file is a sub-spec of this section. The file must exist and
+        be parseable. The parent owns the architectural relationship;
+        the child owns the detail. Inline is by filename, relative to the
+        parent file.
+
+        The no-inline declaration: (no-inline) in a project form means
+        this project has no sub-specs. This is the legitimate standalone
+        case. Every .borg file must either be inlined by a parent or
+        declare no-inline. Any other .borg file is orphaned.
+      |))
+  )
+ )
+ (section verification
+  (doc "Per-section acceptance criteria: how to know a feature works")
+  (status implemented)
+  (details
+   (doc (|
+        The (verify ...) stanza defines acceptance criteria for a section.
+        It lives inside any (section ...) or (subsection ...) form.
+
+        Syntax:
+          (subsection login-page
+            (status implemented)
+            (verify
+              (test "test/auth.ml")
+              (build)
+              (smoke "POST /api/login")
+              (visual "/login")))
+
+        Vocabulary is convention-defined:
+          - ocaml-dune: build, test, smoke, visual, flow
+          - go-standard: build, test, bench
+
+        Immutability:
+          Verify stanzas are part of the spec. Agents MAY NOT add,
+          modify, or remove verify items. Only humans edit verify.
+          borge lint --verify checks for invalid methods.
+          borge drift detects verify stanza modifications.
+
+        Execution model:
+          borge does NOT run verification. It validates that:
+          1. Methods are valid for the convention (lint)
+          2. Verify stanzas are not modified by agents (drift)
+          3. Implemented sections with verify have agent notes (drift)
+
+        Agent workflow:
+          When marking a section (status implemented), the agent reads
+          the verify stanza, runs each check, and writes:
+            (* agent note (|
+              verified at commit abc123: build-pass, test-pass (22/22),
+              smoke-pass (200 OK), visual-pass (login form visible)
+            |) *)
+          Verification claims are git-bound; freshness is computed
+          from file hashes, not stored in .borg.
+      |))
+  )
+ )
+ (section spec-language-design
+  (doc "Design principles for the borge spec language — declaration without evaluation")
+  (status implemented)
+  (details
+   (doc (|
+        The .borg format is a declaration language, not a programming
+        language. A .borg file states what is true and what should be
+        true. The tools verify whether reality matches the statement.
+        The spec language does not evaluate, branch, loop, or mutate.
+        It declares.
+
+        This boundary — declaration without evaluation — is the
+        defining architectural choice. Keeping it firm gives borge
+        its most important properties:
+
+        - Forward compatibility: unknown forms survive parsing
+        - DSL extensibility: UI, DB, inbox coexist without parser changes
+        - Human readability: the format stays small and learnable
+        - Self-description: the grammar lives in borge.borg, not in types
+
+        The risk of over-typing the core is that every new keyword
+        form becomes a compiler change. Borge avoids this. The core
+        Ast.sexp type stays generic. Typed consumption happens in
+        consumer modules (spec.ml, ui_parse.ml, db_parse.ml) that
+        interpret the generic tree.
+
+        Where stronger types genuinely help is at the EXTRACTION
+        boundary — the code that turns raw sexp into typed records.
+        The current pattern is hand-rolled pattern matching repeated
+        in every consumer. This is brittle: no exhaustiveness, silent
+        skips, repeated logic.
+
+        GADTs for extraction combinators (lib/core/extract.ml):
+        A small combinator library with a GADT encoding "this extractor
+        produces type 'a from a sexp". Example:
+
+          val atom : string t
+          val string : string t
+          val keyword : string -> 'a t -> 'a t
+          val ( let* ) : 'a t -> ('a -> 'b t) -> 'b t
+
+        Then status extraction becomes:
+
+          let status_extractor =
+            let* st = keyword "status" atom in
+            match status_of_string st with
+            | Some s -> return s
+            | None -> fail (`Invalid_status st)
+
+        This stays entirely in OCaml's type system. The .borg format
+        does not change. UI and DB DSLs define their own extractors
+        on top of this core, replacing ~200 lines of hand-rolled
+        pattern matching in ui_parse.ml and db_parse.ml with
+        composable, testable declarations.
+
+        Phantom types for the tool pipeline:
+        Borge has a conceptual pipeline: balance -> parse -> lint
+        -> drift -> review. A lightweight phantom type enforces this
+        order:
+
+          type balanced  type parsed  type linted
+          type 'stage file = { ast : Ast.file; stage : 'stage }
+          val balance : string -> balanced file result
+          val parse : balanced file -> parsed file result
+          val lint : parsed file -> linted file result
+
+        Now lint cannot be called on a raw string. This is about
+        the tools, not the spec language. It prevents real bugs
+        with zero runtime cost.
+
+        Richer constraint forms (without evaluation):
+        The spec language can express more expectations without
+        becoming executable. Declared constraints are verified by
+        tools, not evaluated by the language:
+
+          (depends-on STRING)
+            -> resolved by borge future to build roadmaps
+          (requires FORM)
+            -> checked by borge lint
+          (asserts FORM)
+            -> verified by borge drift
+
+        These are declarations of intent. The language does not
+        resolve, check, or verify them. The tools do. This keeps
+        .borg as a vocabulary for expectations while the typechecker
+        of reality remains outside the language.
+
+        Effects are not appropriate for borge:
+        The current architecture is linear: read -> parse -> analyze
+        -> produce findings. Effects shine with suspensible
+        computations, plugin architectures, or complex resource
+        management. Borge has none of these at scale. Effects
+        would introduce non-local control flow into a simple
+        linear pipeline, making it harder to follow.
+
+        The one future place effects might fit is the LLM call
+        layer (generate.ml, review_agent.ml). A perform (LLM_query
+        prompt) effect with a configurable handler could cleanly
+        separate "request evaluation" from "how that request is
+        fulfilled" (real model, cache, timeout, mock). But even
+        there, a functor-based interface is sufficient today.
+
+        Self-describing validation:
+        Since .borg files describe the .borg format in borge.borg
+        itself, the tools could extract a schema from borge.borg
+        and validate arbitrary .borg files against it. The spec
+        describes the spec language. The tools validate conformity.
+        This is the ultimate "types without evaluation": the
+        language has no typechecker, but the tooling uses the
+        self-description as a schema.
+      |))
+  )
+  (subsection extract-combinators
+   (doc "GADT-based extraction library for typed sexp consumers")
+   (status planned)
+   (details
+    (doc (|
+         lib/core/extract.ml: a GADT combinator library that replaces
+         hand-rolled pattern matching in spec.ml, ui_parse.ml, and
+         db_parse.ml.
+
+         Types:
+         - 'a t : an extractor that produces 'a from a sexp
+
+         Primitives:
+         - atom : string t
+         - string : string t
+         - int : int t
+         - keyword : string -> 'a t -> 'a t
+         - list : 'a t -> 'a list t
+         - optional : 'a t -> 'a option t
+         - record : fields -> 'a t
+
+         Combinators:
+         - ( let* ) : sequential composition
+         - return : lift pure value into extractor
+         - fail : raise structured error with context
+
+         Usage in spec.ml:
+         Replace the hand-rolled extract functions with combinator
+         pipelines. The compiler checks exhaustiveness and type
+         safety.
+
+         Migration plan:
+         1. Implement extract.ml with primitives and combinators
+         2. Port spec.ml to use combinators (smallest surface)
+         3. Verify edge case parity with existing tests
+         4. Port ui_parse.ml and db_parse.ml
+         5. Remove duplicated extraction helpers from each module
+      |))
+   )
+  )
+  (subsection pipeline-phantoms
+   (doc "Phantom types enforcing tool pipeline order at compile time")
+   (status planned)
+   (details
+    (doc (|
+         Add phantom types to the file processing pipeline to
+         prevent tools from being called on data at the wrong
+         stage.
+
+         Types:
+         type balanced  type parsed  type linted  type checked
+         type 'stage file = { ast : Ast.file; stage : 'stage }
+
+         Functions (typed interface):
+         Balance.balance : string -> balanced file result
+         Parse.parse_file : string -> parsed file result
+         Parse.from_balanced : balanced file -> parsed file result
+         Lint.run : parsed file -> linted file result
+         Check.run : linted file -> checked file result
+
+         This is zero-cost: the 'stage type parameter is erased
+         at runtime. The typechecker prevents bugs like calling
+         lint on a raw filename string or on a file that bypassed
+         balance. It documents the intended pipeline in types.
+      |))
+   )
+  )
+  (subsection richer-constraints
+   (doc "Declares more expectations in .borg without making it executable")
+   (status planned)
+   (details
+    (doc (|
+         Extend the language vocabulary with forms that declare
+         expectations. These are not evaluated by the language;
+         they are verified by the tools.
+
+         (depends-on STRING)
+           Declares that this section requires another section to
+           be implemented first. Used by borge future to build
+           dependency-aware roadmaps and detect ordering mistakes.
+
+         (requires FORM)
+           Declares invariants this section depends on.
+           Examples: (requires (min-coverage 0.8))
+                     (requires (max-complexity 12))
+           Checked by borge lint. Violations produce findings.
+
+         (asserts FORM)
+           Declares expectations about code reality.
+           Examples: (asserts (module-surface "drift.ml" exports 12))
+                     (asserts (no-orphan-files))
+           Verified by borge drift. Mismatches are drift findings.
+
+         All three forms are parseable by the generic sexp parser.
+         Spec.ml recognizes them as first-class metadata. The
+         tools decide whether and how to enforce them.
+      |))
+   )
+  )
+  (subsection effects-policy
+   (doc "Why effects are deferred — and where they might fit later")
+   (status implemented)
+   (details
+    (doc (|
+         Effects are deferred because borge's architecture does not
+         need them. The tool pipeline is linear and deterministic.
+         Adding effects would make control flow implicit and harder
+         to trace.
+
+         Current position: do not use effects in borge.
+
+         Future consideration: the LLM abstraction layer
+         (generate.ml, review_agent.ml) may benefit from an effect
+         that separates "request evaluation" from "how it is
+         fulfilled" when testing and mocking become a burden.
+         Until then, functor-based interfaces are sufficient.
+      |))
+   )
+  )
+ )
+ (section config
+  (doc "Project-level and user-level configuration for borge")
+  (status planned)
+  (subsection config-file
+   (doc ".borgerc: per-project configuration in sexp format")
+   (status planned)
+   (details
+    (doc (|
+          Borge reads configuration from .borgerc files. Search order:
+            1. Project root: .borgerc (checked into git, shared by team)
+            2. User global: ~/.config/borge/config (not in git, personal)
+          Project config overrides user config. If both define the same
+          key, the project value wins.
+
+          The file uses the same sexp format as .borg files.
+          An empty or missing .borgerc means all defaults apply.
+
+          Config file format:
+          (borge-config
+            (developer-name "roerick")
+            (api-keys
+              (anthropic (env ANTHROPIC_API_KEY))
+              (openai (env OPENAI_API_KEY)))
+          )
+
+          Keys:
+          - (developer-name STRING): the author name used for annotated
+            comments. When set, borge make/plan/drift create comments
+            with this authorship instead of "agent". When unset,
+            defaults to "agent". This is the name that appears in
+            (* developer-name note (|...|) *) comments.
+
+          - (api-keys ...): map of provider names to API key sources.
+            Each key is either:
+              (PROVIDER (env ENV_VAR_NAME)) — read from environment
+              (PROVIDER (value "literal-key")) — literal string (NOT
+                recommended for checked-in files; prefer env refs)
+            When borge needs to call an LLM directly (not via pi),
+            it reads the relevant provider key from config. If not
+            configured, borge falls back to pi or BORGE_AGENT_CMD
+            as it does today.
+
+          Why sexp format: consistency with the rest of borge.
+          The parser already exists. No new syntax to learn.
+          No TOML/YAML dependency. The config is a borge document.
+
+          Why not just env vars: env vars work but don't carry
+          developer-name or project-scoped settings. The config file
+          gives a named, version-controlled, discoverable home for
+          project preferences that env vars can't provide.
+
+          Loading: lib/config.ml reads .borgerc, falls back to
+          ~/.config/borge/config, merges project over user.
+          The result is a typed config record available to all
+          borge commands.
+        |))
+   )
+  )
+ )
+ (section future-work
+  (doc "Planned improvements and architectural decisions")
+  (status planned)
+  (details
+   (doc (|
+        Parser rewrite: see sexp.borg (subsection sedlex-lexer) and
+        (subsection menhir-parser). Moved there because the parser
+        is a sexp library concern, not a borge top-level concern.
+
+        Other possible future work:
+        - Incremental parsing for editor integration
+        - .borg language server protocol
+        - Syntax highlighting definitions for common editors
+
+        Turn-level drift checking (future integration):
+        Borge currently checks spec/code alignment at the commit
+        boundary — after the agent session ends, before the git commit.
+        It does NOT check drift across turns within a session.
+        Turn-level gating (rejecting an edit that violates the spec
+        mid-session) is the role of a gate engine, which rein provides
+        and borge does not yet integrate. When borge migrates from pi
+        to rein, the loops-module primitives map onto rein's effects
+        (call_llm, call_tool, checkpoint) and turn-level checking
+        becomes available without restructuring.
+
+        Rejected alternative — multi-agent orchestration:
+        A multi-agent architecture (spawning a hierarchy of agents,
+        each owning a subtree, coordinating via a manager) was
+        considered and declined. Org structures exist primarily to
+        manage human cognitive limits — specialization because one
+        person cannot hold "great DBA" and "great security" in one
+        head. A frontier model does not share that constraint the same
+        way; role prompting ("you are an expert codemonkey") is context
+        priming, not a capability ceiling. Building an architecture
+        whose premise is a hierarchy of differently-specialized agents
+        encodes a limitation the underlying system does not have, and
+        the coordination overhead (merge, conflict, translation
+        losses, a manager agent worse at managing than doing) becomes
+        its own complexity sink. A single linear loop with boundary
+        verification is simpler and more LLM-native. Subagents remain
+        an occasional invocation-level tool (cheap model for a grep),
+        not the execution backbone. Model selection at call time, not
+        a permanent agent hierarchy.
+      |))
+  )
+ )
+)

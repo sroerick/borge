@@ -1,14 +1,14 @@
 (project borge-db
- (doc "Database schema DSL — an extension of the borge language.
-       Describes tables, columns, types, relations, CRUD operations,
-       and row-level security in sexp. The spec is the artifact —
-       borge does NOT generate SQL or code. Use borge make to have an
-       agent edit the spec interactively. Postgres-first semantics.")
- (no-inline)
+ (doc "Database schema DSL — an extension of the borge language.\n       Describes tables, columns, types, relations, CRUD operations,\n       and row-level security in sexp. The spec is the artifact —\n       borge does NOT generate SQL or code. Use borge make to have an\n       agent edit the spec interactively. Postgres-first semantics.")
+ (no-inline
+ )
  (status implemented)
- (exports parse_table validate_table
-          parse_schema db_to_json validate_schema)
-
+ (exports parse_table
+  validate_table
+  parse_schema
+  db_to_json
+  validate_schema
+ )
  (section relationship-to-borge
   (doc "DB is an extension of the borge language, not a separate language")
   (status implemented)
@@ -42,7 +42,6 @@
    |))
   )
  )
-
  (section philosophy
   (* agent note (|
      roerick (2026-05-22), setting the frame for the whole DB DSL:
@@ -79,7 +78,6 @@
     derived artifacts.
   |))
  )
-
  (section schema
   (doc "Table and column definitions")
   (status implemented)
@@ -120,7 +118,6 @@
      constraints, defaults, and foreign keys.
    |))
   )
-
   (subsection column-types
    (doc "Supported PostgreSQL column types")
    (status implemented)
@@ -142,7 +139,6 @@
     |))
    )
   )
-
   (subsection indexes
    (doc "Index declarations for performance")
    (status implemented)
@@ -168,7 +164,6 @@
    )
   )
  )
-
  (section operations
   (doc "What you can do with the data — CRUD and queries")
   (status implemented)
@@ -207,7 +202,6 @@
    |))
   )
  )
-
  (section relations
   (doc "Joins and cross-table queries")
   (status implemented)
@@ -246,7 +240,6 @@
    |))
   )
  )
-
  (section ownership
   (doc "Row-level ownership — who owns a row")
   (status implemented)
@@ -282,7 +275,6 @@
    |))
   )
  )
-
  (section groups
   (doc "Access control groups and their capabilities")
   (status implemented)
@@ -342,7 +334,6 @@
      it becomes the session user ID. The mapping is convention-specific.
    |))
   )
-
   (subsection group-resolution
    (doc "How group membership is determined at runtime")
    (status planned)
@@ -369,7 +360,6 @@
    )
   )
  )
-
  (section data-integration
   (doc "How pages reference database queries")
   (status planned)
@@ -412,7 +402,6 @@
    |))
   )
  )
-
  (section full-example
   (doc "A complete example: blog application database")
   (status planned)
@@ -490,7 +479,6 @@
    |))
   )
  )
-
  (section convention-targets
   (doc "Code generators: walk the typed DB AST and emit target source")
   (status in-progress)
@@ -528,7 +516,6 @@
      then indexes, then RLS enablement, then policies, then groups.
    |))
   )
-
   (subsection postgres-sql-target
    (doc "Generate PostgreSQL DDL from a DB spec")
    (status planned)
@@ -699,7 +686,6 @@
    )
   )
  )
-
  (section agentic-editing
   (doc "How agents edit DB specs using borge make")
   (status implemented)
@@ -722,9 +708,8 @@
      migration history or by introspecting the live database.
      This is advisory — the spec is still the source of truth.
    |))
+  )
  )
- )
-
  (section future-work
   (doc "Possible extensibility for the DB DSL")
   (status planned)

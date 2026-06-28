@@ -1,10 +1,28 @@
 (project borge-cli
  (doc "Thin CLI entrypoints that call lib functions")
  (status implemented)
- (exports cmd_balance cmd_check cmd_diff cmd_drift
-          cmd_fmt cmd_inline cmd_issue cmd_lint cmd_log
-          cmd_make cmd_modules cmd_nodes cmd_normalize cmd_parse cmd_plan
-          cmd_print cmd_report cmd_review cmd_stats cmd_undo cmd_version)
+ (exports cmd_balance
+  cmd_check
+  cmd_diff
+  cmd_drift
+  cmd_fmt
+  cmd_inline
+  cmd_issue
+  cmd_lint
+  cmd_log
+  cmd_make
+  cmd_modules
+  cmd_nodes
+  cmd_normalize
+  cmd_parse
+  cmd_plan
+  cmd_print
+  cmd_report
+  cmd_review
+  cmd_stats
+  cmd_undo
+  cmd_version
+ )
  (section commands
   (doc "The individual CLI commands")
   (status implemented)

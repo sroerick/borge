@@ -1,0 +1,242 @@
+(project borge-docs-book
+ (section book
+  (doc "Print the codebase as a paginated book, with a round trip back to the spec via the inbox")
+  (status implemented)
+  (* agent note (|
+     Origin (roerick, 2026-06-27): "I want to print codebases. like
+     i want to order them linearly from start to finish, and read them
+     like a book. this is literate programming. i want to be able to
+     print them out, with page numbers, then scan them back in as
+     feedback to the LLM and have it spec changes."
+   |) *)
+  (* agent note (|
+     verified at this commit: print + manifest implemented. build-pass,
+     runtest-pass, smoke-pass (borge book print . -> 363-page A4 PDF +
+     manifest, line numbers render, deterministic tree_checksum).
+     book-absorb remains (status planned) — the long-tail round trip.
+   |) *)
+  (details
+   (doc (|
+        The literate-programming section says the spec is the
+        primary artifact and code is derived. The book is the
+        physical reading surface for that derived artifact: a
+        paginated, linearly ordered rendering of the codebase that
+        a human can read away from a screen, mark up by hand, and
+        feed back into the spec pipeline.
+
+        The book is NOT a weave. Borge does not tangle code out of
+        prose and does not interleave spec and code the way WEB
+        does. The spec stays in .borg files; the book is a
+        read-only projection of already-written code. What makes
+        it literate is that its order is the spec's order: the
+        table of contents is the section tree, and each chapter is
+        the code a section covers. You read the codebase the way
+        it was specified.
+
+        The round trip:
+
+          code -> book (print) -> paper -> inbox (absorb) -> spec
+
+        Three of these four hops already exist. print produces the
+        paper. absorb reads marked-up scans back and files inbox
+        items; it does NOT edit the spec. The human triages the
+        inbox in Plan mode, the same way every other scope concern
+        becomes a spec change. A noisy OCR read produces a messy
+        inbox item that can be closed, not a corrupted spec.
+
+        Why the book earns its keep even without the round trip:
+        reading code on paper, in a fixed linear order, with no
+        scrollback and no folding, surfaces structure that the
+        editor hides. The absorb side is a bonus, not the
+        justification.
+
+        Two render modes, shipped in order:
+
+        1. code-only (MVP). Each page is source with line numbers
+           and a right-hand notes column. Ship this first.
+
+        2. woven (later). Interleave each section's spec text with
+           the code it covers, chapter by chapter. More work; only
+           worth it once code-only proves the book gets opened.
+
+        Scope: a chapter is the code covered by one .borg section.
+        Whole-codebase printing is print every chapter in spec
+        order, not a separate mode. Design for chapter-scoped
+        printing and let the whole book fall out of it.
+      |))
+  )
+  (subsection book-print
+   (doc "Render code to a paginated, annotated document")
+   (status implemented)
+   (details
+    (doc (|
+         borge book print [--section NAME] [--woven] [-o FILE]
+
+         Linearizes code into a paginated document with page
+         numbers, line numbers on every page, and a right-hand
+         margin wide enough to write in.
+
+         Ordering is four-tier, data-driven from the project's own
+         structure, so the book reads like a book rather than a
+         lexical file dump:
+
+           tier 0: root .borg file (the architecture / introduction)
+                   via Project.find_roots.
+           tier 1: other top-level .borg files (the design docs:
+                   cli.borg, lib.borg, db.borg, ui.borg, ...).
+           tier 2: .mli files (module signatures — the interface
+                   layer; empty in this repo until interfaces are added).
+           tier 3: .ml files (implementations), plus any
+                   sub-directory .borg files.
+
+         Tier 0 makes the book open with the spec — the primary
+         artifact per literate-programming — not an alphabetical
+         accident. Tiers 1-2 give the design and interface layer
+         before the implementations.
+
+         Within tier 3, code files are ordered by a dependency rank,
+         not lexically. The book parses `open X` and `Module.ref`
+         from each .ml file, maps module names to their directory,
+         and computes a longest-path rank per directory (lang has no
+         deps -> rank 0; core depends on lang -> rank 1; check
+         depends on core+lang -> rank 3; bin and test top the stack).
+         Stdlib/external names (Format, String, List, ...) are excluded
+         so a borge module that shadows a stdlib name (e.g. lib/format)
+         doesn't create a false dependency. Files then sort by
+         (rank, directory group lib/bin/test, lexical) — foundations
+         precede dependents, so the book reads like a stack.
+
+         Full spec-order — where the .borg section tree is the table
+         of contents and each chapter is the code a section covers —
+         remains the long-tail feature, along with page-number
+         cross-references for links between sections. --section NAME
+         is a no-op in v1; it lands with spec-order.
+
+         Rendering target: LaTeX with the listings package — line
+         numbers, framed code blocks, and a right-hand marginnote
+         column for free; pdflatex to PDF. listings gives proper
+         source typography without a custom line-numbering pass.
+         groff/ms remains a viable fallback on systems without a
+         TeX install (it is in OpenBSD base). The chosen backend
+         is a build detail, not a spec invariant. The invariant
+         is: paginated, numbered, with a notes column.
+
+         .borg files are NOT rendered as raw sexp. They are parsed
+         (Borge_lang.Parse) and emitted as prose: section/subsection
+         names as headings, (doc ...) strings as paragraphs,
+         (* author ... (|...|) *) comments as attributed
+         blockquotes (the narrative voice), (status X) as an italic
+         marker, (inline path) as a small note. Other structural
+         forms (verify, depends-on, convention) are skipped — they
+         are noise in the reading view. On parse failure the file
+         falls back to a raw listing. The point: the spec reads as a
+         document, not as data.
+
+         .ml/.mli files keep the listings treatment (line numbers,
+         framed code) — they are code, and the book shows them as code.
+
+         Page furniture, every page:
+         - page number (top or bottom corner)
+         - chapter name (the section title) and section path
+         - line numbers for the source on that page
+         - a right-hand notes column, blank, for hand annotations
+
+         Output is a document file (PDF/PS, or text) plus a
+         manifest sidecar (see book-manifest) on the same stem:
+         foo.book.pdf and foo.book.manifest.
+       |))
+   )
+  )
+  (subsection book-manifest
+   (doc "Sidecar mapping page N to file, with a tree checksum. Line numbers are on the page.")
+   (status implemented)
+   (details
+    (doc (|
+         Every book print emits a manifest alongside the document:
+         <stem>.book.manifest. Default gitignored (it is a build
+         artifact); tracked only if the user wants a durable record.
+
+         The manifest is what makes the absorb round trip possible.
+         Line numbers are printed on every page (listings
+         numbers=left), so a margin note next to line 127 already
+         names its own line — the LLM reads it off the page. The
+         manifest only needs to answer "which file is page 14?" so
+         a note in the gutter between two files is unambiguous.
+
+         Fields:
+         - stem: the document stem the manifest belongs to
+         - rendered_at: timestamp of the print run
+         - backend: the renderer used (latex-listings, groff-ms, ...)
+         - tree_checksum: digest of the exact tree printed (ordered
+           file list plus each file's content hash)
+         - pages: array of page entries, each with n (page number),
+           file (source path on that page), and chapter (section
+           title). Line numbers are NOT in the manifest — they are
+           printed on the page itself and read directly by absorb.
+
+         tree_checksum is the stale-book guard. On absorb, if the
+         working copy's checksum no longer matches the manifest,
+         the book is stale relative to the code and the absorb step
+         refuses. This stops a scan of a three-week-old book from
+         filing inbox items against line numbers that have since
+         moved.
+       |))
+   )
+  )
+  (subsection book-absorb
+   (doc "Read marked-up scans and file inbox items — never edit the spec")
+   (status planned)
+   (details
+    (doc (|
+         borge book absorb <scan...> [--stem NAME]
+
+         Takes scanned page images (PNG or PDF) of a previously
+         printed book, extracts the margin annotations, and files
+         one inbox item per annotation. It does NOT edit any .borg
+         file. The round trip ends at the inbox, by design — the
+         same place every other scope concern lands, and the only
+         place a spec change is allowed to start.
+
+         Items conform to the inbox file format (see the inbox
+         section). Pipeline per page:
+
+           1. A vision-capable LLM sees the page and returns the
+              page number from the header, the printed code on the
+              page for grounding, and each margin annotation with
+              the line it sits next to and its text.
+           2. Map page to file:lines via the manifest.
+           3. Resolve the annotation to a .borg section using the
+              manifest's section field.
+           4. Emit an inbox item:
+                source: scope-concern | bug-report | feature-request
+                         (best-effort from the note)
+                affects: section:"<section path from manifest>"
+                filed-by: agent:book-absorb
+                doc: the human's annotation, quoted verbatim, plus
+                     the file:lines it was anchored to
+
+         Fidelity is the real risk and is owned here, not elsewhere.
+         The two hard problems are handwriting legibility and which
+         line a scribble refers to. Mitigations, all on the print
+         side so the absorb side can stay dumb:
+         - structured annotation convention (circle the line, write
+           the change intent in the margin) — documented in print
+           output, not enforced
+         - line numbers on every page (book-print)
+         - generous line spacing and a wide notes column (book-print)
+         - short intents, not essays (documented convention)
+
+         Safety: absorb never writes .borg. A bad OCR read yields a
+         messy inbox item the human can close or edit; it cannot
+         corrupt the spec. A --apply bypass that writes spec diffs
+         directly is explicitly NOT in scope for v1; the inbox gate
+         is the whole point.
+
+         Stale-book guard: if the manifest's tree_checksum does not
+         match the working copy, absorb refuses and prints a message
+         telling the human to reprint and rescan.
+       |))
+   )
+  )
+ )
+)

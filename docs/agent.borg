@@ -1,0 +1,845 @@
+(project borge-docs-agent
+ (section make
+  (doc "Agent-driven implementation — have an agent write code to match spec")
+  (status implemented)
+  (details
+   (doc (|
+        borge make is the interactive entry point for agent-driven
+        implementation. It opens a pi session with a prompt built from
+        the spec, convention rules, existing code context, and the
+        declared role. The agent writes code interactively; borge
+        commits after (the journal is currently scaffolded — see
+        lock-mechanism).
+
+        borge make
+          Open pi to implement planned sections. The agent reads the
+          full spec, writes code and tests to match planned sections,
+          and journals status changes. Auto-commits on clean exit.
+          Calls borge balance first to ensure structural soundness.
+
+        borge make spec "description"
+          Single-shot spec generation. Not interactive. The agent
+          produces a (status planned) section from a description.
+          For interactive spec editing, use borge plan instead.
+
+        NOTE on the lockless single-shot path: borge generate code
+        (aliased as borge execute) is a SEPARATE single-shot path
+        that calls pi -p, prints code to stdout, and does NOT create
+        a lock, run integrity checks, or commit. It is distinct from
+        the gated make/plan/drift --agent loop above. Use it for
+        quick one-off generation; use the gated loop for tracked work.
+
+        borge drift --agent [--fix]
+          Open pi to check alignment between spec and code. Read-only
+          by default. --fix allows creating journal entries with
+          suggestions for spec updates.
+
+        borge commit
+          Apply the current lock's journal to .borg files, run fmt
+          and balance, git commit. Called automatically after
+          borge make/plan unless --no-commit. Can be called
+          manually after --no-commit sessions.
+
+        All agent-driven commands create a .borge.lock/ directory
+        (see lock-mechanism). The lock is removed after commit or
+        abort.
+      |))
+  )
+  (subsection make-command
+   (doc "Make code match spec — implement planned sections")
+   (status implemented)
+   (details
+    (doc (|
+         borge make: open pi with the implementer role. The agent
+         reads the entire spec, identifies planned sections that are
+         ready to implement, writes code and tests. On clean exit:
+         borge validates, commits. (The journal is scaffolded but not
+         yet written — the commit message is a file list, not a
+         journal-derived summary.)
+         On error or --no-commit: lock stays, user reviews.
+       |))
+   )
+  )
+  (subsection plan-command
+   (doc "Edit the spec — add sections, refine descriptions")
+   (status implemented)
+   (details
+    (doc (|
+         borge plan: open pi with the spec-writer role. The agent
+         reads the spec, identifies gaps, adds sections, refines
+         descriptions, updates statuses. Journals all changes.
+       |))
+   )
+  )
+  (subsection drift-agent-command
+   (doc "Check and optionally fix alignment between spec and code")
+   (status implemented)
+   (details
+    (doc (|
+         borge drift --agent: open pi with the observer role. The
+         agent reads spec and code, reports findings, marks drifted
+         sections. No code changes. --fix adds the ability to
+         write code repairs and tests. Neither mode may modify
+         .borg files except section statuses.
+       |))
+   )
+  )
+  (subsection answer-command
+   (doc "Answer ask comments in .borg files")
+   (status planned)
+   (details
+    (doc (|
+         borge answer: Scan .borg files for open ask comments and
+         generate responses. An open ask is a (* author ask (|...|) *)
+         comment without a corresponding (* agent response (|...|) *)
+         or with an empty response slot.
+
+         Usage:
+           borge answer                    # Answer asks in current file
+           borge answer --all              # Answer asks in all .borg files
+           borge answer --file path.borg   # Answer asks in specific file
+           borge answer --dry-run          # Show what would be answered
+
+         Process:
+         1. Parse specified .borg file(s) for ask comments
+         2. Filter to asks without responses (or empty responses)
+         3. For each open ask:
+            - Build context from surrounding section
+            - Query LLM with ask content + context
+            - Insert (* agent response (|answer|) *) inline
+         4. Journal all responses (role: analyst)
+
+         Context building:
+         - Parent section name and status
+         - Sibling subsections (names only)
+         - Preceding doc paragraphs (max 200 tokens)
+         - The ask comment itself
+
+         What is NOT included:
+         - Full implementation code
+         - Other .borg files (unless --all)
+         - Historical responses or changelog
+
+         Exit codes:
+         - 0: All asks answered (or no asks found)
+         - 1: LLM error or timeout
+         - 2: Parse error in .borg file
+         - 3: User abort (--no-commit mode)
+       |))
+   )
+  )
+  (subsection context-management
+   (doc "Minimal context to respect token limits")
+   (status implemented)
+   (details
+    (doc (|
+         The prompt sent to pi is intentionally minimal to avoid
+         exhausting the agent's context window (~20K tokens consumed
+         in seconds with full spec).
+
+         Context structure by role:
+
+         borge make (implementer)
+           - Planned sections: name + one-line description (backlog)
+           - Implemented sections: names only as guardrails
+           - Existing module names: flat list
+           - Max ~500 tokens total
+
+         borge plan (spec-writer)
+           - All section names with statuses
+           - Section nesting structure
+           - No full doc bodies in prompt (agent explores files)
+           - Max ~800 tokens total
+
+         borge drift --agent (observer/fixer)
+           - Planned vs implemented diff
+           - Changed module names since last commit
+           - Optional: specific section under investigation
+           - Max ~600 tokens total
+
+         What is NOT loaded:
+         - Full .borg file contents (only summaries)
+         - Module export lists (just names)
+         - Convention rule details (just convention name)
+         - Historical commits or diffs
+
+         The agent uses `read` tool to explore files on demand
+         rather than having everything pre-loaded.
+       |))
+   )
+  )
+  (subsection loops-module
+   (doc "Extract the shared create/launch/teardown loop into a named, navigable module")
+   (status planned)
+   (details
+    (doc (|
+         Today the agent loop is duplicated across bin/cmd/Make.ml,
+         Plan.ml, and Drift.ml (run_agent) — the identical sequence of
+         Lock.create → write prompt → Lock_pi_launch.launch → on exit
+         0 Lock.teardown ~commit:true / Lock.remove, on failure keep
+         lock. The loop exists but is not named; editing it means
+         editing three copies.
+
+         Planned: lift the loop into lib/loop/ as a first-class module.
+         Each command (make, plan, drift --agent, and the proposed
+         regenerate) becomes a thin wrapper that instantiates and runs
+         a named loop. Shared primitives — checkpoint (wait for user
+         confirmation), run_to_completion (bounded loop with a
+         completion criterion), gate_enforce (mode rules), verify
+         (compile/drift/check at boundaries), build_context (per-role
+         minimal context), invoke_agent (pi call now, rein phase
+         later) — become small composable functions the loops compose.
+
+         A concrete loop is a record of params (role, gate mode,
+         completion criterion, verification steps, checkpoint policy,
+         context recipe) plus a body composing the primitives. Editing
+         a loop edits its params; adding a loop instantiates the
+         template.
+
+         This is future work that leans on rein: when borge migrates
+         from pi to rein, these loop primitives map onto rein's effects
+         (call_llm, call_tool, checkpoint, spawn_phase, telemetry,
+         yield_artifact) with minimal rewrite. Building the module now
+         against pi makes that migration a primitive swap, not a
+         restructure. See future-work for the migration note.
+       |))
+   )
+  )
+ )
+ (section execute
+  (doc "Make code match spec — interactive agent mode with role-gated behavior")
+  (status implemented)
+  (* agent note (|
+     roerick, on the envisioned workflow (2026-05-17): "I'm kind of
+     envisioning a workflow where we go like, okay, generate the code
+     based on the spec. Okay, review the code that was created to
+     determine if we've drifted from spec. Okay, fix any drift from
+     the spec. Okay, review the code that's created again. And
+     hopefully get to something that resembles the code. My hope is
+     that we can achieve like a lot of development this way, basically
+     by running Ralph loops over with using the spec as a source of
+     truth."
+   |) *)
+  (details
+   (doc (|
+        Agent-driven commands open pi interactively with a minimal
+        prompt built from summarized spec data. The agent's job depends
+        on mode: implementer, spec-writer, or observer. Context is
+        intentionally limited (see context-management subsection).
+
+        The agent operates in a .borge.lock/ workspace (see lock-
+        mechanism). It edits .borg files in .borge.lock/working/ and
+        code files in the repo. Commit applies working/ back to repo
+        after integrity and balance checks.
+
+        Commands:
+
+        borge make
+          Role: implementer
+          CAN: write code, write tests, add journal entries (status
+               changes, notes)
+          CANNOT: modify .borg files (reads from working/, like all
+                  agents, but its writes go to code files and journal)
+          CANNOT: delete human-authored comments
+          INTENT: make code match the spec — planned sections are
+                  the backlog, implemented sections are guardrails
+
+        borge plan
+          Role: spec-writer
+          CAN: modify .borg files in .borge.lock/working/
+          CANNOT: write code files
+          CANNOT: delete human-authored comments (integrity check
+                  blocks commit if violated --force to override)
+          INTENT: edit the spec — add sections, refine descriptions,
+                  update priorities, reorder
+
+        borge drift --agent [--fix]
+          Role: observer (default) or fixer (--fix)
+          CAN (observer): create findings as journal entries, add
+                          comments to spec, change section status to
+                          drifted
+          CANNOT (observer): write code files, modify .borg except
+                             via journal/status
+          CAN (fixer): all observer permissions + write code repairs
+                       and tests
+          CANNOT (fixer): modify .borg files except via journal/status
+          INTENT: check alignment. --fix repairs drift.
+
+        borge commit
+          Apply .borge.lock/working/ back to repo, run fmt and
+          balance, git commit. Called automatically after make/plan
+          unless --no-commit. Blocked by human comment deletion
+          (unless --force).
+
+        borge abort
+          Discard .borge.lock/. .borg files in repo are untouched.
+          Code files may have been modified — use git to undo.
+
+        Why auto-commit? Git is the audit trail. Each session produces
+        a commit. Revert if wrong. Review at PR level, not per-change.
+      |))
+  )
+ )
+ (section inbox
+  (doc "The outlet the gate creates — agent feedback queued for human triage")
+  (status planned)
+  (details
+   (doc (|
+        The inbox exists because the gate exists. Borge gates spec
+        edits during build turns to stop the failure mode where an
+        agent builds X and then rewrites the spec to match X. But a
+        gated agent still needs a way to signal that the spec is
+        wrong, incomplete, or ambiguous. The inbox is that outlet:
+        it turns a forbidden action (edit the spec mid-turn) into a
+        queued one (file a concern for human review). It is a routing
+        layer, not a preservation layer.
+
+        As a consequence of being the gate's outlet, the inbox also
+        absorbs the old issue-tracker section. Everything that needs
+        human attention before it becomes a spec change goes through
+        the inbox — bugs, drift findings, scope concerns, TODOs,
+        external reports. One queue, one format, one lifecycle.
+
+        Why the inbox replaced the old bug tracker:
+        The old .borge-bug format and the inbox concept were the
+        same shape — both are "something that needs review before
+        it affects the spec." Keeping them separate meant two file
+        formats, two lifecycles, two sets of commands. A bug
+        report from a chatbot and a scope concern from an agent
+        are both inbox items that need triage.
+
+        The inbox also enforces spec-first discipline at the tool
+        level — not just by convention. The current borge discipline
+        says "no unspec'd code," but nothing prevents an agent from
+        quietly editing a .borg file during implementation. The
+        inbox fixes this:
+
+        - Agents in Plan mode CAN edit .borg files directly
+        - Agents in any other mode CANNOT edit .borg files
+        - Instead they file inbox items requesting spec changes
+        - Inbox items require human review before becoming spec
+        - This prevents unseen scope drift
+
+        Five sources of inbox items:
+
+        1. AGENT-FILED SCOPE CONCERNS. During implementation,
+           if an agent discovers the spec is wrong or incomplete,
+           it does NOT edit the spec. It files an inbox item
+           describing the needed change and why. This forces the
+           scope change to be visible and reviewed. (This replaces
+           the old architectural-decisions subsection — same
+           concept, now part of a unified queue.)
+
+        2. BUG REPORTS. From agents, users, or chatbots. A bug
+           is an inbox item where something is broken. Drift
+           findings from borge drift automatically create bug-type
+           inbox items. Semantic review findings (from borge review)
+           also create bug-type items.
+
+        3. TODO AGGREGATION. All TODO markers across .borg files
+           and .ml files are surfaced as inbox items. A TODO in
+           code is an implicit spec gap — it says "I didn't
+           implement what was planned" or "something was planned
+           but not yet spec'd." Either way it needs triage.
+
+        4. EXTERNAL FILINGS. Users and chatbots can file inbox
+           items directly — bug reports, scope concerns, feature
+           requests, "this was implemented differently than I
+           expected." These are the same shape as agent-filed
+           items but come from outside the pipeline.
+
+        5. DRIFT AND REVIEW FINDINGS. borge drift and borge review
+           produce findings automatically. These are linked to
+           inbox items instead of being a parallel tracking system.
+
+        Inbox item types (source field):
+        - scope-concern: spec is wrong, incomplete, or ambiguous
+        - bug-report: something is broken
+        - todo-aggregation: surfaced TODO marker
+        - feature-request: user or chatbot wants something new
+        - implementation-divergence: code doesn't match spec
+        - drift-finding: from borge drift --agent
+        - review-finding: from borge review (semantic or doc)
+
+        Lifecycle:
+        triage → acknowledged → plan-approved → spec-updated → closed
+
+        The critical transition is plan-approved → spec-updated.
+        Only Plan mode can make it. Only after human review.
+        This is what prevents scope drift.
+
+        Other resolutions:
+        - wontfix: acknowledged but not acting on it
+        - duplicate: same as an existing item
+        - fixed-in-code: bug fixed without spec change
+      |))
+  )
+  (subsection inbox-file-format
+   (doc "File format for inbox items")
+   (status planned)
+   (details
+    (doc (|
+         Inbox items are stored as .borge-inbox files in the repo,
+         tracked in git alongside code and specs. One queue, one
+         format.
+
+         Scope concern example:
+         (borge-inbox id:"INBOX-7"
+           (title "Need error handling in db_sql")
+           (status triage)
+           (filed-by agent:implementer)
+           (source scope-concern)
+           (affects section:"lib.borg:db-sql")
+           (created 2026-05-31)
+           (doc (|
+             During implementation of db_sql.ml, discovered that
+             the spec doesn't cover connection retry logic.
+             The spec says (status implemented) for db-sql but
+             retry was never mentioned. Filing for scope review.
+           |))
+         )
+
+         Bug report example:
+         (borge-inbox id:"INBOX-12"
+           (title "parse_expr crashes on nested parens")
+           (status triage)
+           (filed-by roerick)
+           (source bug-report)
+           (affects section:"lib.borg:parser")
+           (created 2026-05-31)
+           (doc (|
+             borge parse crashes on the new borge.borg with
+             nested verbatim strings. Repro: borge parse borge.borg.
+           |))
+         )
+
+         Drift-finding example:
+         (borge-inbox id:"INBOX-15"
+           (title "Doc-code drift in lock_mechanism.ml")
+           (status triage)
+           (filed-by agent:drift)
+           (source drift-finding)
+           (affects section:"lib.borg:lock")
+           (created 2026-05-31)
+           (drift-report-id "DRIFT-2026-05-31-001")
+           (doc (|
+             Comment says "copies original/ back to the repo"
+             but code actually copies from .borge.lock/snapshot/.
+           |))
+         )
+
+         Fields:
+         - id: unique identifier (INBOX-N)
+         - title: brief description
+         - status: triage | acknowledged | plan-approved | spec-updated | closed
+         - filed-by: who filed it (roerick, agent:implementer, agent:drift, chatbot:name)
+         - source: scope-concern | bug-report | todo-aggregation | feature-request |
+                   implementation-divergence | drift-finding | review-finding
+         - affects: which .borg section is impacted
+         - created: date
+         - doc: full explanation
+         - relates-to: optional reference to another INBOX-N
+         - drift-report-id: optional link to drift report that spawned this item
+         - resolution: optional (when date) (how text) (by who)
+      |))
+   )
+  )
+  (subsection inbox-commands
+   (doc "CLI commands for inbox management")
+   (status planned)
+   (details
+    (doc (|
+         borge inbox list [--status triage] [--source bug-report]
+           List inbox items, optionally filtered by status and source.
+
+         borge inbox show INBOX-7
+           Show full details of an inbox item.
+
+         borge inbox file --title "description" --source scope-concern
+           File a new inbox item. Used by agents, users, and chatbots.
+           The --source flag determines the type. The --affects flag
+           optionally links to a .borg section.
+
+         borge inbox acknowledge INBOX-7
+           Mark as acknowledged by human. Moves to acknowledged.
+
+         borge inbox approve INBOX-7
+           Approve for spec update. Moves to plan-approved.
+           This DOES NOT update the spec yet — it just grants
+           permission for Plan mode to incorporate it.
+
+         borge inbox close INBOX-7 [--resolution spec-updated|wontfix|duplicate|fixed-in-code]
+           Close an inbox item with resolution.
+
+         borge inbox consolidate
+           Aggregate all TODO markers across .borg and .ml
+           files into inbox items. Deduplicates against
+           existing items. Also surfaces (status planned)
+           sections with no details.
+
+         The old commands are subsumed:
+         - "borge bug new" → "borge inbox file --source bug-report"
+         - "borge bug list" → "borge inbox list --source bug-report"
+         - "borge bug show ID" → "borge inbox show ID"
+         - "borge bug close ID" → "borge inbox close ID"
+         - "borge drift-report" → drift auto-creates inbox items
+      |))
+   )
+  )
+  (subsection inbox-gating-rules
+   (doc "How borge modes enforce inbox usage")
+   (status planned)
+   (details
+    (doc (|
+         The inbox is enforced through mode-specific gating.
+         This is hard enforcement at the tool level, not convention.
+
+         In Plan mode:
+         - CAN edit .borg files (including plan sections)
+         - CAN close inbox items with spec-updated
+         - This is the ONLY mode that can modify plan content
+
+         In Execute mode:
+         - CANNOT edit .borg files (plan sections are frozen)
+         - MUST file inbox items for any spec concerns
+         - Can edit code files freely
+         - CANNOT edit human-authored comments in any file
+           (see comment-protection subsection)
+
+         In Audit/Review mode:
+         - CANNOT edit .borg files
+         - CAN file inbox items for drift/review findings
+         - Drift and review findings auto-create inbox items
+         - CANNOT edit human-authored comments in any file
+
+         In BorgEdit mode:
+         - CAN edit .borg files (explicit escalation)
+         - But changes are tracked and logged
+         - Should still file inbox items for major changes
+         - CANNOT edit human-authored comments in any file
+
+         The enforcement is at the tool level:
+         rein's gate engine rejects edit/write tools targeting
+         .borg files when not in Plan or BorgEdit mode.
+         rein's gate engine also rejects edits to human-authored
+         comments in .ml files (see comment-protection).
+         Agents must use the inbox file command instead.
+      |))
+   )
+  )
+  (subsection comment-protection
+   (doc "Protect human-authored comments in both .borg and .ml files")
+   (status planned)
+   (details
+    (doc (|
+         The lock-mechanism already protects human-authored comments
+         in .borg files (detecting deletions via diff at commit time).
+         This extends the same principle to .ml files.
+
+         What counts as a human-authored comment:
+         In .borg files:
+         - (* roerick note ... *)
+         - (* <name> ask ... *)
+
+         In .ml files:
+         - (** ... *) ocamldoc comments (not authored by agents)
+         - (* roerick ... *) or (* <human-name> ... *)
+         - (*| ... |*) borge-style comments with human authorship
+
+         What does NOT count as human-authored:
+         - (* agent note (|...|) *)
+         - (* exempt doc *)
+         - (* TODO: ... *)  (these get aggregated into inbox)
+         - Regular code comments without authorship markers
+
+         Enforcement:
+         At the tool level, rein's gate engine inspects edit
+         operations on both .borg and .ml files. If the edit
+         would modify or delete a human-authored comment, the
+         gate BLOCKS it — regardless of mode. The only exception
+         is when the human explicitly approves the edit (ASK).
+
+         This is stricter than the .borg-only protection in the
+         lock-mechanism. The lock checks at commit time after
+         the session. The gate checks BEFORE the edit happens.
+
+         Why: an agent should not be able to silently change what
+         a human said in a comment. If the comment is wrong, file
+         an inbox item with source scope-concern explaining the
+         discrepancy. A human reviews it. The human can then run
+         borge normalize to accept the change intentionally.
+      |))
+   )
+  )
+  (subsection semantic-review
+   (doc "LLM-powered verification that function docs match implementation")
+   (status implemented)
+   (details
+    (doc (|
+         Walks OCaml files, extracts functions and their docstrings,
+         uses LLM to verify two things:
+
+         1. Doc-code alignment: Does the comment accurately describe
+            what the function does and why it exists?
+         2. Internal consistency: Is the function well-constructed,
+            or does it have internal contradictions (dead code paths,
+            unreachable branches, parameters that are always ignored,
+            logic that contradicts the comment)?
+
+         Both checks happen in a single LLM pass per function for
+         efficiency. The prompt asks the LLM to evaluate both.
+
+         Process per function:
+         1. Extract: function name, signature, docstring, body
+         2. Prompt LLM with three questions:
+            a) Is there a docstring present? If yes, does it
+               accurately describe WHAT the function does and
+               WHY it exists? (doc-code alignment)
+            b) Are there (status drifted) markers in the
+               comment? If so, the drift is acknowledged — flag
+               as drifted rather than inaccurate.
+            c) Is the function internally consistent? Are there
+               dead branches, unused parameters, contradictory
+               logic, or structural issues? (internal consistency)
+         3. Store result in .borg.meta under node metadata
+
+         What counts as doc-code drift:
+         - Comment says "returns Error on invalid input" but the
+           function actually raises an exception
+         - Comment describes behavior that no longer exists
+         - Comment omits important side effects or error cases
+         - Comment says WHY but the reason has changed (e.g.,
+           "Workaround for bug X" but bug X was fixed)
+
+         What counts as internal inconsistency:
+         - Parameter is accepted but never used in the body
+         - Match branch is unreachable (covered by earlier branch)
+         - Boolean parameter that is always passed the same value
+         - Let binding that shadows an outer binding identically
+         - Comment says one thing, code does another (this is also
+           doc-code drift, but indicates the function itself may
+           have been patched without thinking through the design)
+
+         Metadata structure:
+         (function name:"parse_expr"
+           (doc-present true)
+           (doc-status accurate|drifted|missing)
+           (doc-accuracy high|medium|low)
+           (consistency consistent|questionable|inconsistent)
+           (internal-issues "optional description")
+           (confidence high|medium|low)
+           (checked-at 2025-05-16T10:30:00Z)
+         )
+
+         doc-status values:
+         - accurate: comment matches implementation
+         - drifted: comment has (status drifted) marker OR
+           LLM detected significant mismatch
+         - missing: no doc comment present
+
+         consistency values:
+         - consistent: no internal issues detected
+         - questionable: minor issues (unused parameter, etc.)
+         - inconsistent: major issues (dead branches, logic
+           contradictions, code that can never execute)
+
+         Commands:
+         - borge review FILE
+         - borge review --dir DIR
+         - borge review --all
+         - borge review --stale
+         - borge review --focus drift
+         - borge review --focus consistency
+
+         Findings flow to inbox:
+         - Low doc-accuracy → creates inbox item (source: review-finding)
+         - Missing doc on exported function → inbox item
+         - (status drifted) comment → informational inbox item
+         - Internal inconsistency → inbox item (source: review-finding)
+
+         Auto-marking drifted comments:
+         When borge review --all detects doc-code drift on a
+         function that does NOT have (status drifted), it can
+         optionally add the marker:
+           borge review --all --mark-drifted
+         This inserts (status drifted) into the comment. The
+         marker means "a machine checked this and found drift"
+         — it is not a fix, but it makes the lie explicit.
+         Without --mark-drifted, review only reports findings.
+       |))
+   )
+  )
+  (subsection distributed-specs
+   (doc "Module-level .borg files with loose function-level coupling")
+   (status planned)
+   (details
+    (doc (|
+         Rather than one central borge.borg, each module folder has
+         its own .borg file describing that module's exports and
+         structure. Function-level detail lives in borg-comments
+         within the .ml files themselves.
+
+         This creates a hierarchy:
+         - repo/borge.borg: conventions, top-level goals
+         - lib/core/lib_core.borg: module exports, dependencies
+         - lib/core/spec.ml: functions with borg-comments
+
+         Borg-comment format (OCaml comment containing borg):
+         (* (fn extract_functions
+              (doc "Pulls functions from code")
+              (since "2025-05")) *)
+
+         Drift checking (static/non-agentic):
+         Only verifies referential integrity — does a function name
+         listed in the module's exports actually exist in the code?
+         Does a function in the code appear in the exports?
+         No semantic comparison between module spec and function docs.
+
+         Drift checking (agentic):
+         The agent reads module spec intent and function comments,
+         determines if there's semantic drift, and can file inbox
+         items for mismatches it finds.
+
+         This keeps the non-agentic path fast and simple while
+         delegating semantic understanding to the LLM when needed.
+       |))
+   )
+  )
+  (subsection todo-aggregation
+   (doc "Surfacing TODOs as inbox items")
+   (status planned)
+   (details
+    (doc (|
+         TODOs are spec gaps. They say "I know I need to do
+         something here but I haven't spec'd it yet." The inbox
+         consolidates them.
+
+         TODO sources:
+         - TODO in .borg files:
+           (* TODO: handle connection retry *)
+         - TODO in .ml files:
+           (* TODO: add error handling *)
+         - (status planned) sections with no details in .borg
+         - Drift findings from borge drift
+
+         borge inbox consolidate scans all sources and creates
+         or updates inbox items. Existing items are NOT
+         duplicated — the consolidation checks for matches.
+
+         A TODO in code during implementation is NOT a license
+         to implement without spec. It's a signal that the
+         spec is incomplete. File it, triage it, plan it.
+      |))
+   )
+  )
+ )
+ (section review
+  (doc "Review code quality against spec using LLM")
+  (status implemented)
+  (details
+   (doc (|
+        Every file should carry a quality review — this is the review
+        section in each .borg child spec. borge review generates a
+        code-quality assessment for files under each spec section.
+        The review answers: Does the code match the spec description?
+        Are exports documented? Are there dead functions? Is error
+        handling present? The review is stored as annotated comments
+        in the spec or as a separate .review file.
+      |))
+  )
+  (subsection review-command
+   (doc "Generate a per-file code quality review from spec")
+   (status implemented)
+   (details
+    (doc (|
+         borge review FILE: read the spec for the file, read the
+         file source, build prompt asking pi to assess:
+         - Does every spec described feature exist in code?
+         - Are all exports documented? (check .mli, or docstrings)
+         - Are there dead functions (unused exports)?
+         - Is error handling missing where the spec says 'returns error'?
+         - Is the literate description accurate?
+         Output: findings as sexp, similar to drift findings.
+         These are stored as annotated comments under the file's
+         spec section, or in a per-file .review.borg file.
+       |))
+   )
+  )
+ )
+ (section agent-discipline
+  (doc "Rules for AI agents working in borge — operationalizing spec-first development")
+  (status implemented)
+  (* agent note (|
+     roerick, on the design choice that sets borge apart (2026-05-17):
+     "Other people are solving this problem by spawning dozens of
+     agents and having them work in parallel and at cross purposes.
+     But I think we can achieve the same thing with massively fewer
+     tokens by simply restricting and gating what the agent is
+     allowed to do during a certain implementation phase."
+
+     The rules below are the operational form of that intuition:
+     gating what an agent may touch is cheaper than orchestrating a
+     swarm, and the spec is the gate.
+   |) *)
+  (details
+   (doc (|
+        The literate-programming section declares the philosophy. This
+        section declares the operational rules that follow from it.
+        These rules apply to AI agents (like pi) and humans alike,
+        but AI agents are the primary audience because they are the
+        ones most likely to violate them through scope creep.
+
+        Rule 1: No unspec'd code. Every .ml file, every module, every
+        significant function must have a corresponding .borg section
+        before it is written. If you want to add db_sql.ml, first add
+        a (subsection db-sql) to lib.borg with (status planned) and a
+        doc block describing what it does. Then implement. This is not
+        bureaucracy — it is how borge prevents drift. Code without a
+        spec is code without an owner.
+
+        Rule 2: Read the spec before building. Before implementing
+        any feature, read the relevant .borg sections — especially
+        their (details ...) blocks and (status ...). A (status planned)
+        section with detailed doc is a design document: follow it. A
+        section marked (status planned) with no details is a blank
+        check: ask the human before filling it in. A feature not in
+        any .borg file is out of scope — do not build it without
+        explicit instruction.
+
+        Rule 3: Follow existing patterns. When the codebase has an
+        established pattern (like generate.ml using Agent.run_pi_print
+        for LLM-mediated generation), and the spec describes the same
+        pattern (like ui.borg's generation-workflow section saying
+        "assemble prompt, call the LLM"), follow that pattern. Do not
+        invent alternative approaches (like template rendering) unless
+        the spec explicitly calls for them.
+
+        Rule 4: Update spec status after implementation. When you
+        implement something that was (status planned) in a .borg file,
+        update it to (status implemented). When you add a new module,
+        add a corresponding subsection. Stale statuses are a form of
+        drift — they make borge report inaccurate and mislead the
+        next agent about what is done vs. what is pending.
+
+        Rule 5: Check against spec during loops. In iterative
+        workflows (Ralph loops, multi-step tasks), periodically
+        verify: does my task list match what the .borg files say?
+        Am I building something the spec describes, or am I building
+        something I invented? If a task item has no corresponding
+        .borg section, stop and ask before proceeding.
+
+        Rule 6: Agents write only agent comments. An agent may only
+        create, modify, or delete comments where the authorship is
+        "agent" or "bot". Agents may NOT create, modify, or delete
+        comments attributed to humans ("roerick" or any non-agent
+        author). If an agent needs to quote a human, it uses
+        (* agent note (|The user said: ...|) *). If a human wants a
+        conversation captured in the spec, the human writes
+        (* <name> ask ...) and the agent writes (* agent response ...).
+        This rule is enforced by the lock integrity check (detects
+        inserted and deleted human comments) and by lint (detects
+        added human comments via git diff).
+      |))
+  )
+ )
+)

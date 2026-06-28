@@ -1,7 +1,10 @@
 (project borge-history
  (doc "Git is the history engine. Every agent action gets a commit.")
  (status implemented)
- (exports log_commit log_action show_history)
+ (exports log_commit
+  log_action
+  show_history
+ )
  (section philosophy
   (doc "Why git IS the history system")
   (status implemented)
@@ -138,7 +141,9 @@
 
          lib/lock/session_report.ml is the generator module.
          Called from Lock.teardown after integrity check passes.
-        |))))
+        |))
+   )
+  )
   (subsection report-structure
    (doc "What each session report HTML page contains")
    (status planned)
@@ -171,7 +176,9 @@
 
          Both views are in a single HTML file with CSS-driven
          tab switching. No JS required for basic functionality.
-        |))))
+        |))
+   )
+  )
   (subsection report-index
    (doc "The .borge-history/index.html session browser")
    (status planned)
@@ -197,7 +204,9 @@
          borge history --serve [--port 8080]:
            Starts python3 -m http.server (or similar) at
            .borge-history/ for interactive browsing.
-        |))))
+        |))
+   )
+  )
   (subsection diff-rendering
    (doc "Semantic diff rendering for .borg files")
    (status planned)
@@ -224,7 +233,9 @@
          For code file diffs (.ml, .go, .c, etc.), the renderer
          provides standard unified diff format with line numbers
          and syntax-aware highlighting where available.
-        |))))
+        |))
+   )
+  )
   (subsection victor-integration
    (doc "How victor consumes session reports instead of job queue output")
    (status planned)
@@ -255,7 +266,9 @@
 
          See victor.borg section session-reports-consumption for
          the full victor-side spec.
-        |))))
+        |))
+   )
+  )
   (subsection brochure-integration
    (doc "How brochure renders build history as part of the public site")
    (status planned)
@@ -269,4 +282,8 @@
 
          See brochure.borg section build-history for the full
          brochure-side spec.
-        |))))))
+        |))
+   )
+  )
+ )
+)

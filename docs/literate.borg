@@ -1,0 +1,533 @@
+(project borge-docs-literate
+ (section comment-integrity
+  (doc "Protect human-authored comments from silent agent deletion")
+  (status implemented)
+  (details
+   (doc (|
+        Annotated comments with a human author (e.g. (* roerick note ... *))
+        are first-class spec content. Agents must never delete them silently.
+
+        For planning agents (borge plan): the agent edits .borg files in
+        .borge.lock/working/. At commit time, borge checks whether any
+        human-authored comments were deleted by comparing working/ with
+        original/. If deletions are found, the commit is blocked. The
+        user must either restore the deleted comments or run borge commit
+        --force to override. The diff original/..working/ is shown.
+
+        For implementing/fixing agents (borge make, borge drift --fix):
+        these agents cannot modify .borg files, so this check does not
+        apply. Code file comment integrity may be added in the future.
+
+        borge lint (legacy) compares the working tree against git HEAD.
+        If a human-authored comment is present in HEAD but missing in the
+        working tree, lint emits a deletion warning. Nested comments are
+        now captured by the parser and inspected by lint, so this no
+        longer has the historical blind spot inside (project ...) or
+        (section ...) forms. This still works for non-agent editing but
+        is redundant when the agent workflow is used.
+
+        borge normalize is the human saying "I made changes on purpose."
+        It runs borge fmt, then accepts all comment deletions as
+        intentional by recording the current state as the new baseline.
+        After normalize, lint will not warn about those deletions again.
+      |))
+  )
+ )
+ (section code-documentation
+  (doc "Crawl .ml files for documentation coverage under ocaml-dune convention")
+  (status in-progress)
+  (details
+   (doc (|
+        Under the ocaml-dune convention, borge drift checks code files
+        too. For every .ml file it finds all let bindings (functions
+        and values). A binding is documented if it has a borge-style
+        annotated comment above it:
+          (* author note (|description of what this does|) *)
+
+        Undocumented bindings are reported as a coverage gap. This makes
+        literate programming the default: functions should explain
+        themselves. To exempt a binding from documentation:
+          (* exempt doc *)
+
+        The drift report shows: total bindings, documented count,
+        undocumented count, coverage percentage. This is code drift
+        by another name: the code exists but the spec (in the form of
+        inline documentation) does not cover it.
+      |))
+  )
+  (subsection doc-coverage-command
+   (doc "borge drift --docs: analyze documentation coverage")
+   (status implemented)
+   (details
+    (doc (|
+       Implementation: borge drift --docs flag triggers documentation
+       coverage analysis.
+
+       Algorithm (implemented in lib/doc/):
+       1. Find all .ml files (respecting _build/.git exclusion)
+          via Doc_extract.find_ml_files
+       2. Extract all top-level let bindings via
+          Doc_extract.extract_bindings
+       3. For each binding, check for preceding doc comment via
+          Doc_detect.extract_file_docs:
+          - (** docstring *) (ocamldoc style)
+          - (* author note (|...|) *) borg-style comment
+          - (*| ... |*) alternative borg format
+          - (* exempt doc *) — marks as exempt, not undocumented
+       4. Skip bindings (handled by Doc_extract classification):
+          - let%test (test bindings)
+          - let _ = (ignored bindings)
+          - Bindings starting with _ (implicitly private)
+       5. Output: (documentation ...) block in .borg.meta
+          via Doc_coverage.generate_meta_block
+
+       Coverage calculation (Doc_coverage.calculate_file_coverage):
+       - documented = count of bindings with valid doc
+       - exempt = count of bindings with (* exempt doc *)
+       - total-bindings = all extracted bindings (after filtering)
+       - undocumented = total - documented - exempt
+       - coverage-percent = documented / (total - exempt) * 100
+
+       Drift findings produced:
+       - undocumented-module: file with coverage < threshold
+       - undocumented-function: specific binding missing doc (if --verbose)
+
+       CLI output (non-json):
+       lib/borge/spec.ml: 38/45 documented (84.4%), 2 exempt, 5 undocumented
+       lib/borge/parse.ml: 12/28 documented (42.9%) ⚠ undocumented-module
+
+       Integration with stats: borge stats aggregates all (documentation ...)
+       blocks from .borg.meta files for project-wide coverage report.
+
+       Remaining work:
+       - Wire Doc_coverage into borge_drift.ml as --docs flag
+       - Add --verbose flag for per-binding undocumented names
+       - Add Cmdliner argument for threshold override
+     |))
+   )
+  )
+  (subsection doc-formats
+   (doc "Supported documentation comment formats")
+   (status implemented)
+   (details
+    (doc (|
+       OCaml supports multiple doc comment styles. Borge recognizes:
+
+       1. Standard docstring (ocamldoc style):
+          (** Convert a string to a status value.
+              @raise Invalid_argument if string is unknown *)
+          let status_of_string s = ...
+
+       2. Borg-style annotated comment:
+          (* roerick note (|
+             This function implements the status conversion logic.
+             It handles all valid status strings defined in the spec.
+           |) *)
+          let status_of_string s = ...
+
+       3. Borg-style annotated comment with literacy score:
+          (* agent note [5250] (|
+             The balance checker is a paranoid paren counter. We do
+             NOT trust the parser for structural validation because
+             a syntax error in the parser itself could hide a real
+             bug. So balance is a separate, dumber implementation.
+
+             This is defense in depth: the parser and balancer are
+             independent. They should agree. When they don't, at
+             least one is wrong.
+           |) *)
+          let check_balance input = ...
+
+       4. Short borg comment:
+          (*| Convert string to status. Raises on invalid input. |*)
+          let status_of_string s = ...
+
+       5. Exemption marker:
+          (* exempt doc *)
+          let internal_helper x = ...
+
+       The literacy score [NNNN] is optional on borg-style comments.
+       See the comment-writing-guide subsection for the full
+       scoring system.
+
+       All formats are extracted during drift --docs analysis and
+       contribute to coverage calculations.
+     |))
+   )
+  )
+  (subsection drift-doc-integration
+   (doc "How doc coverage is reported in drift and enforced")
+   (status implemented)
+   (details
+    (doc (|
+       When borge drift --docs runs, findings are generated in two
+       places:
+
+       1. .borg.meta files get (documentation ...) blocks with full
+          metrics. These are machine-readable and git-tracked.
+
+       2. Drift findings list includes coverage-related findings:
+          - (finding undocumented-module (file PATH) (coverage PERCENT))
+          - (finding undocumented-function (file PATH) (name NAME))
+            (only with --verbose flag)
+
+       Thresholds and enforcement:
+       - Coverage >= threshold: no finding (good)
+       - Coverage 50%-threshold: warning-level finding
+       - Coverage < 50%: error-level finding
+       - Default threshold: 80% (0.8)
+
+       Exit codes:
+       - 0: all files meet threshold or above
+       - 1: at least one file below 50% (error-level)
+       - 2: at least one file between 50% and threshold (warning-level)
+         only when --strict flag is passed; otherwise exit 0
+
+       --strict flag:
+       Without --strict, warnings are printed but do not cause a
+       non-zero exit. With --strict, any file below the threshold
+       (including warning-level) causes a non-zero exit. This allows
+       CI to gradually enforce coverage: start without --strict,
+       fix the errors, then add --strict to catch warnings too.
+
+       The threshold is configurable per-project in borge.borg:
+       (convention ocaml-dune
+         (doc-coverage-threshold 0.7))
+
+       Remaining work:
+       - Wire Doc_coverage.meets_threshold into drift exit code logic
+       - Add --strict and --verbose Cmdliner args to borge_drift.ml
+       - Read doc-coverage-threshold from borge.borg convention stanza
+     |))
+   )
+  )
+  (subsection comment-writing-guide
+   (doc "How to write code comments — literacy scoring for agents and humans")
+   (status implemented)
+   (details
+    (doc (|
+       Comments are not checkboxes. They are how the codebase tells
+       its story. The goal is not coverage — it is literacy. Can
+       someone read this file like a book and understand it?
+
+       Every borg-style comment carries a 4-digit literacy score:
+
+         (* agent note [STORY EXPLAIN TEACH EDGE] (| ... |) *)
+
+       Each digit is 0–7, self-declared by the author based on
+       what the comment actually contains. Zeros are honest and
+       common — most comments do not need to excel at everything.
+
+       1. STORY — Does this comment connect to a narrative?
+          0: No story. Just facts about this function.
+          5: Has context. Explains why this exists in the story
+             of the module — what came before, what comes after,
+             why you're reading it now.
+          7: Reads like a book chapter. You'd publish it. Someone
+             could understand the module's architecture from the
+             comments alone, without reading code.
+
+       2. EXPLAIN — Does it explain what's happening in the code?
+          0: Doesn't explain the implementation.
+          5: Explains the algorithm or data flow. Someone could
+             understand how the code works without reading every
+             line.
+          7: Walks you through it like a debugger session. Line
+             by line where needed. Reveals the mechanics.
+
+       3. TEACH — Does it teach something transferable?
+          0: No transferable insight.
+          5: Teaches a technique, pattern, or gotcha — something
+             you'll use elsewhere in the codebase or in other
+             projects.
+          7: Teaches a fundamental concept. You'll remember it
+             years later in unrelated code.
+
+       4. EDGE — Does it say what breaks?
+          0: No boundary discussion. Only the happy path.
+          5: Major edge cases, preconditions, or failure modes
+             mentioned. You know at least one thing that can go
+             wrong.
+          7: Every precondition stated, invariants explicit,
+             failure modes catalogued. Reads like an incident
+             report written by someone who got paged at 3am.
+
+       Examples:
+
+       A solid everyday comment — doesn't need to be a dissertation:
+         (* agent note [5200] (|
+            The balance checker is a paranoid paren counter. We
+            do NOT trust the parser for structural validation
+            because a parser bug could hide a real structural
+            error. So balance is a separate, dumber implementation.
+
+            This is defense in depth — two independent checks
+            that should agree.
+          |) *)
+
+       A wrapper that needs almost no comment — honest zeros:
+         (* agent note [5000] (|
+            WRAPPER: balance-verbose is the same scanner as
+            balance but with a paren stack for error reporting.
+            Same algorithm, more memory.
+          |) *)
+
+       An edge-case-heavy function that needs thorough warning:
+         (* agent note [5557] (|
+            Extracts named elements from a UI element tree.
+
+            Edge cases handled:
+            - Empty tree: returns empty list (not an error)
+            - Duplicate names: all occurrences collected, caller
+              deduplicates if needed
+            - Deep nesting: recurses through all children, O(depth)
+            - Null names: elements without names are silently
+              skipped (they're structural, not semantic)
+
+            Invariant: returned list preserves document order.
+            Do not sort it — downstream tools expect FIFO.
+          |) *)
+
+       Guidelines:
+       - Score honestly. [5000] is not a failing grade — it means
+         "I told the story but didn't explain mechanics, teach
+         principles, or catalogue edge cases." That's fine for
+         many functions.
+       - Zeros are the default. Adding a dimension takes effort.
+         If you didn't put edge cases in the comment, score EDGE
+         as 0. Don't inflate scores to look good.
+       - borge lint checks presence: every agent note must have a
+         [NNNN] score block. Missing score is a lint warning.
+       - borge lint checks plausibility: if you claim [7] on
+         TEACH but the comment contains no transferable insight,
+         lint suggests adjusting the score or adding content.
+       - When a comment changes, reset the 4th digit (EDGE)
+         and 1st digit (STORY if module context changed) to
+         reflect unverified currency. Humans raise digits; agents
+         should not claim currency they haven't verified.
+       - Exempt internal helpers with (* exempt doc *) only if
+         the name is truly self-documenting.
+     |))
+   )
+  )
+  (subsection code-doc-drift-status
+   (doc "Mark inline code comments as drifted from implementation")
+   (status implemented)
+   (details
+    (doc (|
+       When a code comment no longer accurately describes its
+       function, it should be marked as drifted. This signals to
+       agents and humans that the comment needs updating — it is
+       not a silent lie, it is an explicit flag.
+
+       Syntax: add (status drifted) to the borg-comment:
+         (* agent note (|
+            WHAT: Parse a .borg file into a typed AST.
+
+            WHY: Downstream tools need structured access.
+          |) (status drifted) *)
+         let parse_file input = ...
+
+       Or in the short borg format:
+         (*| Parse .borg into typed AST. | (status drifted) *)
+
+       Or in standard docstring:
+         (** Parse a .borg file into a typed AST.
+             @drifted comment does not mention error handling *)
+
+       When to mark drifted:
+       - An agent modifies a function's behavior but doesn't
+         update the comment (agent should mark it, not ignore it)
+       - A human changes code and notices the comment is stale
+       - borge review detects doc-code mismatch and marks it
+
+       When NOT to mark drifted:
+       - Just update the comment instead. Drifted is for cases
+         where you can't or won't fix it right now — you're
+         acknowledging the gap, not endorsing it.
+
+       Drift status in borg-comments:
+       The (status drifted) form inside a borg-comment is
+       analogous to (status drifted) in a .borg section. Both
+       say: this description once matched reality, but no longer.
+
+       Integration with borge review:
+       - borge review checks for (status drifted) markers
+       - If found, the finding is downgraded from "undocumented"
+         to "drifted" — the function has a comment, but it's
+         known-stale. This is better than undocumented (something
+         was there) but worse than documented (it's accurate).
+       - Coverage calculation: drifted comments count as
+         documented for the numerator but are flagged separately
+         in the report.
+
+       Integration with borge lint:
+       - (status drifted) markers produce a Stale_doc_comment
+         lint warning (not error — the gap is acknowledged).
+       - Without the marker, a stale comment that doesn't match
+         the code is an unacknowledged lie — that should be
+         caught by borge review (agentic), not lint (static).
+     |))
+   )
+  )
+ )
+ (section code-comment-integrity
+  (doc "Lint .ml files for missing documentation on exported bindings")
+  (status implemented)
+  (details
+   (doc (|
+        The existing comment-integrity section protects .borg file
+        comments from silent agent deletion. This section extends
+        lint to .ml code files, enforcing the literate-programming
+        rule that every exported function must have a doc comment.
+
+        This is the enforcement arm of code-documentation:
+        drift --docs detects and reports coverage gaps; lint
+        --code-doc makes it a pass/fail check.
+
+        New lint issue types for .ml files:
+        - Undocumented_binding: exported binding at PATH:LINE with
+          name NAME has no preceding doc comment and no
+          (* exempt doc *) marker. Severity: warning by default,
+          error with --strict.
+        - Stale_doc_comment: a doc comment exists but the binding
+          signature below it has changed since the doc was last
+          reviewed (future: compare against .borg.meta reviewed-at
+          timestamp). Severity: warning.
+
+        Integration with existing lint pipeline:
+        - borge lint already walks .borg files. This adds a second
+          pass over .ml files using Doc_extract.extract_bindings and
+          Doc_detect.extract_file_docs.
+        - New lint_issue variant:
+          | Undocumented_binding of { path; name; line }
+          | Stale_doc_comment of { path; name; line; last_reviewed }
+        - These are included in lint_result.issues alongside existing
+          .borg issues.
+        - Error/warning classification follows drift-doc-integration
+          thresholds: undocumented on exported binding = warning,
+          undocumented with --strict = error.
+
+        Exemptions:
+        - Bindings starting with _ are internal, not checked.
+        - (* exempt doc *) marker skips the binding.
+        - Test bindings (let%) are skipped.
+        - .mli-only modules: the .mli is the surface, but doc comments
+          on .ml bindings are still expected. A binding with
+          no .ml doc but a .mli doc is still flagged — the doc
+          should live with the implementation.
+
+        CLI:
+        - borge lint (existing): now also checks .ml files when
+          the code-comment-integrity section is present and not
+          (status planned).
+        - borge lint --code-doc: explicitly enable .ml file checks
+          even if section status is planned (for gradual adoption).
+        - No separate subcommand — this integrates into the existing
+          lint flow.
+
+        Exit code impact:
+        - Undocumented_binding counts as warning in lint_result.
+        - With --strict, counts as error.
+        - lint already exits 1 if error_count > 0, 0 otherwise.
+
+        Future:
+        - Stale_doc_comment needs .borg.meta reviewed-at tracking.
+        - Could integrate with semantic review: if borge review
+          finds low doc-accuracy, that could promote the lint issue
+          from warning to error.
+      |))
+  )
+  (subsection lint-code-doc-flag
+   (doc "borge lint --code-doc: enable .ml file doc checks")
+   (status implemented)
+   (details
+    (doc (|
+       Adds a Cmdliner --code-doc flag to borge_lint.ml.
+
+       When passed (or when code-comment-integrity status is not
+       planned), the lint runner does a second pass:
+       1. Find all .ml files via Doc_extract.find_ml_files
+       2. For each file, extract bindings and docs
+       3. For each exported binding without doc or exemption,
+          emit Undocumented_binding lint issue
+       4. Add to the existing lint_result and print alongside
+          .borg issues
+
+       Output format (consistent with existing lint):
+         ⚠ lib/borge/spec.ml:42: undocumented binding 'parse_section'
+         ⚠ lib/borge/drift.ml:15: undocumented binding 'check_code_drift'
+
+       Or with --strict:
+         ✗ lib/borge/spec.ml:42: undocumented binding 'parse_section'
+     |))
+   )
+  )
+ )
+ (section ast-position-tracking
+  (doc "Source position tracking on AST nodes for better diagnostics")
+  (status implemented)
+  (details
+   (doc (|
+        Currently only annotated comments have start_line/end_line. The
+        sexp type itself carries no position info. Adding start_pos and
+        end_pos to every sexp node would enable:
+          - balance to report which ( at which line was closed early
+          - nodes to show positions for each AST node
+          - drift to map spec nodes to source locations
+          - editors to jump to spec definitions
+        The position type should include line, col, and offset to
+        support both human-readable and machine-consumable output.
+      |))
+  )
+ )
+ (section literate-programming
+  (doc "The borge philosophy: spec is the primary artifact, code is derived")
+  (status implemented)
+  (* agent note (|
+     roerick, on the original goal (2026-05-28): "we were initially
+     going to build out a feature set where we A. implement a policy of
+     comments for every function in our analyzed code and B. implement
+     a static analysis linter to make sure that each function has
+     comments, a la literate programming. this way we can determine if
+     functions are doing what they say, and better analyze drift."
+
+     The ambition grew beyond mechanical coverage (2026-06-19):
+     "I'm generally not thrilled with the amount and quality of
+     comments in the code. they're nice. but they feel like a
+     checkbox, rather than like a living book or document which i
+     can read to understand the codebase... maybe a scoring metric
+     to show 'how effectively does this comment tell our story'."
+     That tension — between checkbox coverage and readable
+     narrative — is the animating problem of this section.
+   |) *)
+  (details
+   (doc (|
+        In a borge project, the spec is not documentation — it IS the
+        source of truth. The .borg file is the artifact. Borge reads
+        specs, validates them, reports on them, and helps agents edit
+        them. But borge does NOT generate code. Every .borg file is
+        both a human-readable design document and a machine-checkable
+        contract.
+
+        The three pillars:
+
+        1. Spec first: write (status planned) sections before code.
+           Use borge make spec to turn todos into structured specs.
+
+        2. Implement via agent: borge make opens an interactive session
+           where an agent implements planned sections. The agent writes
+           code AND updates the spec, journaling changes. This is NOT
+           code generation — the spec is authored, not derived.
+
+        3. Verify continuously: borge balance, check, drift, and review
+           keep spec and code aligned. Drift means the implementation
+           has diverged from the spec. Fix the code or update the spec.
+
+        A completed project is one where every section is (status
+        implemented), every file has a code review, and borge drift
+        reports zero items.
+      |))
+  )
+ )
+)

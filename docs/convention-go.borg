@@ -1,9 +1,8 @@
 (project convention-go
- (doc "go-standard convention: structural rules and code intelligence
-       for Go projects using borge. Analogous to how ocaml-dune is
-       the implicit convention for borge's own codebase.")
+ (doc "go-standard convention: structural rules and code intelligence\n       for Go projects using borge. Analogous to how ocaml-dune is\n       the implicit convention for borge's own codebase.")
  (status planned)
- (no-inline)
+ (no-inline
+ )
  (section convention-definition
   (doc "What (convention go-standard) declares about project structure")
   (status planned)

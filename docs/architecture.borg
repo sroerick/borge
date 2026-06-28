@@ -1,0 +1,375 @@
+(project borge-docs-architecture
+ (section program-architecture
+  (doc "How borge is structured: one root spec, inlined sub-specs, no orphans")
+  (status implemented)
+  (details
+   (doc (|
+        The root borge.borg file is the architectural contract. It
+        declares what modules exist and how they relate by inlining
+        their specs. It is the AGENTS.md equivalent for borge projects.
+
+        (convention ocaml-dune) declares the structural rules for this
+        project. Borge loads the rule set and uses it for structural drift
+        detection. The convention covers: lib/ owns domain logic, bin/ owns
+        CLI IO, dune files define libraries and executables, public_name
+        conventions, test/ structure. Other conventions: go-standard,
+        c-makefile, etc. This way lib.borg describes WHAT the lib does,
+        not HOW OCaml works — the convention handles the how.
+
+        Every .borg file must either be inlined by a parent or declare
+        no-inline itself. A .borg file with no parent and no no-inline
+        declaration is orphaned — this is structural drift.
+
+        The inline directive is by filename/path and supports two target
+        formats (with or without quotes; quotes allow '/' subdirectories):
+          (inline cli.borg)
+          (inline "lib/core/core.borg")
+          (inline login.mli)
+        The first form targets a .borg file containing the spec. The
+        quoted form is the same but may include a relative path. The
+        .mli form targets an .mli file; the spec lives in a
+        (* borge (subsection ...) *) comment at the top of the .mli.
+        The parent owns the architectural relationship. The child owns
+        the detail.
+
+        Drift detection covers three layers:
+          1. Spec drift: .borg file describes something not in the code
+          2. Code drift: code implements something not in .borg
+          3. Structural drift: code organization violates the convention
+             (e.g. domain logic in bin/ when ocaml-dune says lib/ owns it)
+      |))
+  )
+  (subsection spec-interface-implementation-layers
+   (doc "The .borg → .mli → .ml layering borge is aware of")
+   (status planned)
+   (details
+    (doc (|
+         Borge's project hierarchy has three layers, and borge is
+         aware of each at the level appropriate to it:
+
+           .borg   — intent. Borge OWNS this layer: reads, writes,
+                     validates, formats it. The spec is primary.
+           .mli    — interface contract. Borge is AWARE of this layer:
+                     reads it for drift checks, never restates it in
+                     the spec. The .mli is the integration contract
+                     between subtrees — what one module owes another.
+           .ml     — implementation. Borge CHECKS this layer against
+                     both .borg (does it match the intent?) and .mli
+                     (does it match the interface?). The .ml is the
+                     disposable, regenerable artifact.
+
+         The inline tree (root .borg inlines child .borg files) is the
+         top of this hierarchy. Below it, each library's .borg is aware
+         of the .mli files in its scope and reads them as drift inputs.
+         Borge does not duplicate .mli content into .borg — the .mli
+         is the authoritative interface; the .borg is the authoritative
+         intent; restating either in the other creates drift by design.
+
+         Formal requirement (planned): every dune library has a .borg
+         file that is inlined by the root, and each such .borg is
+         aware of the .mli files in its scope. A library with no .borg,
+         or a .borg that ignores its .mli files, is structural drift.
+         This keeps the loose tree loose (per-library .borg, writable
+         by humans) while making the coverage complete.
+       |))
+   )
+  )
+ )
+ (section modules
+  (doc "The modules that make up borge, inlined by filename")
+  (status implemented)
+  (subsection lang
+   (doc "The borge language: parsing, printing, and balancing")
+   (status implemented)
+   (inline sexp.borg
+   )
+  )
+  (subsection lib
+   (doc "Domain operations: checking, reporting, formatting, spec extraction")
+   (status implemented)
+   (inline lib.borg
+   )
+  )
+  (subsection cli
+   (doc "CLI entrypoints: thin wrappers that call lib functions")
+   (status implemented)
+   (inline cli.borg
+   )
+  )
+  (subsection history
+   (doc "Change tracking and provenance for .borg files")
+   (status implemented)
+   (inline history.borg
+   )
+  )
+  (subsection meta
+   (doc "Companion metadata files for structured analysis observations")
+   (status in-progress)
+   (inline meta.borg
+   )
+  )
+ )
+ (section tool-pipeline
+  (doc "Defensive toolkit for writing .borg files")
+  (status implemented)
+  (subsection balance
+   (doc "Check paren balance. Run FIRST after every edit.")
+   (status implemented)
+   (details
+    (doc (|
+          Balance is a fast character-level scanner that tracks paren nesting
+          depth. It skips verbatim strings, quoted strings, and comments so
+          only structural parens are counted. It also validates that
+          structural `)` on their own line align with their matching `(` .
+          It is the #1 defensive tool: run it after every edit to catch
+          structural errors before parse.
+        |))
+   )
+  )
+  (subsection balance-verbose
+   (doc "Show paren stack on error: which ( matches which )")
+   (status implemented)
+   (details
+    (doc (|
+          When balance finds an unexpected close-paren, it reports the
+          full paren stack: which open-paren is still open, at what line/col,
+          and what keyword it belongs to. It also reports indent_mismatch
+          errors when a structural `)` on its own line does not align with
+          its matching `(` .
+
+          With --repair, balance infers missing or extra `)` from indentation
+          and outputs a corrected file with properly indented new lines.
+          The --verbose flag adds the raw paren stack list.
+        |))
+   )
+  )
+  (subsection parse
+   (doc "Full syntax validation. Run after balance passes.")
+   (status implemented)
+  )
+  (subsection report
+   (doc "Show status summary across all .borg files. Use this to plan work.")
+   (status implemented)
+   (details
+    (doc (|
+          CURRENT DRIFT: report treats all .borg files as peers and
+          counts statuses independently. It does not walk the inline
+          tree. This means inlined sub-specs are double-counted: if
+          borge.borg says (subsection sexp (status implemented)) and
+          sexp.borg also has its own statuses, both get counted. The
+          fix: report should start from the root file, follow inline
+          directives, and count each section once.
+        |))
+   )
+  )
+  (subsection future
+   (doc "Show what's planned but not yet implemented - the roadmap view")
+   (status planned)
+   (depends-on
+    "report command implementation"
+   )
+   (details
+    (doc (|
+          borge future scans all .borg files and extracts a roadmap:
+          what's spec'd as 'planned' or 'in-progress' vs what's
+          'implemented'. This is the forward-looking companion to
+          'borge report' which shows current state.
+
+          Output format:
+          
+          === PLANNED ===
+          victor.borg:485  (section agentic-task-ui) - agent run popup UI
+          victor.borg:523  (section agentic-task-ui) auto-accept mode
+          borge.borg:320   (subsection doc-coverage-command)
+          
+          === IN PROGRESS ===
+          victor.borg:237  (section codemirror-integration)
+          
+          === READY FOR REVIEW ===
+          victor.borg:120  (subsection job-panel) - jobs complete
+          (anything implemented but depends on planned items)
+
+          Usage:
+          borge future              # Show all planned work
+          borge future --section X  # Future work in specific section
+          borge future --summary    # Just counts: planned/in-prog/implemented
+
+          This command helps answer:
+          - "What's next on the roadmap?"
+          - "How much of the vision is implemented?"
+          - "What depends on what?"
+          - "Which sections are ready to work on?"
+
+          Integration with Victor IDE:
+          - Shows in job panel as "12 items planned"
+          - Click to see full future report
+          - Can queue agents to work on planned sections
+        |))
+   )
+  )
+  (subsection nodes
+   (doc "Dump the parsed AST with types and positions for debugging")
+   (status implemented)
+   (details
+    (doc (|
+          Walks the AST and prints each node with its type, keyword (if
+          list), source position, and child count. Example output:
+            1:1  List "project" [5 children]
+              1:9  Atom "borge"
+              1:16 List "doc" [2 children]
+          This exposes what the parser actually sees - critical for
+          debugging mismatches between source and AST.
+        |))
+   )
+  )
+  (subsection lint
+   (doc "Semantic validation: invalid status, illegal placement, literacy.")
+   (status implemented)
+   (details
+    (doc (|
+          borge lint checks for:
+          - Invalid status values (not planned/in-progress/implemented/verified/etc)
+          - Duplicate project names across .borg files
+          - Orphaned .borg files (no inline parent, no no-inline)
+          - Unknown comment types in annotated comments
+          - Missing values in annotated comments
+          - Deleted human-authored comments (compared to git HEAD)
+          - Pending ask/response pairs without answers
+          - (no-inline) on root files (root files can't inline anything)
+          - Mechanical code quality: unsafe stdlib calls, polymorphic
+            equality. borge lint --mechanical to enable.
+
+          borge lint --literacy checks .ml files for:
+          - Missing literacy scores on agent-written doc comments
+            (no [NNNN] after the authorship tag)
+          - Plausible scores: if STORY >= 6 the comment must show
+            narrative context; if EXPLAIN >= 6 it must walk through
+            mechanics; if TEACH >= 6 it must contain a transferable
+            principle. Catches inflated scores like [7777777] on a
+            2-line comment.
+        |))
+   )
+  )
+  (subsection drift
+   (doc "Detect spec drift, code drift, and structural drift")
+   (status implemented)
+   (details
+    (doc (|
+          Three layers of drift detection:
+
+          1. Spec drift: a .borg file describes something not in the
+             codebase. E.g. cli.borg says (status implemented) for a
+             command but no corresponding binary exists.
+
+          2. Code drift: the codebase has something not in any .borg
+             file. E.g. a .ml file exists but nothing in the specs
+             mentions it.
+
+          3. Structural drift: the code organization does not match the
+             inline architecture. E.g. lib.borg says it owns Check and
+             Report, but those modules live in bin/ instead. The root
+             borge.borg says (inline lib.borg) but the actual dune
+             library structure contradicts what lib.borg describes.
+        |))
+   )
+  )
+  (subsection fmt
+   (doc "Canonicalize indentation. Run before commit.")
+   (status implemented)
+   (details
+    (doc (|
+          Parses and re-prints with canonical indentation. Children of
+          keyword forms (project, section, subsection, details) go on
+          their own lines. Atom names stay inline with keyword.
+          (doc ...) and (status ...) always print inline. Verbatim
+          strings preserve their content verbatim.
+        |))
+   )
+  )
+  (subsection fmt-check
+   (doc "Dry-run: exit 1 if formatting would change the file")
+   (status implemented)
+   (details
+    (doc (|
+          borge fmt --check: parse the file, format it, compare to
+          original. Exit 0 if identical, 1 if different. For CI
+          pre-commit hooks. Also: borge fmt --diff shows the actual
+          diff between current and formatted output.
+        |))
+   )
+  )
+  (subsection check
+   (doc "Recursive health check across all .borg files.")
+   (status implemented)
+  )
+  (subsection worst-failure-modes
+   (doc "What goes wrong and which tool catches it")
+   (status implemented)
+   (details
+    (doc (|
+          Missing open-paren: caught by balance.
+          Extra close-paren: caught by balance.
+          Verbatim not closed: caught by balance (context tracking).
+          Annotated comment inside form body: caught by parse (syntax).
+          Invalid status value: caught by lint (semantics).
+          Duplicate project name: caught by check (cross-file).
+          Bad indentation: caught by fmt (auto-fixes).
+          Tracking progress: borge report shows what is done and what is next.
+          Formatter producing unbalanced output: caught by fmt --check
+            or by running borge balance on fmt output.
+          Orphaned .borg file: caught by drift (structural).
+          Domain logic in wrong layer: caught by drift (structural).
+          Human comment deleted by agent: caught by lint (comment integrity).
+          Undocumented function: caught by drift (code-documentation).
+          Unsafe stdlib call (List.hd, List.assoc, Hashtbl.find,
+            String.sub, int_of_string, open_in, input_line):
+            caught by lint --mechanical. Full rule table in
+            lib.borg section check / subsection code-quality.
+          Polymorphic equality on strings/lists: planned —
+            lint --mechanical with AST walker.
+          Deeply nested match (> 3 levels): planned — lint
+            --mechanical with AST walker. Exception: state-
+            machine patterns (e.g., balance checker).
+        |))
+   )
+  )
+  (subsection dead-code-integration
+   (doc "Enrich drift findings with dead_code_analyzer liveness data")
+   (status planned)
+   (details
+    (doc (|
+         The dead_code_analyzer identifies OCaml functions that are
+         never transitively called. Integrating its output into borge
+         drift adds a liveness dimension to the existing spec-coverage
+         analysis, producing four categories instead of two:
+
+           Spec'd + Alive    -> healthy
+           Spec'd + Dead     -> spec rot: planned code that nobody uses
+           Unspec'd + Alive  -> doc gap (already flagged by drift)
+           Unspec'd + Dead   -> strong removal candidate
+
+         Integration approach (low effort):
+         1. borge drift shells out to dead_code_analyzer on the project
+         2. Parses its output to build a map of function_name -> dead|alive
+         3. Cross-references against the module surface already extracted
+            by drift (lib/check/surface.ml)
+         4. Tags each function in .borg.meta with (dead true) or (dead false)
+         5. Upgrades drift findings: spec'd-but-dead functions become a
+            new finding type (SpecRot) with higher severity
+
+         No new data model is needed — .borg.meta already carries
+         per-function metadata. The dead_code_analyzer is maintained,
+         works on modern OCaml, and is available via opam.
+
+         Future directions (separate subsections):
+         - Clone detection (asak/inzad): find duplicated implementations
+           that should share a single spec section
+         - Exception tracking (Salto/reanalyze): verify that spec claims
+           about error handling match the actual exception surface
+         - AST-level pattern matching (ocamlgrep/osemgrep): upgrade
+           code_quality.ml from regex to Parsetree-level matching
+       |))
+   )
+  )
+ )
+)
