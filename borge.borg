@@ -1,4 +1,116 @@
 (project borge
+ (status in-progress)
+ (convention ocaml-dune
+ )
+ (doc (|
+      Borge is a spec-first verification toolkit and gated agent loop.
+      It keeps specification and implementation aligned across commits —
+      not by orchestrating a swarm of agents, but by restricting what an
+      agent is allowed to do during each phase of work and by treating the
+      spec as the source of truth.
+
+      This file is the root README. It tells the story of why borge exists,
+      explains how the surrounding spec is organized, and then inlines the
+      design documents in docs/ followed by the implementation index in
+      lib.borg.
+    |))
+ (* agent note (|
+    roerick, on what borge is for (2026-05-17): "Other people are
+    solving this problem by spawning dozens of agents and having them
+    work in parallel and at cross purposes. But I think we can achieve
+    the same thing with massively fewer tokens by simply restricting
+    and gating what the agent is allowed to do during a certain
+    implementation phase. And the fact that we are adhering to spec as
+    our source of truth is what's going to hopefully prevent a lot of
+    the total running amok that we do tend to see with these agents."
+
+    The first spark was a question asked a few days earlier
+    (2026-05-15): "is it possible to get postgres to output sexps as
+    data." That sexp format became the through-line — the same
+    structured language could flow from database to spec to parser to
+    code to printed book. Borge is the union of that format and this
+    discipline: a toolkit that keeps agents aligned by gates rather
+    than swarms.
+  |) *)
+ (doc (|
+      A borge project is a tree of .borg files. Every .borg file must
+      either be inlined by a parent or declare (no-inline). Files with
+      no parent and no no-inline declaration are orphaned — structural
+      drift. The inline tree is how status counts, drift detection, and
+      narrative rendering know what belongs to what.
+
+      The workflow has three phases: plan, make, and review. During
+      plan the agent edits only .borg spec files. During make the agent
+      edits only code files; if the spec needs to change, the agent files
+      an issue instead. During review the agent runs drift, lint, and
+      check and asks whether to commit. The gates are the spec.
+    |))
+ (* agent note (|
+    roerick, on the envisioned workflow (2026-05-17): "I'm kind of
+    envisioning a workflow where we go like, okay, generate the code
+    based on the spec. Okay, review the code that was created to
+    determine if we've drifted from spec. Okay, fix any drift from the
+    spec. Okay, review the code that's created again. And hopefully
+    get to something that resembles the code. My hope is that we can
+    achieve like a lot of development this way, basically by running
+    Ralph loops over with using the spec as a source of truth."
+  |) *)
+ (doc (|
+      Borge also treats comments as first-class spec material. A plain
+      comment is a machine note; an annotated comment carries
+      authorship and type and is checked by lint. The goal is not
+      checkbox coverage but a readable narrative: every function should
+      say what it does and why, and the whole codebase should be
+      readable as a book.
+    |))
+ (* agent note (|
+    roerick, on the original goal (2026-05-28): "we were initially
+    going to build out a feature set where we A. implement a policy of
+    comments for every function in our analyzed code and B. implement
+    a static analysis linter to make sure that each function has
+    comments, a la literate programming. this way we can determine if
+    functions are doing what they say, and better analyze drift."
+
+    The ambition grew beyond mechanical coverage (2026-06-19):
+    "I'm generally not thrilled with the amount and quality of
+    comments in the code. they're nice. but they feel like a checkbox,
+    rather than like a living book or document which i can read to
+    understand the codebase... maybe a scoring metric to show 'how
+    effectively does this comment tell our story'."
+  |) *)
+ (doc (|
+      One concrete expression of that narrative goal is the borge book
+      printer: it emits the spec tree as a paginated PDF with line
+      numbers and wide margins, ordered so that design documents come
+      before interfaces and interfaces come before implementations.
+      The book is meant to be read, not just referenced.
+    |))
+ (* agent note (|
+    roerick, on the book vision (2026-06-28): "I want to print
+    codebases... read them like a book."
+  |) *)
+ (doc (|
+      Layout of this spec:
+
+      - docs/architecture.borg — how borge is structured: one root
+        spec, inlined sub-specs, no orphans, the convention system.
+      - docs/engine.borg — core tooling: formatting, verification,
+        config, spec-language design, future work.
+      - docs/sexp.borg — the borge s-expression language: parsing,
+        printing, balancing, and nested comments.
+      - docs/literate.borg — documentation coverage, comment
+        integrity, literate-programming philosophy.
+      - docs/agent.borg — the agent workflow: plan, make, execute,
+        review, discipline.
+      - docs/merge.borg — transactional isolation, merge queue, branch
+        management.
+      - docs/book.borg — the codebase book printer and its manifest
+        sidecar.
+      - docs/{cli,db,ui,meta,history,convention-go}.borg — other
+        design documents and conventions.
+      - lib.borg — the implementation index; each lib/DIR/DIR.borg
+        file inlines the spec for that library directory.
+    |))
  (inline
   "docs/architecture.borg"
  )
@@ -41,15 +153,11 @@
  (inline
   "lib.borg"
  )
- (doc "A spec-first verification toolkit and gated agent loop that keeps spec and code aligned across commits — not an orchestrator")
- (status in-progress)
- (convention ocaml-dune
- )
  (roerick
   (|
-  I named this project after Victor Borge, my favorite orchestra conductor. 
-  the agent said .borg as the file extension was non-negotiable, 
-  and I guess that's true. 
+  I named this project after Victor Borge, my favorite orchestra conductor.
+  the agent said .borg as the file extension was non-negotiable,
+  and I guess that's true.
   |)
  )
 )
