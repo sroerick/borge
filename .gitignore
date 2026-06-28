@@ -3,3 +3,6 @@ _build/
 _build_test.ml
 *.cmi\n*.cmx\n*.o
 .borge-bugs/
+# borge book output (build artifacts)
+*.book.pdf
+*.book.manifest

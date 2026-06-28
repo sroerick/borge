@@ -21,5 +21,7 @@
            ; MERGE QUEUE
            worktree branch lockfile queue_types queue_storage conflict_detect merge_strategies rollback agent_submit
            ; FUTURE COMMAND
-           future depends format)
+           future depends format
+           ; BOOK
+           book_print book_manifest)
   (libraries borge.lang unix str yojson))

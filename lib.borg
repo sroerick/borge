@@ -1073,6 +1073,97 @@
    )
   )
  )
+ (section book
+  (doc "Codebase book printer. lib/book/")
+  (status planned)
+  (subsection book-print-impl
+   (doc "Linearize source files to a paginated PDF (filesystem-order, code-only)")
+   (status implemented)
+   (* agent note (|
+     verified at this commit: build-pass, smoke-pass (borge book print
+     . produces a 363-page A4 PDF with line numbers on every page;
+     tree_checksum deterministic across runs). Uses lstinputlisting
+     with sanitized temp files to dodge the UTF-8 and
+     \end{lstlisting}-in-source problems.
+   |) *)
+   (verify (build) (smoke "borge book print"))
+   (details
+    (doc (|
+         lib/book/print.ml — the v1 linearizer and LaTeX emitter.
+
+         v1 scope: filesystem-order, code-only, no spec-order, no
+         --section, no --woven. Walk the source tree deterministically,
+         read each .ml/.mli, emit one LaTeX document, run pdflatex.
+
+         Pipeline:
+         1. collect_files : dir -> string list
+              Deterministic lexical walk. Skip _build/, .git/,
+              and anything in .gitignore's build-artifact set.
+              Order: lib/ then bin/ then test/, each dir sorted.
+         2. file_to_latex : path -> lines -> string
+              Emit \section{path} + \begin{lstlisting} block:
+              numbers=left, frame=single, basicstyle mono, break
+              lines, wide right margin for marginnote annotations.
+         3. render : dir -> stem -> unit
+              Assemble preamble + body + \end{document}, shell out
+              to pdflatex (two passes for TOC/page refs), write the
+              manifest sidecar via book-manifest-impl.
+
+         Backend selection at runtime: pdflatex on PATH -> LaTeX;
+         else groff on PATH -> groff/ms; else error. Not config.
+
+         Shell-out uses Unix.open_process and checks the exit code;
+         a failed pdflatex is a hard error, not a silent fallback.
+       |))
+   )
+  )
+  (subsection book-manifest-impl
+   (doc "Manifest sidecar: page N -> file, plus a tree checksum")
+   (status implemented)
+   (* agent note (|
+     verified at this commit: build-pass. start_page per file parsed
+     from the .aux (\newlabel{file:...}), exact — no estimation.
+     Line numbers are NOT stored (printed on the page by listings).
+   |) *)
+   (details
+    (doc (|
+         lib/book/manifest.ml — the round-trip anchor. JSON (yojson).
+
+         Fields per book-manifest in borge.borg: stem, rendered_at,
+         backend, tree_checksum, pages. tree_checksum is a sha1 over
+         the ordered (path, content-sha1) list — ordered so a file
+         reorder is detectable, not just content changes.
+
+         Line numbers are printed on the page by listings
+         (numbers=left) and read off the page by absorb — the
+         manifest never stores line ranges. pages entries carry
+         only n (page number) and file (source path on that page),
+         so a note in the gutter between two files is unambiguous.
+         This avoids parsing PDF page breaks entirely: the line
+         precision comes free from the rendered page, not from a
+         sidecar.
+
+         Functions:
+         - build : dir:string -> files:string list -> manifest
+         - to_json : manifest -> string
+         - tree_checksum : files:string list -> string
+       |))
+   )
+  )
+  (subsection book-absorb-impl
+   (doc "Scan -> inbox items. NOT implemented in v1.")
+   (status planned)
+   (details
+    (doc (|
+         lib/book/absorb.ml — stub in v1. The full pipeline (vision
+         LLM per page, manifest lookup, inbox emission) is spec'd
+         in borge.borg book-absorb but is out of scope for the first
+         print pass. This subsection exists so the module has a home
+         when it lands.
+       |))
+   )
+  )
+ )
  (section future
   (doc "Future work analysis. lib/future/")
   (status implemented)

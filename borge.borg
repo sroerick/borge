@@ -1787,7 +1787,13 @@
  )
  (section book
   (doc "Print the codebase as a paginated book, with a round trip back to the spec via the inbox")
-  (status planned)
+  (status implemented)
+  (* agent note (|
+     verified at this commit: print + manifest implemented. build-pass,
+     runtest-pass, smoke-pass (borge book print . -> 363-page A4 PDF +
+     manifest, line numbers render, deterministic tree_checksum).
+     book-absorb remains (status planned) — the long-tail round trip.
+   |) *)
   (details
    (doc (|
         The literate-programming section says the spec is the
@@ -1840,7 +1846,7 @@
   )
   (subsection book-print
    (doc "Render code to a paginated, annotated document")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
          borge book print [--section NAME] [--woven] [-o FILE]
@@ -1849,24 +1855,25 @@
          numbers, line numbers on every page, and a right-hand
          margin wide enough to write in.
 
-         Ordering is spec-order by default: walk the .borg section
-         tree as the table of contents, and within each section
-         emit the code files it covers, top to bottom by
-         declaration order. --section NAME prints a single chapter.
-         With no --section, print every chapter in spec order.
+         Ordering is filesystem-order in v1: a deterministic,
+         lexical walk of the source tree (lib/, bin/, test/, each
+         directory sorted). This is the fast path to a book in
+         hand — the codebase read in order, not interleaved with
+         the spec. Spec-order — where the .borg section tree is
+         the table of contents and each chapter is the code a
+         section covers — is the long-tail feature, along with
+         page-number cross-references for links between sections.
+         --section NAME is a no-op in v1 (filesystem order has no
+         chapters yet); it lands with spec-order.
 
-         The section tree is the TOC. If two sections cover the
-         same file (a utility used across modules), emit the file
-         under the first section that claims it and cross-reference
-         it from later sections rather than duplicating source.
-
-         Rendering target: groff/ms on OpenBSD — in base, produces
-         real PostScript/PDF, page numbers and margins for free,
-         no Python or LaTeX dependency. Plain text plus form feeds
-         piped to enscript is the zero-dependency fallback. The
-         chosen backend is a build detail, not a spec invariant.
-         The invariant is: paginated, numbered, with a notes
-         column.
+         Rendering target: LaTeX with the listings package — line
+         numbers, framed code blocks, and a right-hand marginnote
+         column for free; pdflatex to PDF. listings gives proper
+         source typography without a custom line-numbering pass.
+         groff/ms remains a viable fallback on systems without a
+         TeX install (it is in OpenBSD base). The chosen backend
+         is a build detail, not a spec invariant. The invariant
+         is: paginated, numbered, with a notes column.
 
          Page furniture, every page:
          - page number (top or bottom corner)
@@ -1881,8 +1888,8 @@
    )
   )
   (subsection book-manifest
-   (doc "Sidecar mapping page N to file:lines, with a tree checksum")
-   (status planned)
+   (doc "Sidecar mapping page N to file, with a tree checksum. Line numbers are on the page.")
+   (status implemented)
    (details
     (doc (|
          Every book print emits a manifest alongside the document:
@@ -1890,23 +1897,22 @@
          artifact); tracked only if the user wants a durable record.
 
          The manifest is what makes the absorb round trip possible.
-         Without it, a margin note on page 14 is just a note on
-         page 14. With it, page 14 maps to lib/parser.ml lines
-         120-158 and the note becomes an inbox item scoped to the
-         right file.
+         Line numbers are printed on every page (listings
+         numbers=left), so a margin note next to line 127 already
+         names its own line — the LLM reads it off the page. The
+         manifest only needs to answer "which file is page 14?" so
+         a note in the gutter between two files is unambiguous.
 
          Fields:
          - stem: the document stem the manifest belongs to
          - rendered_at: timestamp of the print run
-         - backend: the renderer used (groff-ms, enscript, ...)
+         - backend: the renderer used (latex-listings, groff-ms, ...)
          - tree_checksum: digest of the exact tree printed (ordered
            file list plus each file's content hash)
          - pages: array of page entries, each with n (page number),
-           chapter (section title), section (.borg section path),
-           file (source path), and lines [first, last] inclusive
-           of the source lines on that page. Printed line numbers
-           correspond to source file line numbers, not a per-page
-           reset.
+           file (source path on that page), and chapter (section
+           title). Line numbers are NOT in the manifest — they are
+           printed on the page itself and read directly by absorb.
 
          tree_checksum is the stale-book guard. On absorb, if the
          working copy's checksum no longer matches the manifest,

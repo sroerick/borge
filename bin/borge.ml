@@ -6,6 +6,7 @@ open Cmdliner
 let cmds = [
   Abort.cmd;
   Balance.cmd;
+  Book.cmd;
   Issue.cmd;
   Check.cmd;
   Commit.cmd;
@@ -48,6 +49,7 @@ let () =
     `I ("report", "Status summary dashboard");
     `I ("fmt", "Auto-format to canonical indentation");
     `I ("nodes", "AST dump with positions");
+    `I ("book", "print the codebase as a paginated PDF book");
     `I ("inline", "Show the inline project tree");
     `I ("lint", "Semantic validation");
     `I ("drift", "Detect spec/code/structural drift");

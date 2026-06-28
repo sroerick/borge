@@ -44,6 +44,10 @@
    (doc "Parse and re-print a .borg file")
    (status implemented)
   )
+  (subsection book
+   (doc "Print the codebase as a paginated book: borge book print [DIR] [-o STEM]. Emits PDF + manifest sidecar")
+   (status implemented)
+  )
   (subsection fmt
    (doc "Auto-format a .borg file to canonical indentation")
    (status implemented)
