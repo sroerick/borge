@@ -98,10 +98,10 @@
  )
  (section config
   (doc "Configuration loading from .borgerc files. lib/config/")
-  (status planned)
+  (status implemented)
   (subsection config-core
    (doc "Read, merge, and expose borge configuration")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
          config.ml reads .borgerc files and exposes a typed

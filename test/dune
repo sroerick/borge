@@ -35,3 +35,7 @@
   (name test_proof)
   (modules test_proof)
   (libraries borge.lib alcotest))
+
+(test
+  (name test_config)
+  (libraries borge.lib alcotest unix))

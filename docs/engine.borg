@@ -567,10 +567,10 @@
  )
  (section config
   (doc "Project-level and user-level configuration for borge")
-  (status planned)
+  (status implemented)
   (subsection config-file
    (doc ".borgerc: per-project configuration in sexp format")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
           Borge reads configuration from .borgerc files. Search order:
