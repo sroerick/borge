@@ -149,6 +149,20 @@ type verify_item = {
   args : string list;
 }
 
+(** Severity for a proof obligation — mirrors verify semantics *)
+type obligation_severity = Error | Warning
+
+(** A single proof obligation, parsed from (asserts (property ...)).
+    See docs/engine.borg subsection `obligations` for the contract. *)
+type property_obligation = {
+  name : string;
+  statement : string;          (* human-readable claim, verbatim string body *)
+  witness : string;             (* repo-relative path to the proof file *)
+  prover : string;              (* convention-defined; initially only "coq" *)
+  severity : obligation_severity;
+  proposed : bool;              (* true iff the stanza carries (status proposed) *)
+}
+
 (** Extract (verify ...) items from section children.
     Each child of verify is a method call: (method_name arg1 arg2 ...).
     Returns list of verify_item records. *)
@@ -172,12 +186,85 @@ let extract_verify (children : Borge_lang.Ast.sexp list) : verify_item list =
   in
   find_verify children
 
-(** Section mapping: name, status, explicitly declared files, and verify items *)
+(* agent note (|
+ *   WHAT: Extract (asserts (property ...)) stanzas from section children.
+ *   Each (asserts ...) form wraps exactly one (property NAME ...) child.
+ *   The property child carries optional fields: (statement (|...|)),
+ *   (witness PATH), (prover NAME), (severity error|warning),
+ *   (status proposed). Fields default when absent: prover "coq",
+ *   severity Error, proposed false. Unknown fields are ignored
+ *   (forward compatibility, same as the rest of the spec language).
+ *   WHY: Implements the obligation-stanza extraction defined in
+ *   docs/engine.borg subsection `obligations`. The section_mapping
+ *   record carries these alongside verify items so lint can enforce
+ *   the verified-without-obligation rule and the unknown-prover rule.
+ * |) *)
+let extract_asserts (children : Borge_lang.Ast.sexp list) : property_obligation list =
+  (* Walk children for (asserts ...) forms; each wraps one (property ...).
+     The outer List.filter_map returns an option per child; for an
+     (asserts ...) form the option carries the inner property list,
+     which is then flattened with List.concat at the end. *)
+  List.concat (List.filter_map (function
+    | Borge_lang.Ast.List (_, Borge_lang.Ast.Atom (_, "asserts") :: inner) ->
+        (* inner should be a list whose head is (property NAME ...). *)
+        Some (List.filter_map (function
+          | Borge_lang.Ast.List (_, Borge_lang.Ast.Atom (_, "property") :: Borge_lang.Ast.Atom (_, name) :: fields) ->
+              let statement = ref "" in
+              let witness = ref "" in
+              let prover = ref "coq" in
+              let severity = ref Error in
+              let proposed = ref false in
+              List.iter (function
+                | Borge_lang.Ast.List (_, Borge_lang.Ast.Atom (_, "statement") :: rest) ->
+                    (* statement's body is a verbatim string: (|...|) *)
+                    (match rest with
+                     | Borge_lang.Ast.String (_, Borge_lang.Ast.Verbatim v) :: _ ->
+                         statement := v.v_content
+                     | Borge_lang.Ast.String (_, Borge_lang.Ast.Quoted q) :: _ ->
+                         statement := q.q_content
+                     | _ -> ())
+                | Borge_lang.Ast.List (_, Borge_lang.Ast.Atom (_, "witness") :: rest) ->
+                    (match rest with
+                     | Borge_lang.Ast.Atom (_, p) :: _ -> witness := p
+                     | Borge_lang.Ast.String (_, Borge_lang.Ast.Quoted q) :: _ -> witness := q.q_content
+                     | _ -> ())
+                | Borge_lang.Ast.List (_, Borge_lang.Ast.Atom (_, "prover") :: rest) ->
+                    (match rest with
+                     | Borge_lang.Ast.Atom (_, p) :: _ -> prover := p
+                     | Borge_lang.Ast.String (_, Borge_lang.Ast.Quoted q) :: _ -> prover := q.q_content
+                     | _ -> ())
+                | Borge_lang.Ast.List (_, Borge_lang.Ast.Atom (_, "severity") :: rest) ->
+                    (match rest with
+                     | Borge_lang.Ast.Atom (_, "warning") :: _ -> severity := Warning
+                     | Borge_lang.Ast.Atom (_, "error") :: _ -> severity := Error
+                     | _ -> ())
+                | Borge_lang.Ast.List (_, Borge_lang.Ast.Atom (_, "status") :: rest) ->
+                    (match rest with
+                     | Borge_lang.Ast.Atom (_, "proposed") :: _ -> proposed := true
+                     | _ -> ())
+                | _ -> ()
+              ) fields;
+              Some {
+                name;
+                statement = !statement;
+                witness = !witness;
+                prover = !prover;
+                severity = !severity;
+                proposed = !proposed;
+              }
+          | _ -> None
+        ) inner)
+    | _ -> None
+  ) children)
+
+(** Section mapping: name, status, explicitly declared files, verify items,
+    and proof obligations. *)
 type section_mapping = {
   name : string;
   status : status option;
   implements : string list;
   verify : verify_item list;
+  obligations : property_obligation list;
 }
 
 (** Extract all section mappings from a file *)
@@ -192,8 +279,9 @@ let extract_section_mappings (file : Borge_lang.Ast.file) : section_mapping list
         let status = find_status rest_children in
         let impls = extract_implements rest_children in
         let verif = extract_verify rest_children in
+        let obl = extract_asserts rest_children in
         let acc' = match name with
-          | Some n -> { name = n; status; implements = impls; verify = verif } :: acc
+          | Some n -> { name = n; status; implements = impls; verify = verif; obligations = obl } :: acc
           | None -> acc
         in
         List.fold_left walk_sexp acc' rest_children

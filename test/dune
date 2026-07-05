@@ -31,3 +31,7 @@
 (test
   (name test_ui_clay)
   (libraries borge.lib alcotest))
+(test
+  (name test_proof)
+  (modules test_proof)
+  (libraries borge.lib alcotest))

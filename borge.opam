@@ -8,7 +8,7 @@ depends: [
   "yojson" {>= "2.2"}
   "ppx_deriving" {>= "6.0"}
   "sedlex"
-  "menhir"
+  "menhir" {>= "20180523"}
   "menhirLib"
   "odoc" {with-doc}
 ]

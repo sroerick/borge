@@ -1,0 +1,209 @@
+(project borge-lib-proof
+ (doc "Proof obligation discharge: emit Coq representations, invoke provers, record verdicts. lib/proof/")
+ (status in-progress)
+ (no-inline
+ )
+ (section proof
+  (doc "Discharge (asserts (property ...)) obligations via external provers")
+  (status in-progress)
+  (details
+   (doc (|
+        Implements the prover-invocation half of the obligations
+        subsystem defined in docs/engine.borg subsection `obligations`.
+        The other half — extraction and lint — lives in lib/check/ and
+        lib/core/spec.ml. This module is the tool that discharges.
+
+        The discipline is unchanged from (verify (build)): .borg
+        declares the obligation; this tool discharges it; borge
+        records what was claimed and binds it to a commit. The .borg
+        language does not evaluate. The prover evaluates; borge
+        records.
+
+        Three concerns, three modules:
+
+        1. proof_emit.ml: emit a Coq representation (.v file) of a DB
+           schema + permission model from lib/db/db_ast.ml. This is
+           the "representation" file referenced by the spec. It is NOT
+           the witness — the witness is human-authored and imports/
+           depends on this representation. The emitter produces an
+           inductive view of tables, columns, groups, capabilities,
+           and a `permitted` predicate, plus the ownership declarations
+           as Coq facts. A human-written witness then proves theorems
+           against this emitted representation.
+
+        2. proof_run.ml: invoke a prover (coqc) on a witness file
+           against the emitted representation. Parse the prover's
+           stdout/stderr for verdict (pass/fail) and admit count.
+           Handle prover-not-installed gracefully — return a typed
+           `Prover_not_installed` result, do not crash. The spec says
+           borge records what was claimed; if no prover is present to
+           discharge the claim, borge records that, and the obligation
+           contributes no Verified credit.
+
+        3. proof_meta.ml: write/read the (proof ...) block in .borg.meta
+           per the format in docs/engine.borg subsection `obligations`.
+           Records: commit, discharged-at timestamp, per-obligation
+           verdict (pass|fail|prover-absent), admitted count, and the
+           representation file path the witness was checked against.
+           The writer is idempotent and deterministic (findings sorted
+           like lib/check/meta.ml). Stale proof blocks (representation
+           changed since discharge) are detected but preserved.
+
+        What this module does NOT do:
+          - Read the witness file's contents. The witness encodes the
+            formal property; borge only records the path and the
+            prover's verdict. (mirrors the spec's "borge never reads
+            the witness file's contents".)
+          - Author the witness. Writing the proof is authorial work.
+            This module emits the representation the witness is checked
+            against; the witness itself is human-authored (with the
+            emitter's output as a guide to the available inductives).
+          - Interpret the obligation's statement. The statement is for
+            humans; the witness is for the machine; borge records both
+            exist and that the prover passed, and trusts a human
+            reviewer to catch statement/witness drift.
+
+        Why three modules rather than one:
+          The emitter has no prover dependency — it emits text. The
+          runner has a prover dependency (coqc subprocess) but no
+          knowledge of the .borg.meta format. The meta writer has no
+          prover dependency — it just records. This separation lets
+          the emitter run without coqc installed (useful for dry-run
+          "what would the representation look like" inspection) and
+          lets the meta writer run without re-invoking the prover
+          (useful for re-stamping freshness without re-discharging).
+      |))
+  )
+  (subsection proof-emit
+   (doc "Emit a Coq representation of a DB spec from db_ast.ml")
+   (status implemented)
+   (details
+    (doc (|
+         proof_emit.ml: takes a Borge_db_ast.db_app and emits a Coq
+         module string representing the schema and permission model.
+
+         Emitted forms (what the witness imports):
+         - Inductive table : Type := ... — one constructor per table
+           in spec order. (Table_users, Table_projects, ...)
+         - Inductive column_of : table -> Type := ... — one
+           constructor per (table, column) pair, so a witness can
+           case-analyze which columns exist on which tables.
+         - Definition owner_of (t : table) : option string := ...
+           matching the (ownership ...) declarations. None means the
+           table has no declared ownership column.
+         - Inductive group : Type := ... — one constructor per group.
+         - Inductive operation : Type := Create | Read | Update | Delete.
+         - Inductive permitted : group -> operation -> table -> Prop :=
+           ... — one constructor per (group, capability) pair, encoding
+           the (can ...) declarations. (can-all) groups get a catch-all
+           constructor permitted_admin : forall g o t, is_admin g ->
+           permitted g o t.
+         - The current-user predicate is left abstract: a witness
+           proving ownership-consistency quantifies over it without
+           needing its definition, because the property holds for any
+           current-user.
+
+         The emitter does NOT generate the theorem statement or proof.
+         Those live in the human-authored witness. The emitter only
+         produces the representation the witness is checked against.
+
+         API:
+           val emit_representation : Borge_db_ast.db_app -> string
+           val emit_to_file : Borge_db_ast.db_app -> path:string -> unit
+
+         The string form is for in-memory inspection (dry-run); the
+         file form writes the representation .v file the witness
+         imports. The path is recorded in the .borg.meta proof block
+         as the `representation` field, so a reader can find which
+         emitted file a proof was checked against.
+       |))
+   )
+  )
+  (subsection proof-run
+   (doc "Invoke coqc on a witness and parse verdict + admit count")
+   (status implemented)
+   (details
+    (doc (|
+         proof_run.ml: orchestrates prover invocation.
+
+         type verdict =
+           | Pass of { admitted : int }       (* coqc exited 0; count admits *)
+           | Fail of { message : string }      (* coqc exited non-0 or rejected *)
+           | Prover_not_installed of { prover : string }
+           | Representation_stale             (* witness was checked against
+                                                 a representation that no longer
+                                                 matches the current emit *)
+
+         val run_prover :
+           witness:path -> representation:path -> prover:string -> verdict
+
+         Prover invocation: spawns `coqc -Q representation_dir BorgeSchema
+         witness_path` via Unix.create_process_env. Captures stdout and
+         stderr. Exit code 0 => Pass; non-0 => Fail with stderr as message.
+
+         Admit counting: scans the prover's output for the lines Coq emits
+         when an admit is discharged (e.g. "admit" in the proof context).
+         The exact parsing is coqc-version-sensitive; the initial
+         implementation counts occurrences of "admit" tokens in the
+         witness file's text via a simple scan (the witness file IS read
+         here, only for admit-counting — this is the one exception to
+         "borge never reads the witness" and it's narrow: borge counts
+         admits but does not interpret the proof). Future: parse coqc's
+         structured output instead of scanning the witness.
+
+         Prover_not_installed: if coqc is not on PATH (checked via
+         Unix.access on the resolved binary, or by catching the
+         Not_found from create_process), returns Prover_not_installed
+         without crashing. This is the spec's "handle coqc-absent
+         gracefully" requirement, and is the expected state on this
+         development machine until coq is installed.
+
+         Representation_stale: not yet implemented (the freshness check
+         requires the .borg.meta staleness machinery, which is in
+         lib/check/meta.ml — wiring is future work). For now run_prover
+         always returns Pass/Fail/Prover_not_installed; stale detection
+         is a meta-layer concern that will be added alongside the meta
+         block writer.
+       |))
+   )
+  )
+  (subsection proof-meta
+   (doc "Write/read the (proof ...) block in .borg.meta")
+   (status planned)
+   (details
+    (doc (|
+         proof_meta.ml: the (proof ...) block type for .borg.meta.
+
+         ; Block format (from docs/engine.borg subsection `obligations`):
+         (proof
+           (commit abc123)
+           (discharged-at 2026-07-04T18:00:00Z)
+           (obligation ownership-consistency
+             (witness "proof/db_auth.v")
+             (prover coq)
+             (verdict pass)
+             (admitted 0)
+             (representation "proof/db_auth_schema.ml")))
+
+         The writer extends lib/check/meta.ml's block vocabulary. The
+         reader/writer are idempotent and deterministic (sorted by
+         obligation name) so re-running produces stable git diffs.
+
+         Merge strategy (same as semantic-review in meta.borg): a new
+         proof run replaces the previous (proof ...) block for the same
+         .borg file. Per-obligation verdicts replace in place. The
+         analyzed-at timestamp in the parent (meta ...) block is NOT
+         updated by proof discharge — discharge is an additive layer,
+         not a full re-analysis. (mirrors meta.borg's semantic-review
+         integration rule).
+
+         Status: planned. The block type and writer are spec'd here;
+         implementation waits until proof_run is live and we have at
+         least one real verdict to record.Building the writer before
+         having a real verdict risks encoding a format we then have to
+         rework once we see actual prover output.
+       |))
+   )
+  )
+ )
+)

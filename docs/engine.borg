@@ -282,7 +282,7 @@
   )
   (subsection obligations
    (doc "Proof obligations — giving (asserts ...) a real checker")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
          richer-constraints (above) reserves (asserts FORM) as a

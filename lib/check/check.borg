@@ -212,5 +212,74 @@
        |))
    )
   )
+  (subsection obligations
+   (doc "Proof obligation extraction and lint rules for (asserts (property ...))")
+   (status implemented)
+   (details
+    (doc (|
+         Implements the obligation-stanza facilities defined in
+         docs/engine.borg subsection `obligations`. Three concerns live
+         here; the prover invocation itself lives in lib/proof/.
+
+         1. EXTRACTION (lib/core/spec.ml):
+            Mirrors the existing extract_verify function. Adds:
+            - A typed record `property_obligation` with fields:
+              name, statement (string), witness (string path),
+              prover (string, default "coq"), severity (Error|Warning,
+              default Error), proposed (bool, true iff the stanza
+              carries (status proposed)).
+            - extract_asserts : Ast.sexp list -> property_obligation list
+              Parses (asserts (property NAME ...)) forms inside any
+              section's children. Each field is optional with the
+              spec-defined default. Unknown fields are ignored, not
+              errors (forward compatibility, same as the rest of the
+              spec language).
+            - Wired into the existing section_mapping record alongside
+              the verify field, so a section listing includes its
+              obligations alongside its verify items.
+
+         2. CONVENTION (lib/convention.ml):
+            Adds "coq" to the Ocaml_dune verify_methods list. The set
+            of known prover names is convention-defined — initially
+            { coq } — so lint can flag unknown provers as errors.
+            (Go_standard does NOT get coq; coq is OCaml-ecosystem and
+            adding it everywhere would be noise.)
+
+         3. LINT (lib/check/lint.ml):
+            Two new lint checks for obligations:
+            - unknown-prover: an (asserts (property ... (prover X)))
+              with X not in the convention's known set is a lint error.
+              Prevention against typos like (prover Coq) or (prover coqq).
+            - verified-without-obligation: a section with
+              (status verified) but no canonical (asserts (property ...))
+              obligation (proposed obligations don't count) is a lint
+              error. This enforces the Verified-status definition from
+              the spec: Verified requires at least one discharged
+              canonical obligation. NOTE: discharge tracking (whether
+              the obligation actually passed a prover) is not yet built
+              — it lives in lib/proof/. Until that lands, this lint
+              check has an initial behavior: it flags verified-with-
+              no-obligation-period. Once lib/proof/ writes the (proof ...)
+              block to .borg.meta, lint will additionally require that
+              block's verdict to be pass for the section to earn
+              Verified. The spec subsection in docs/engine.borg already
+              documents this as the initial state.
+
+         What this subsection does NOT do:
+            - Run the prover. That's lib/proof/.
+            - Emit the witness file. That's lib/proof/ (proof_emit).
+            - Track discharge freshness or staleness. That's lib/proof/
+              (proof_meta) once coqc invocation is wired.
+            - Enforce the (status proposed) promotion rule mechanically.
+              The rule is documented in the spec and enforced socially
+              like Rule 6 (agents write only agent comments); a future
+              git-HEAD-diff check on obligation stanzas (mirroring the
+              existing human-comment-deletion check) will make this
+              mechanical. For now: lint flags unknown prover names and
+              verified-without-obligation; the proposed/canonical and
+              immutability rules are spec-level, not yet lint-level.
+       |))
+   )
+  )
  )
 )

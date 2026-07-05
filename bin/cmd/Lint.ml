@@ -47,12 +47,17 @@ let run dir json quiet code_doc mechanical literacy =
     | Lint.Unsafe_call { path; line; call; severity; suggestion } ->
         let mark = match severity with `Error -> "✗" | `Warning -> "⚠" in
         Printf.printf "  %s %s:%d: unsafe call '%s' — %s\n" mark path line call suggestion
+    | Lint.Unknown_prover { path; prover; obligation_name } ->
+        Printf.printf "  ✗ %s: unknown prover '%s' on obligation '%s'\n" path prover obligation_name
+    | Lint.Verified_without_obligation { path; section } ->
+        Printf.printf "  ✗ %s: section '%s' marked verified but has no discharged canonical obligation\n" path section
   in
   if quiet then begin
     (* In quiet mode, only print errors to stderr, suppress warnings *)
     List.iter (fun issue ->
       match issue with
       | Lint.Invalid_status _ | Lint.Duplicate_project_name _ | Lint.Orphaned_file _ | Lint.Invalid_verify_method _
+      | Lint.Unknown_prover _ | Lint.Verified_without_obligation _
       | Lint.Unsafe_call { severity = `Error; _ } ->
           print_issue issue
       | _ -> ()

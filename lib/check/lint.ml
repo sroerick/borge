@@ -11,6 +11,8 @@ type lint_issue =
   | Pending_response of { path : string; author : string; line : int; question : string }
   | Orphaned_file of { path : string }
   | Invalid_verify_method of { path : string; method_ : string; line : int }
+  | Unknown_prover of { path : string; prover : string; obligation_name : string }
+  | Verified_without_obligation of { path : string; section : string }
   | Db_validation of { path : string; severity : [ `Error | `Warning ]; message : string }
   | Ui_validation of { path : string; severity : [ `Error | `Warning ]; message : string }
   | Undocumented_binding of { path : string; name : string; line : int }
@@ -337,6 +339,44 @@ let check_invalid_verify dir path file =
   List.rev !issues
 
 (* agent note (|
+ *   WHAT: Check (asserts (property ... (prover X))) stanzas for unknown
+ *   prover names, and check (status verified) sections for missing
+ *   canonical obligations. Implements the two lint rules from
+ *   docs/engine.borg subsection `obligations`:
+ *     - unknown-prover: prover not in Convention.known_provers is an error.
+ *     - verified-without-obligation: (status verified) with no canonical
+ *       (i.e., non-proposed) (asserts ...) obligation is an error.
+ *   WHY: Prover typos silently disable obligations (the witness never
+ *   gets discharged). Verified-without-obligation makes the Verified
+ *   status a label rather than an earned property. NOTE: full discharge
+ *   tracking (checking the .borg.meta proof block) is not yet built —
+ *   see lib/check/check.borg subsection `obligations` for the initial
+ *   behavior (flags verified-with-no-obligation-period).
+ * |) *)
+let check_obligations dir path file =
+  let convention = Convention.resolve dir in
+  let known = Convention.known_provers convention in
+  let mappings = Spec.extract_section_mappings file in
+  let issues = ref [] in
+  List.iter (fun (m : Spec.section_mapping) ->
+    (* unknown-prover: any obligation whose prover is not in the known set *)
+    List.iter (fun (o : Spec.property_obligation) ->
+      if not (List.mem o.prover known) then
+        issues := Unknown_prover { path; prover = o.prover; obligation_name = o.name } :: !issues
+    ) m.obligations;
+    (* verified-without-obligation: status=Verified but no canonical
+       (non-proposed) obligation present. Proposed obligations don't
+       count — they're drafts, not earned. *)
+    (match m.status with
+     | Some Spec.Verified ->
+         let canonical = List.filter (fun (o : Spec.property_obligation) -> not o.proposed) m.obligations in
+         if canonical = [] then
+           issues := Verified_without_obligation { path; section = m.name } :: !issues
+     | _ -> ())
+  ) mappings;
+  List.rev !issues
+
+(* agent note (|
  *   WHAT: Run lint checks on all .borg files in a directory.
  *   Performs validation: status values, duplicate names, annotated
  *   comments, pending responses, orphans, and optional code-doc checks.
@@ -375,6 +415,9 @@ let run ~code_doc ~mechanical ~literacy dir =
   let verify_issues = List.concat_map (fun (path, _, file) ->
     check_invalid_verify dir path file
   ) file_stats in
+  let obligation_issues = List.concat_map (fun (path, _, file) ->
+    check_obligations dir path file
+  ) file_stats in
   let (db_issues, ui_issues) = (db_issues, ui_issues) in
   let code_doc_issues = if code_doc then check_code_doc dir else [] in
   let mechanical_issues = if mechanical then
@@ -389,9 +432,10 @@ let run ~code_doc ~mechanical ~literacy dir =
     ) (Code_quality.run dir)
   else [] in
   let literacy_issues = if literacy then check_literacy dir else [] in
-  let all_issues = status_issues @ name_issues @ comment_issues @ pending_issues @ orphan_issues @ verify_issues @ db_issues @ ui_issues @ code_doc_issues @ mechanical_issues @ literacy_issues in
+  let all_issues = status_issues @ name_issues @ comment_issues @ pending_issues @ orphan_issues @ verify_issues @ obligation_issues @ db_issues @ ui_issues @ code_doc_issues @ mechanical_issues @ literacy_issues in
   let errors = List.filter (function
     | Invalid_status _ | Duplicate_project_name _ | Orphaned_file _ | Invalid_verify_method _
+    | Unknown_prover _ | Verified_without_obligation _
     | Db_validation { severity = `Error; _ }
     | Ui_validation { severity = `Error; _ }
     | Unsafe_call { severity = `Error; _ } -> true

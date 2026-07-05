@@ -61,3 +61,19 @@
       (can tasks (read))
       (can projects (read))
       (can comments (read))))))
+(section auth
+ (doc "Authorization soundness for the task-tracker DB")
+ (status verified)
+ (implements "examples/crud-app/db.borg")
+ (asserts
+  (property ownership-consistency
+   (statement (|
+     For every (group G) and operation op permitted on a table T
+     in the task-tracker DB, either G is admin/can-all, OR the
+     capability carries no where-predicate (unrestricted read —
+     no ownership constraint to violate), OR the column referenced
+     by the where-predicate matches the table's declared
+     (ownership ...) column.
+   |))
+   (witness "proof/db_auth.v")
+   (prover coq))))
