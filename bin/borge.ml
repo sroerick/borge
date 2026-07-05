@@ -28,6 +28,7 @@ let cmds = [
   Parse.cmd;
   Plan.cmd;
   Print.cmd;
+  Proof.cmd;
   Report.cmd;
   Review.cmd;
   Stats.cmd;
