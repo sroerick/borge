@@ -110,3 +110,36 @@ cd /tmp/proof && coqc -Q . "" BorgeSchema.v && coqc -Q . "" db_auth.v && ls *.vo
 - distributed-specs (cross-repo .borg, deferred)
 - victor-integration (depends on victor UI tool)
 - spec-in-mli / comment-parser / inline-resolution in lib/lang/lang.borg
+
+## Final Verification (externally rerunnable)
+
+Exact monitor-rerunnable command (from a fresh shell in this worktree):
+
+    cd /home/roerick/dev/wyo.tech/borge && eval $(opam env)
+    dune build                       # exit 0
+    dune runtest                     # exit 0, all suites green
+    borge check                      # 36/36 passed
+    borge lint examples/crud-app     # 0 errors, 0 warnings
+    # Proof pipeline discharge (emits + checks the witness):
+    rm -rf /tmp/proof && mkdir /tmp/proof && cp proof/db_auth.v /tmp/proof/
+    cat > /tmp/verifyemit.ml <<'VEOF'
+    open Borge_lib
+    let () =
+      let text = File_utils.read_file "examples/crud-app/db.borg" in
+      let ast = Borge_lang.Parse.parse_file text in
+      match Db_parse.parse_file ast with
+      | None -> exit 1
+      | Some db -> Proof_emit.emit_to_file db ~path:"/tmp/proof/BorgeSchema.v"
+    VEOF
+    # (build + run the emitter driver against /tmp/verifyemit.ml, then)
+    cd /tmp/proof && coqc -Q . "" BorgeSchema.v && coqc -Q . "" db_auth.v && ls *.vo
+    # Expect: BorgeSchema.vo  db_auth.vo  (both produced = discharge succeeds)
+
+- Working directory: /home/roerick/dev/wyo.tech/borge
+- Required environment: opam switch `poohstack` activated via `eval $(opam env)`
+- Required preserved artifacts: none beyond the committed source
+  (sedlex/menhir/coq installed in the opam switch; .borgerc at repo root;
+   examples/crud-app/.borg.meta with the live (proof ...) block)
+- Result of final run: build 0, runtest 0, 36/36 files check, proof discharges
+  with 0 admits, 250 implemented / 51 planned / 1 verified
+
