@@ -5,7 +5,7 @@
  )
  (section proof
   (doc "Discharge (asserts (property ...)) obligations via external provers")
-  (status in-progress)
+  (status implemented)
   (details
    (doc (|
         Implements the prover-invocation half of the obligations
@@ -169,7 +169,7 @@
   )
   (subsection proof-meta
    (doc "Write/read the (proof ...) block in .borg.meta")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
          proof_meta.ml: the (proof ...) block type for .borg.meta.

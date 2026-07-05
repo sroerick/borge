@@ -37,7 +37,7 @@ type located_token = {
  *   tokenize the input. This is the character class for valid symbols.
  * |) *)
 let is_symbol_char = function
-  | 'a'..'z' | 'A'..'Z' | '0'..'9' | '-' | '_' | '.' | '?' | '!' -> true
+  | 'a'..'z' | 'A'..'Z' | '0'..'9' | '-' | '_' | '.' | '?' | '!' | '=' | ':' | '/' -> true
   | _ -> false
 
 (* agent note (|

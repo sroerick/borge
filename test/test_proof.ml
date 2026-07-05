@@ -1,6 +1,23 @@
 (* Test proof_emit: Coq representation emission from db_app. *)
 open Printf
 open Borge_lib
+(* read_whole_ic: read all bytes from an input_channel (input_all is
+   not available in this OCaml stdlib version). *)
+let read_whole_ic ic =
+  let len = in_channel_length ic in
+  let buf = Bytes.create len in
+  really_input ic buf 0 len;
+  Bytes.to_string buf
+
+(* find_sub: substring search returning byte offset or None. *)
+let find_sub s sub =
+  let plen = String.length sub in
+  let rec loop i =
+    if i + plen > String.length s then None
+    else if String.sub s i plen = sub then Some i
+    else loop (i+1)
+  in loop 0
+
 
 (* Helper: check if string contains substring *)
 let contains haystack needle =
@@ -154,6 +171,125 @@ let test_run_prover_absent () =
    | _ -> Alcotest.fail "expected Prover_not_installed for nonexistent prover");
   Alcotest.(check bool) "prover absent handled gracefully" true true
 
+let test_meta_round_trip () =
+  (* Construct a proof_block, write it, read it back, assert equality. *)
+  let open Proof_meta in
+  let block = {
+    commit = "abc1234";
+    discharged_at = "2026-07-05T01:20:00Z";
+    obligations = [
+      { name = "ownership-consistency";
+        witness = "proof/db_auth.v";
+        prover = "coq";
+        verdict = Pass { admitted = 0 };
+        representation = "proof/BorgeSchema.v" };
+    ];
+  } in
+  let tmp = "/tmp/borge_proof_meta_test.meta" in
+  Sys.command (sprintf "rm -f %s" tmp) |> ignore;
+  write_block ~path:tmp block;
+  let read_back = read_block ~path:tmp in
+  (match read_back with
+   | None -> Alcotest.fail "read_block returned None after write"
+   | Some rb ->
+       Alcotest.(check string) "commit round-trips" block.commit rb.commit;
+       Alcotest.(check string) "discharged-at round-trips" block.discharged_at rb.discharged_at;
+       Alcotest.(check int) "obligation count" 1 (List.length rb.obligations);
+       (match rb.obligations with
+        | [o] ->
+            Alcotest.(check string) "obligation name" "ownership-consistency" o.name;
+            Alcotest.(check string) "witness path" "proof/db_auth.v" o.witness;
+            Alcotest.(check string) "representation path" "proof/BorgeSchema.v" o.representation;
+            (match o.verdict with
+             | Pass { admitted } -> Alcotest.(check int) "0 admits" 0 admitted
+             | _ -> Alcotest.fail "verdict not Pass after round-trip")
+        | _ -> Alcotest.fail "wrong obligation shape"));
+  Sys.command (sprintf "rm -f %s" tmp) |> ignore
+
+let test_meta_determinism () =
+  (* Writing the same block twice produces identical output. *)
+  let open Proof_meta in
+  let block = {
+    commit = "abc1234";
+    discharged_at = "2026-07-05T01:20:00Z";
+    obligations = [
+      { name = "z-last"; witness = "w1.v"; prover = "coq";
+        verdict = Pass { admitted = 0 }; representation = "r1.v" };
+      { name = "a-first"; witness = "w2.v"; prover = "coq";
+        verdict = Pass { admitted = 2 }; representation = "r2.v" };
+    ];
+  } in
+  let tmp1 = "/tmp/borge_proof_meta_det1.meta" in
+  let tmp2 = "/tmp/borge_proof_meta_det2.meta" in
+  write_block ~path:tmp1 block;
+  write_block ~path:tmp2 block;
+  let ic1 = open_in tmp1 in
+  let s1 = read_whole_ic ic1 in
+  close_in ic1;
+  let ic2 = open_in tmp2 in
+  let s2 = read_whole_ic ic2 in
+  close_in ic2;
+  Alcotest.(check string) "deterministic output" s1 s2;
+  (* Also verify sorting: a-first should appear before z-last. *)
+  (* Verify sorting: a-first should appear before z-last. *)
+  let a_pos = find_sub s1 "a-first" in
+  let z_pos = find_sub s1 "z-last" in
+  (match a_pos, z_pos with
+   | Some a, Some z -> Alcotest.(check bool) "sorted by obligation name" true (a < z)
+   | _ -> Alcotest.fail "could not find obligation names in output");
+  Sys.command (sprintf "rm -f %s %s" tmp1 tmp2) |> ignore
+
+let test_meta_merge_replaces () =
+  (* merge_into_meta replaces prior (proof ...) block, keeps other content. *)
+  let open Proof_meta in
+  let tmp = "/tmp/borge_proof_meta_merge.meta" in
+  let oc = open_out tmp in
+  output_string oc {|(meta "foo"
+  (analyzed-at "2026-07-05T00:00:00Z"))
+
+(proof
+  (commit "old")
+  (discharged-at "2026-01-01T00:00:00Z")
+
+  (obligation old-prop
+    (witness "old.v")
+    (prover coq)
+    (verdict fail)
+    (admitted 0)
+    (representation "old_rep.v")))
+|};
+  close_out oc;
+  let new_block = {
+    commit = "new5678";
+    discharged_at = "2026-07-05T02:00:00Z";
+    obligations = [
+      { name = "ownership-consistency"; witness = "proof/db_auth.v";
+        prover = "coq"; verdict = Pass { admitted = 0 };
+        representation = "proof/BorgeSchema.v" };
+    ];
+  } in
+  merge_into_meta ~path:tmp new_block;
+  let ic = open_in tmp in
+  let content = read_whole_ic ic in
+  close_in ic;
+  (* The old (proof ... old) block should be gone; new one present. *)
+  (* The old (proof ...) block with commit "old" should be gone;
+     the new block with commit "new5678" should be present.
+     The (meta "foo") block is unrelated and should be preserved. *)
+  let has_old_commit = (find_sub content "commit \"old\"" <> None) in
+  let has_new_commit = (find_sub content "new5678" <> None) in
+  Alcotest.(check bool) "old proof block gone" false has_old_commit;
+  Alcotest.(check bool) "new proof block present" true has_new_commit;
+  let read_back = read_block ~path:tmp in
+  (match read_back with
+   | Some rb ->
+       Alcotest.(check string) "merged commit is new" "new5678" rb.commit;
+       (match rb.obligations with
+        | [o] -> Alcotest.(check string) "merged obligation name" "ownership-consistency" o.name
+        | _ -> Alcotest.fail "expected 1 obligation after merge")
+   | None -> Alcotest.fail "read_block returned None after merge");
+  Sys.command (sprintf "rm -f %s" tmp) |> ignore
+
 let () =
   Alcotest.run "proof_emit" [
     "emit", [
@@ -166,5 +302,10 @@ let () =
     "run", [
       "prover absent handled", `Quick, test_run_prover_absent;
       "prover discharges witness", `Quick, test_run_prover_discharges_witness;
+    ];
+    "meta", [
+      "round trip", `Quick, test_meta_round_trip;
+      "determinism + sort", `Quick, test_meta_determinism;
+      "merge replaces prior", `Quick, test_meta_merge_replaces;
     ];
   ]

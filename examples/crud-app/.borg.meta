@@ -1,0 +1,10 @@
+(proof
+  (commit ad747c4)
+  (discharged-at 2026-07-05T07:38:40Z)
+
+  (obligation ownership-consistency
+    (witness proof/db_auth.v)
+    (prover coq)
+    (verdict pass)
+    (admitted 0)
+    (representation proof/BorgeSchema.v)))
