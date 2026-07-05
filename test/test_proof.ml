@@ -1,4 +1,5 @@
 (* Test proof_emit: Coq representation emission from db_app. *)
+open Printf
 open Borge_lib
 
 (* Helper: check if string contains substring *)
@@ -84,23 +85,73 @@ let test_emits_predicate_column () =
   Alcotest.(check bool) "predicate_column_of definition present" true
     (contains emitted "Definition predicate_column_of")
 
+let test_run_prover_discharges_witness () =
+  (* End-to-end: emit the representation from a hand-built db_app mirroring
+     the crud-app auth-relevant subset, then run coqc on a witness that
+     imports it. coqc IS installed on this machine (installed as part of
+     the obligations-impl loop), so this exercises the Pass path. *)
+  let open Proof_run in
+  let open Db_ast in
+  let app = {
+    tables = [
+      { name = "projects";
+        columns = [{ name = "owner_id"; typ = "uuid"; constraints = [] }];
+        indexes = []; ownership = Some "owner-id" };
+      { name = "tasks";
+        columns = [{ name = "assignee_id"; typ = "uuid"; constraints = [] }];
+        indexes = []; ownership = Some "assignee-id" };
+    ];
+    operations = []; relations = [];
+    groups = [
+      { name = "admin"; can_all = true; capabilities = [] };
+      { name = "member"; can_all = false;
+        capabilities = [
+          { table = "tasks"; operations = ["create"; "read"; "update"];
+            where_clause = Some "assignee-id = current-user" };
+          { table = "projects"; operations = ["read"]; where_clause = None };
+        ] };
+    ];
+  } in
+  (* Emit to temp files under /tmp. Use a fixed dir name (cleaned first)
+     since Sys.command doesn't expand $$ the way a shell would. *)
+  let tmp_dir = "/tmp/borge_proof_test" in
+  Sys.command (sprintf "rm -rf %s; mkdir -p %s" tmp_dir tmp_dir) |> ignore;
+  let rep_path = Filename.concat tmp_dir "BorgeSchema.v" in
+  Proof_emit.emit_to_file app ~path:rep_path;
+  (* Write a tiny witness that imports the representation and proves a
+     trivial theorem — enough to exercise the coqc-pass path. *)
+  let wit_path = Filename.concat tmp_dir "test_witness.v" in
+  let oc = open_out wit_path in
+  output_string oc "Require Import BorgeSchema.\n";
+  output_string oc "Theorem trivial : forall (g : group), g = g.\n";
+  output_string oc "Proof. intros. reflexivity. Qed.\n";
+  close_out oc;
+  let verdict = run_prover ~witness:wit_path ~representation:rep_path ~prover:"coq" in
+  (match verdict with
+   | Pass { admitted } ->
+       Alcotest.(check int) "0 admits on trivial proof" 0 admitted
+   | other ->
+       Alcotest.fail ("expected Pass, got: " ^
+         (match other with
+          | Fail { message } -> "Fail(" ^ message ^ ")"
+          | Prover_not_installed _ -> "Prover_not_installed"
+          | Representation_stale -> "Representation_stale"
+          | Pass _ -> "impossible")));
+  (* cleanup *)
+  Sys.command (sprintf "rm -rf %s" tmp_dir) |> ignore
+
 let test_run_prover_absent () =
-  (* coqc is not installed on this machine; the runner should return
-     Prover_not_installed rather than crashing. This verifies the
-     spec's "handle coqc-absent gracefully" requirement. *)
+  (* coqc IS installed on this machine now, so to test the absent path
+     we ask for a prover that doesn't exist. *)
   let open Proof_run in
   let verdict = run_prover
     ~witness:"proof/db_auth.v"
-    ~representation:"proof/db_auth_schema.v"
-    ~prover:"coq"
+    ~representation:"proof/BorgeSchema.v"
+    ~prover:"nonexistent-prover"
   in
   (match verdict with
-   | Prover_not_installed _ -> ()  (* expected on this machine *)
-   | Pass _ ->
-       Alcotest.fail "expected Prover_not_installed but coqc is installed — \
-                      update this test to exercise the Pass path"
-   | Fail _ -> ()
-   | Representation_stale -> ());
+   | Prover_not_installed _ -> ()  (* expected *)
+   | _ -> Alcotest.fail "expected Prover_not_installed for nonexistent prover");
   Alcotest.(check bool) "prover absent handled gracefully" true true
 
 let () =
@@ -114,5 +165,6 @@ let () =
     ];
     "run", [
       "prover absent handled", `Quick, test_run_prover_absent;
+      "prover discharges witness", `Quick, test_run_prover_discharges_witness;
     ];
   ]

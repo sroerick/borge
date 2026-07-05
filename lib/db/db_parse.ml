@@ -154,13 +154,37 @@ let parse_relation = function
 (** Parse a (can TABLE OPS (where COND)) capability *)
 let parse_capability = function
   | List (_, Atom (_, "can") :: Atom (_, table) :: rest) ->
-    let ops = List.filter_map (function
+    (* Operations may appear flat — (can tasks create read update (where ...))
+       — or grouped — (can tasks (create read update) (where ...)). The crud-app
+       example uses the grouped form; support both. *)
+    let ops = List.concat_map (function
       | Atom (_, op) when List.mem op ["create"; "read"; "update"; "delete"] ->
-        Some op
-      | _ -> None
+          [op]
+      | List (_, Atom (_, head) :: rest_atoms) when List.mem head ["create"; "read"; "update"; "delete"] ->
+          (* A sublist where the head is itself an op atom, e.g.
+             (create read update). Include the head and any further atoms. *)
+          head :: List.filter_map (function
+            | Atom (_, op) when List.mem op ["create"; "read"; "update"; "delete"] ->
+                Some op
+            | _ -> None
+          ) rest_atoms
+      | List (_, Atom (_, _) :: _ ) ->
+          (* A non-op-headed sublist like (where ...) — skip; handled below. *)
+          []
+      | _ -> []
     ) rest in
+    (* Where-clause: (where COL = current-user) or (where COL OP VALUE).
+       The original parser only matched (where <single-atom>); the crud-app
+       uses (where assignee-id = current-user) — collect everything after
+       `where` as a string. *)
     let where_clause = List.find_map (function
-      | List (_, [Atom (_, "where"); Atom (_, cond)]) -> Some cond
+      | List (_, Atom (_, "where") :: cond_parts) ->
+          (* Reconstruct the condition as a space-joined string. *)
+          let strs = List.filter_map (function
+            | Atom (_, s) -> Some s
+            | _ -> None  (* skip non-atoms in where; crud-app uses barewords *)
+          ) cond_parts in
+          Some (String.concat " " strs)
       | _ -> None
     ) rest in
     Some { table; operations = ops; where_clause }
@@ -198,12 +222,32 @@ let parse_db_app = function
 
 (** Parse all DB forms from a file's top-level sexps *)
 let parse_file (file : Borge_lang.Ast.file) : db_app option =
+  (* Walk looking for a (db ...) form, recursing into nested lists
+     so (db ...) nested under (project ...) is still found. The crud-app
+     example nests db inside project, and the old top-level-only walk
+     missed it — which silently broke `borge generate db` on that file. *)
+  let rec walk_sexp = function
+    | (List (_, Atom (_, "db") :: _ :: _) as node) ->
+        (match parse_db_app node with
+         | Some _ as some -> some
+         | None -> None)
+    | List (_, children) ->
+        let rec find_in = function
+          | [] -> None
+          | s :: rest ->
+              (match walk_sexp s with
+               | Some _ as some -> some
+               | None -> find_in rest)
+        in
+        find_in children
+    | _ -> None
+  in
   let rec walk = function
     | [] -> None
     | { node; _ } :: rest ->
-      (match parse_db_app node with
-       | Some app -> Some app
-       | None -> walk rest)
+        (match walk_sexp node with
+         | Some _ as some -> some
+         | None -> walk rest)
   in
   match walk file.top_level with
   | Some app -> Some app

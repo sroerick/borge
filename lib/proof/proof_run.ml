@@ -108,21 +108,29 @@ let run_prover ~witness ~representation ~prover : verdict =
   if not (prover_available prover) then
     Prover_not_installed { prover }
   else begin
-    (* representation is a .v file path; coqc wants the directory on -Q *)
+    (* representation is a .v file whose module name matches its filename
+       (default BorgeSchema.v → module BorgeSchema). To make `Require
+       Import BorgeSchema.` in the witness resolve, we map the rep's
+       directory to the empty logical prefix so the bare module name works.
+       This mirrors the manual invocation: coqc -Q <dir> "" witness.v. *)
     let rep_dir = Filename.dirname representation in
     let rep_dir = if rep_dir = "" then "." else rep_dir in
-    (* Build the coqc invocation. -Q adds a logical path mapping so
-       `Require Import BorgeSchema.` in the witness resolves to the
-       emitted representation file. *)
-    let cmd =
-      sprintf "coqc -Q %s BorgeSchema %s 2>&1" rep_dir witness
+    (* First compile the representation, then the witness. Both must
+       succeed for the obligation to discharge. *)
+    let compile_cmd path =
+      sprintf "coqc -Q %s \"\" %s 2>&1" rep_dir path
     in
-    let exit_code = Sys.command cmd in
-    if exit_code = 0 then begin
-      let admitted = count_admits_in_witness ~witness in
-      Pass { admitted }
-    end else
-      Fail { message = sprintf "coqc exited with code %d" exit_code }
+    let rep_exit = Sys.command (compile_cmd representation) in
+    if rep_exit <> 0 then
+      Fail { message = sprintf "coqc on representation exited %d" rep_exit }
+    else begin
+      let wit_exit = Sys.command (compile_cmd witness) in
+      if wit_exit = 0 then begin
+        let admitted = count_admits_in_witness ~witness in
+        Pass { admitted }
+      end else
+        Fail { message = sprintf "coqc on witness exited %d" wit_exit }
+    end
   end
 
 (* agent note (|

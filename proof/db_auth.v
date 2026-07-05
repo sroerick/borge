@@ -20,7 +20,6 @@
    See docs/engine.borg subsection `obligations` for the contract. *)
 
 Require Import BorgeSchema.
-Import BorgeSchema.
 
 (* The theorem. The witness quantifies over all (group, operation, table)
    triples and case-analyzes against the inductives the emitter produces.

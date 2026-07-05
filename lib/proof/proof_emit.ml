@@ -198,12 +198,23 @@ let emit_permitted app =
                  the whole clause as the "column" (the witness will then
                  need to handle it explicitly, which surfaces the mismatch). *)
               let col =
+                (* The where_clause is a space-joined string of the atoms
+                   borge's lexer kept. (The lexer currently drops `=`
+                   from `col = current-user`, so the string may look
+                   like "assignee-id current-user".) The column is the
+                   first token in either case; extract it. *)
                 match String.index_opt clause '=' with
                 | Some i ->
                     let prefix = String.sub clause 0 i in
                     let trimmed = String.trim prefix in
                     if trimmed = "" then clause else trimmed
-                | None -> clause
+                | None ->
+                    (* No `=` in the string (lexer-dropped or genuinely
+                       absent). Take the first whitespace-separated token
+                       as the column name. *)
+                    (match String.index_opt clause ' ' with
+                     | Some i -> String.sub clause 0 i
+                     | None -> clause)
               in
               Some (sprintf "  | %s, %s, %s => Some \"%s\"" gname op_ctor tname col)
           | None ->
@@ -248,7 +259,8 @@ let emit_representation (app : db_app) : string =
    Per docs/engine.borg subsection `obligations`: borge records what
    was claimed and binds it to a commit. This file is the machine-
    readable form of the spec a proof was discharged against. *)
-Module BorgeSchema.
+From Stdlib Require Import String.
+Open Scope string_scope.
 
 %s
 %s
@@ -256,8 +268,6 @@ Module BorgeSchema.
 %s
 %s
 %s
-
-End BorgeSchema.
 |}
     operation_decl
     _tables_decl
