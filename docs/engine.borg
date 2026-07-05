@@ -280,6 +280,270 @@
       |))
    )
   )
+  (subsection obligations
+   (doc "Proof obligations — giving (asserts ...) a real checker")
+   (status planned)
+   (details
+    (doc (|
+         richer-constraints (above) reserves (asserts FORM) as a
+         declaration that "code reality matches an expectation," verified
+         by borge drift. As written it has a gap: the only checkers drift
+         can offer are structural (module-surface, orphan-files) or
+         probabilistic (the LLM semantic review). Neither kind can make
+         a claim about ALL inputs — only about some inputs the checker
+         happened to look at.
+
+         This subsection introduces the missing tier: a checker that
+         discharges an obligation over the entire input space. Formally,
+         that means a mechanical proof. Practically, the first backend is
+         Coq (an interactive theorem prover), but the form is prover-
+         agnostic: the .borg file only declares the obligation and points
+         at a witness; an external tool runs and reports. The discipline
+         rule is unchanged from the (verify ...) stanza in section
+         verification: .borg declares; the tool discharges; borge records
+         what was claimed and binds it to a commit. The .borg language
+         STILL does not evaluate. Coq evaluates; borge records.
+
+         Grammar — a property obligation inside any (section ...) or
+         (subsection ...):
+
+           (asserts
+             (property NAME
+               (statement (|...plain-English claim, human-readable...|))
+               (witness PATH)               ; path to the proof file
+               (prover coq)                 ; convention default may elide
+               (severity error | warning)  ; default error
+               (status proposed)))          ; elided => canonical; see Immutability
+
+         Example (the first planned target — DB authorization soundness
+         for the crud-app example, see examples/crud-app/db.borg):
+
+           (subsection db-auth
+             (asserts
+               (property ownership-consistency
+                 (statement (|
+                   For every (group G) and operation op permitted on a
+                   table T, either G is admin/can-all OR the table's
+                   declared (ownership ...) column matches the column in
+                   the group's (where ...) predicate. In particular, no
+                   group is granted an operation whose ownership predicate
+                   references a column the table does not declare owned.
+                 |))
+                 (witness "proof/db_auth.v")
+                 (prover coq))))
+
+         What each part means:
+         - NAME: a stable identifier. The .borg.meta proof block and any
+           inbox item or finding cite this name. Renaming a property is
+           a spec change; the name is part of the contract.
+         - statement: the human-readable claim. This is what a reader
+           reads and what an agent quoting the property reproduces. It is
+           NOT what the checker checks — the witness file is. The
+           statement and the witness may drift; that drift is itself a
+           finding (see meta block below).
+         - witness: a path, repo-relative, to a file the prover can
+           check. For Coq this is a .v file. The witness encodes the
+           property formally and proves it against a representation of
+           the spec/code reality that the proof tool emits. Borge never
+           reads the witness file's contents; it only records the path
+           and the prover's pass/fail verdict.
+         - prover: which backend discharges this obligation. Initially
+           only `coq`. The set of known provers is convention-defined
+           and linted (see verify-methods in convention.ml). An unknown
+           prover name is a lint error, not a silent skip.
+         - severity: what happens if the prover fails. error blocks the
+           commit (like a failing (verify (build))). warning surfaces a
+           finding but does not block.
+
+         Immutability (the agent-discipline boundary that matters):
+           Obligations come in two states, and the rules differ per
+           state. This mirrors how the rest of borge treats spec edits
+           — Plan mode can author, Build mode cannot — but the bar for
+           an obligation to become canonical is higher than for ordinary
+           spec text, because obligations are the thing an agent is
+           most tempted to rewrite when it is failing against one.
+
+           PROPOSED obligations (Plan mode only):
+             In Plan mode an agent MAY author a new (asserts
+             (property ...)) stanza, but it MUST tag it:
+               (asserts (property NAME (status proposed) ...))
+             The (status proposed) tag is required on any agent-drafted
+             obligation and is lint-enforced — an untagged
+             agent-authored obligation is a lint error treated as a
+             silent mutation regardless of mode. A proposed obligation
+             is NOT discharged, does NOT contribute Verified credit,
+             and does NOT block commits if a prover fails it. It is a
+             draft for human review — the agent's suggestion of what
+             property this section should carry, written in the spec
+             language so a human can read and revise it in place.
+           CANONICAL obligations (human-promoted only):
+             A human reviews the proposed obligation, edits or approves
+             it, and removes the (status proposed) tag. The tag's
+             removal is the promotion act, and ONLY a human may perform
+             it — promotion is the agent-discipline equivalent of Rule
+             6 (agents write only agent comments). Once canonical, the
+             obligation obeys the strict rule: agents MAY NOT modify
+             or remove (asserts (property ...)) stanzas, the witness
+             path, the prover, or the severity. Only humans edit them.
+           Why the split exists — the failure mode this prevents:
+             In a Ralph loop, an agent implementing a feature runs into
+             a canonical property that its new code violates. The
+             cheapest path for the agent is: rewrite the property to
+             match what the code does. Proof re-discharges, loop
+             terminates silently, the property is now weaker than the
+             human intended and nobody found out it changed. That is
+             exactly the failure mode borge exists to prevent, and it
+             is already the rule for (verify ...) stanzas for the same
+             reason. Canonical obligations are immutable to agents so
+             this path is closed. The agent's recourse when a canonical
+             property is wrong or unreachable is to file an inbox
+             scope-concern (see docs/agent.borg inbox); a human reviews
+             it and either fixes the property or tells the agent to
+             live with it. The loop only terminates on a property a
+             human wrote.
+           Enforcement mirrors the existing (verify ...) rule: lint
+           checks canonical obligation stanzas against git HEAD for
+           agent-authored mutations; drift detects modifications; the
+           commit lock refuses mutations by non-Plan modes. The
+           (status proposed) tag is additionally lint-checked: an
+           obligation with no (status ...) field is canonical and
+           immutable to agents; an obligation with (status proposed)
+           is malleable in Plan mode and inert (no discharge credit,
+           no commit blocking) until promoted.
+
+         What borge does NOT do:
+           - Borge does not run the prover. Just as (verify (build)) is
+             discharged by `dune build`, an obligation is discharged by
+             invoking the prover against the witness + an emitted
+             representation of the spec. That invocation is the
+             borge-proof tool's job (a new lib/proof/ module, spec'd
+             separately), not the .borg language's.
+           - Borge does not generate the witness. Writing the proof is
+             authorial work, like writing a test. borge may eventually
+             scaffold a witness from the typed AST (e.g., emit a Coq
+             module that represents the DB schema and the permission
+             model), but the proof itself is human-authored.
+           - Borge does not interpret the statement. Borge cannot tell
+             whether the witness proves what the statement says. That
+             is by design: the statement is for humans; the witness is
+             for the machine. If they disagree, a reviewer reading both
+             catches it. borge's job is to record that both exist and
+             that the prover passed.
+
+         The Verified status (already a value in lib/core/spec.ml's
+         status ADT, currently unset by any tool):
+           A section with status Verified must have at least one
+           discharged CANONICAL obligation AND pass its convention's
+           mandatory verify methods (build, test). Verified is not
+           "no drift"; it is "drift is zero AND at least one property
+           holds for all inputs AND was discharged at this commit."
+           Lint enforces: (status verified) without a discharged
+           canonical obligation is a lint error. An obligation whose
+           witness no longer typechecks against the current spec/code
+           representation downgrades the section's effective status to
+           Implemented-at-best for report purposes, without rewriting
+           the .borg status (the .borg is intent; the .borg.meta
+           records the downgrade).
+
+         Why "at least one" is the floor, not the ceiling:
+           The Verified status as defined above is honestly weak: a
+           section can earn it by discharging one tiny property ("the
+           empty-list case is handled") while leaving the entire rest
+           of its behavior unproven. This is a deliberate starting
+           point — the lowest-friction bar at which the status means
+           anything at all — but it is a compromise and reviewers
+           should not read "Verified" as "substantially verified."
+           To keep the status honest, reports show a count alongside
+           it: (status verified) (properties 1) means one obligation
+           discharged; a project dashboard surfaces verified/total per
+           section so the reader can see at a glance which sections
+           earned the status with one proof versus many. A per-section
+           minimum may be set by a human (*.borg field, future work)
+           to raise the bar above one where the cost is justified; the
+           default minimum remains one so the floor is reachable.
+
+         The admits cap:
+           A canonical obligation discharged with admitted > 0 (see the
+           admitted-count field below) does NOT block the commit —
+           admits are a legitimate iterative proof-development
+           workflow, exactly like skip-pending tests, and forbidding
+           them would make iterative proof authorship impossible. But
+           admits DO cap the status a section can earn: a section any
+           of whose discharged obligations has admitted > 0 tops out
+           at provisional-verified, NEVER verified, regardless of how
+           many other clean obligations it carries. provisional-
+           verified is reported separately in stats and dashboards so
+           the distinction is visible, not buried. The cap cannot be
+           removed by the agent (admits are inside the witness file,
+           which agents cannot edit); it lifts automatically when the
+           human finishes the proof and the prover re-runs with
+           admitted: 0. This is the honesty mechanism that keeps
+           proofs honest: admits don't fail the build, but they also
+           can't silently count as full proofs.
+
+         Evidence and freshness (same model as the (verify ...) agent
+         note in section verification):
+           When the prover is run and passes, borge writes:
+             (* agent note (|
+                proof-pass at commit abc123: ownership-consistency
+                discharged (coq, 1 obligation, 0 admitted), stale=false
+             |) *)
+           Freshness is hash-derived from the witness file and the
+           emitted representation, mirroring meta.borg staleness rules.
+           A proof is stale when the spec/code it was checked against
+           has changed since the prover ran; a stale proof contributes
+           no Verified credit.
+
+         .borg.meta block (new block type — see meta.borg future-blocks,
+         which already invites additional blocks):
+
+           (proof
+             (commit abc123)
+             (discharged-at 2026-07-04T18:00:00Z)
+             (obligation ownership-consistency
+               (witness "proof/db_auth.v")
+               (prover coq)
+               (verdict pass)
+               (admitted 0)           ; count of admit/Admitted used
+               (representation "proof/db_auth_schema.ml"))
+               ; the emitted schema the witness was checked against
+             (obligation ...
+               (verdict fail)
+               (failure "Theorem member_only_update: case g=member
+                         not covered by ownership(owner-id).")))
+
+         admitted count: a Coq proof may use `admit` to defer a
+         sub-goal it cannot yet finish. From Coq's perspective the
+         whole proof typechecks either way; the admit count is the
+         only signal that distinguishes a complete proof from a pile
+         of unproven assertions held together by trust. That is why
+         it is recorded in the .borg.meta block and why it feeds the
+         admits cap described above (provisional-verified, never
+         Verified, while admits > 0). The count is extracted from
+         the prover's output, not from the witness file's text —
+         borge still does not read the witness; the prover reports
+         the admit count as part of its verdict.
+
+         Why this is the right first hard-checked tier:
+           The crud-app DB authorization property is finite (closed
+           schema of tables, columns, groups, can-rules), already
+           encoded in the .borg (the groups/ownership/can declarations
+           exist today), and is precisely what neither drift nor the
+           LLM review can certify. drift catches presence; review
+           catches prose-code mismatch; the proof catches a logical
+           contradiction in the composition of two declarations in the
+           same spec — the kind of bug that has no failing input a
+           human would think to test, because it is a contradiction
+           in the spec itself. Discharging one such property builds
+           the entire obligations pipeline (spec form -> typed AST ->
+           prover representation -> prover invocation -> meta block ->
+           inbox finding on failure), which is reusable for every
+           future (asserts (property ...)) — including the informal
+           examples richer-constraints sketches, which become real the
+           moment any one of them has a backend.
+      |))
+   )
+  )
   (subsection effects-policy
    (doc "Why effects are deferred — and where they might fit later")
    (status implemented)
