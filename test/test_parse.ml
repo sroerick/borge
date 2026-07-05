@@ -60,6 +60,48 @@ let test_has_no_inline_false () =
   let file = Borge_lang.Parse.parse input in
   Alcotest.(check bool) __LOC__ false (Borge_lib.Spec.has_no_inline file)
 
+(* Helper: collect all top-level atoms from a parsed file, flattened. *)
+let collect_atoms file =
+  let acc = ref [] in
+  let rec walk_sexp = function
+    | Borge_lang.Ast.Atom (_, a) -> acc := a :: !acc
+    | Borge_lang.Ast.String _ -> ()
+    | Borge_lang.Ast.List (_, children) -> List.iter walk_sexp children
+  in
+  List.iter (fun swc -> walk_sexp swc.Borge_lang.Ast.node) file.Borge_lang.Ast.top_level;
+  List.rev !acc
+
+let test_symbol_chars_eq_colon_slash () =
+  (* Regression test for the lexer bug where = : / were silently dropped
+     from symbol atoms. Before the fix, (where assignee-id = current-user)
+     parsed to only [where; assignee-id; current-user] — = vanished.
+     ISO timestamps (with :) and file paths (with /) hit the same bug.
+     This test locks the fix: all three chars now survive as part of atoms. *)
+  let input = "(where assignee-id = current-user)" in
+  let file = Borge_lang.Parse.parse input in
+  let atoms = collect_atoms file in
+  Alcotest.(check int) __LOC__ 4 (List.length atoms);
+  Alcotest.(check bool) __LOC__ true (List.mem "=" atoms);
+  Alcotest.(check bool) __LOC__ true (List.mem "assignee-id" atoms);
+  Alcotest.(check bool) __LOC__ true (List.mem "current-user" atoms)
+
+let test_symbol_char_colon_timestamp () =
+  (* ISO 8601 timestamps contain : which must survive lexing as a single
+     atom (or at least not be silently dropped). Used in .borg.meta
+     (discharged-at 2026-07-05T07:38:40Z). *)
+  let input = "(discharged-at 2026-07-05T07:38:40Z)" in
+  let file = Borge_lang.Parse.parse input in
+  let atoms = collect_atoms file in
+  Alcotest.(check bool) __LOC__ true (List.mem "2026-07-05T07:38:40Z" atoms)
+
+let test_symbol_char_slash_path () =
+  (* File paths contain / which must survive lexing. Used in .borg.meta
+     (witness "proof/db_auth.v") and (representation "proof/BorgeSchema.v"). *)
+  let input = "(witness proof/db_auth.v)" in
+  let file = Borge_lang.Parse.parse input in
+  let atoms = collect_atoms file in
+  Alcotest.(check bool) __LOC__ true (List.mem "proof/db_auth.v" atoms)
+
 let () =
   Alcotest.run "borge parse tests" [
     "basic", [
@@ -75,5 +117,8 @@ let () =
       Alcotest.test_case "inline targets empty" `Quick test_inline_targets_empty;
       Alcotest.test_case "has no-inline" `Quick test_has_no_inline;
       Alcotest.test_case "no-inline false" `Quick test_has_no_inline_false;
+      Alcotest.test_case "symbol = retained" `Quick test_symbol_chars_eq_colon_slash;
+      Alcotest.test_case "symbol : in timestamp retained" `Quick test_symbol_char_colon_timestamp;
+      Alcotest.test_case "symbol / in path retained" `Quick test_symbol_char_slash_path;
     ];
   ]
