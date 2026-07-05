@@ -67,10 +67,10 @@
  )
  (section merge-queue
   (doc "CI/CD pipeline for agentic development — isolated worktrees, batched merges")
-  (status planned)
+  (status implemented)
   (subsection agent-isolation
    (doc "Every agent run is isolated in its own worktree and branch")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
          PROBLEM: Agents running concurrently clobber each other's
@@ -110,7 +110,7 @@
   )
   (subsection merge-queue
    (doc "Central queue of pending agent changes, processed atomically")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
          After agent completes in isolated worktree, it submits to
@@ -156,7 +156,7 @@
   )
   (subsection merge-strategies
    (doc "How to integrate agent changes into main")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
          MERGE STRATEGIES (configurable per project):

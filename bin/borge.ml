@@ -20,7 +20,8 @@ let cmds = [
   Lint.cmd;
   Log.cmd;
   Make.cmd;
-  (* Merge_queue.cmd; Merge.cmd; Future.cmd; *)  (* Phase 3.12/4.4: CLI integration pending build system fix *)
+  Merge_queue.cmd;
+  Merge.cmd;
   Modules.cmd;
   Nodes.cmd;
   Normalize.cmd;

@@ -32,12 +32,16 @@ let list_items () =
           let id_short = 
             if String.length item.id > 8 then String.sub item.id 0 8 else item.id
           in
-          Printf.printf "%-10s %-12s %-20s %6.0f%%  %.40s\n"
+        let summary_short =
+            if String.length item.summary > 40 then String.sub item.summary 0 40
+            else item.summary
+          in
+          Printf.printf "%-10s %-12s %-20s %6.0f%%  %s\n"
             id_short
             (string_of_state item.state)
             (Filename.basename item.branch)
             (item.confidence *. 100.0)
-            item.summary
+            summary_short
         ) queue.items;
         let counts = count_by_state queue in
         Printf.printf "\nSummary: %d pending, %d ready, %d blocked, %d merging, %d merged, %d rejected\n"
@@ -48,29 +52,6 @@ let list_items () =
           (List.assoc_opt "merged" counts |> Option.value ~default:0)
           (List.assoc_opt "rejected" counts |> Option.value ~default:0);
       end
-
-(* exempt doc: CLI command handler - purpose is clear from context *)
-let show_item id =
-  match Queue_storage.load () with
-  | Error e ->
-      Printf.eprintf "Error loading queue: %s\n" e;
-      exit 1
-  | Ok queue ->
-      match find_item queue id with
-      | None ->
-          (* Try to find by prefix *)
-          let matches = List.filter (fun (i : queue_item) ->
-            String.starts_with ~prefix:id i.id
-          ) queue.items in
-          (match matches with
-           | [item] -> show_item_detail item
-           | [] ->
-               Printf.eprintf "Item not found: %s\n" id;
-               exit 1
-           | _ ->
-               Printf.eprintf "Multiple items match prefix '%s', please use full ID\n" id;
-               exit 1)
-      | Some item -> show_item_detail item
 
 (* exempt doc: CLI detail printer - purpose is clear from context *)
 let show_item_detail (item : queue_item) =
@@ -103,6 +84,29 @@ let show_item_detail (item : queue_item) =
           (String.concat ", " c.conflicting_files)
       ) conflicts
     end
+
+(* exempt doc: CLI command handler - purpose is clear from context *)
+let show_item id =
+  match Queue_storage.load () with
+  | Error e ->
+      Printf.eprintf "Error loading queue: %s\n" e;
+      exit 1
+  | Ok queue ->
+      match find_item queue id with
+      | None ->
+          (* Try to find by prefix *)
+          let matches = List.filter (fun (i : queue_item) ->
+            String.starts_with ~prefix:id i.id
+          ) queue.items in
+          (match matches with
+           | [item] -> show_item_detail item
+           | [] ->
+               Printf.eprintf "Item not found: %s\n" id;
+               exit 1
+           | _ ->
+               Printf.eprintf "Multiple items match prefix '%s', please use full ID\n" id;
+               exit 1)
+      | Some item -> show_item_detail item
 
 (* agent note (|
  *   WHAT: Submit a completed worktree to the merge queue.
@@ -247,7 +251,7 @@ let submit_cmd : unit Cmd.t =
       ~docv:"0.0-1.0" ~doc:"Confidence score (0.0-1.0)")
   in
   Cmd.v (Cmd.info "submit" ~doc:"Submit worktree to merge queue")
-    Term.(const submit_worktree $ worktree $ summary $ confidence)
+    Term.(const (fun wt sm cf -> submit_worktree ~worktree_path:wt ~summary:sm ~confidence:cf) $ worktree $ summary $ confidence)
 
 let cancel_cmd : unit Cmd.t =
   let id =
@@ -258,7 +262,7 @@ let cancel_cmd : unit Cmd.t =
     Term.(const cancel_item $ id)
 
 let cmd : unit Cmd.t =
-  Cmd.v (Cmd.info "merge-queue" ~doc:"manage agent merge queue"
+  Cmd.group (Cmd.info "merge-queue" ~doc:"manage agent merge queue"
     ~man:[`S "DESCRIPTION";
           `P "Manages the queue of agent changes waiting to be merged.";
           `P "Items are submitted after agent runs complete.";
@@ -268,4 +272,4 @@ let cmd : unit Cmd.t =
           `I ("show ID", "Show detailed info for an item");
           `I ("submit --worktree PATH", "Submit a worktree to the queue");
           `I ("cancel ID", "Remove an item from the queue")])
-  (Cmd.group (Cmd.info "merge-queue") [list_cmd; show_cmd; submit_cmd; cancel_cmd])
+    [list_cmd; show_cmd; submit_cmd; cancel_cmd]
