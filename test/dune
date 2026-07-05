@@ -39,3 +39,7 @@
 (test
   (name test_config)
   (libraries borge.lib alcotest unix))
+
+(test
+  (name test_inbox)
+  (libraries borge.lib alcotest unix str))

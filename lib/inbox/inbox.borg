@@ -1,0 +1,145 @@
+(project borge-lib-inbox
+ (doc "Unified queue for scope concerns, bugs, drift findings, review findings. lib/inbox/")
+ (status implemented)
+ (no-inline
+ )
+ (section inbox
+  (doc "Unified filing queue: .borge-inbox files, one format, many sources")
+  (status implemented)
+  (details
+   (doc (|
+        Implements the inbox subsystem spec'd in docs/agent.borg
+        subsections inbox-file-format, inbox-commands, todo-aggregation.
+
+        The inbox is a unified queue: scope concerns (filed during
+        implementation), bug reports, drift findings, review findings
+        all flow into the same .borge-inbox file format. Replaces the
+        narrower bug subsystem (lib/bug/) — the old `borge bug` commands
+        become deprecated aliases for `borge inbox file --source bug-report`.
+
+        One queue, one format, tracked in git. The inbox is the outlet
+        the borge-workflow gate creates: agents in Execute mode CAN'T
+        edit .borg files, so they file inbox items for spec concerns
+        instead. Humans triage in Plan mode.
+
+        Format (per docs/agent.borg inbox-file-format):
+          (borge-inbox id:"INBOX-7"
+            (title "Need error handling in db_sql")
+            (status triage)
+            (filed-by agent:implementer)
+            (source scope-concern)
+            (affects section:"lib.borg:db-sql")
+            (created 2026-05-31)
+            (doc (|
+              During implementation of db_sql.ml, discovered that
+              the spec doesn't cover connection retry logic.
+            |))
+          )
+
+        Status workflow: triage → acknowledged → plan-approved → closed.
+        Source variants: scope-concern, bug-report, drift-finding,
+        review-finding. Resolution on close: spec-updated, wontfix,
+        duplicate, fixed-in-code.
+
+        Three modules:
+        1. inbox.ml: types + parse + format + list/file/close/acknowledge/
+           approve/consolidate. Pure data, no I/O side effects beyond
+           file reads/writes via File_utils.
+        2. (CLI lives in bin/cmd/Inbox.ml, not this library)
+
+        What this module does NOT do:
+          - Enforce gating. The phase engine (pi/borge-workflow skill)
+            enforces "can't edit .borg in Execute mode". This module
+            just provides the filing mechanism. Separation of concerns:
+            the tool doesn't police itself.
+          - Auto-file from drift/review. Drift and review findings CAN
+            call Inbox.file to create items, but that wiring lives in
+            the drift/review commands, not here.
+      |))
+  )
+  (subsection inbox-ast
+   (doc "Inbox item types: status workflow, source variants, resolution")
+   (status implemented)
+   (details
+    (doc (|
+         inbox_status: triage | acknowledged | plan-approved | closed
+         inbox_source: scope-concern | bug-report | drift-finding | review-finding
+         inbox_resolution (on close): spec-updated | wontfix | duplicate | fixed-in-code
+         inbox_item: { id; title; status; filed_by; source; affects;
+                       created; doc; resolution }
+
+         ID format: INBOX-N where N is the next sequential integer
+         after scanning existing .borge-inbox files for the max.
+         (Bug subsystem used BORGE-{timestamp}; inbox uses sequential
+         INBOX-N for human-readability and stable ordering.)
+       |))
+   )
+  )
+  (subsection inbox-parse
+   (doc "Parse .borge-inbox files into typed records")
+   (status implemented)
+   (details
+    (doc (|
+        inbox_parse.ml: reads .borge-inbox files (sexp format) into
+        inbox_item records using Borge_lang.Parse. Handles the
+        id:"INBOX-N" header attribute, the (doc (|...|)) verbatim
+        block, and optional (affects section:"...") and (resolution ...)
+        sub-forms.
+
+        Robust to missing optional fields: an item with no (affects ...)
+        parses with affects=None, etc. Does NOT crash on a partially-
+        written item.
+       |))
+   )
+  )
+  (subsection inbox-write
+   (doc "Write inbox_item records to .borge-inbox file format")
+   (status implemented)
+   (details
+    (doc (|
+         inbox_write.ml (or inline in inbox.ml): renders an inbox_item
+        to the .borge-inbox sexp format. Idempotent + deterministic
+        (fields in canonical order) for clean git diffs, mirroring
+        lib/check/meta.ml and bug_write.ml.
+       |))
+   )
+  )
+  (subsection inbox-registry
+   (doc "Manage .borge-inbox directory: paths, listing, loading, saving")
+   (status implemented)
+   (details
+    (doc (|
+         inbox_registry.ml: handles the .borge-inbox/ directory (or
+        .borge-inbox files — spec says files, plural, in the repo root
+        or a dedicated dir). Mirrors lib/bug/bug_registry.ml:
+        - save_item: write to inbox/<ID>.borge-inbox, return path
+        - load_item: read by ID
+        - list_items: scan dir, return all items (optionally filtered
+          by status or source)
+        - next_id: scan existing files for max N, return INBOX-(N+1)
+
+        Files live in .borge-inbox/ directory (git-tracked alongside
+        code and specs, per the spec).
+       |))
+   )
+  )
+  (subsection inbox-consolidate
+   (doc "Aggregate TODO markers across .borg and .ml files into inbox items")
+   (status implemented)
+   (details
+    (doc (|
+         The `borge inbox consolidate` command. Scans .borg and .ml
+        files for TODO/FIXME/XXX markers and (status planned) sections
+        with no (details ...), files each as a scope-concern inbox item.
+        Deduplicates against existing items (by title similarity).
+
+        Also surfaces (status planned) sections with no details as
+        "spec incomplete" scope-concerns.
+
+        This is the dogfooding path: the inbox tool uses itself to
+        track its own incomplete specs.
+       |))
+   )
+  )
+ )
+)

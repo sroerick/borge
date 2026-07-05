@@ -7,6 +7,7 @@ let cmds = [
   Abort.cmd;
   Balance.cmd;
   Book.cmd;
+  Inbox.cmd;
   Issue.cmd;
   Check.cmd;
   Commit.cmd;

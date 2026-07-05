@@ -376,7 +376,7 @@
   )
   (subsection inbox-file-format
    (doc "File format for inbox items")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
          Inbox items are stored as .borge-inbox files in the repo,
@@ -446,7 +446,7 @@
   )
   (subsection inbox-commands
    (doc "CLI commands for inbox management")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
          borge inbox list [--status triage] [--source bug-report]
@@ -707,7 +707,7 @@
   )
   (subsection todo-aggregation
    (doc "Surfacing TODOs as inbox items")
-   (status planned)
+   (status implemented)
    (details
     (doc (|
          TODOs are spec gaps. They say "I know I need to do
