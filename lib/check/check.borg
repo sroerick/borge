@@ -214,7 +214,8 @@
   )
   (subsection obligations
    (doc "Proof obligation extraction and lint rules for (asserts (property ...))")
-   (status implemented)
+   (status planned)
+   (* agent note (| Removed for lack of utility — see docs/engine.borg subsection obligations for the full rationale. The Coq proof experiment was implemented and live-discharged, then removed after review concluded the right tool for borge's invariants is types, not Coq proofs over stringly-typed data. Implementation in git history (commits b4f82f4..bd4c89c). |) *)
    (details
     (doc (|
          Implements the obligation-stanza facilities defined in

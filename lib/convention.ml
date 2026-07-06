@@ -182,20 +182,5 @@ let normalize_section_name name =
  *   convention-defined, not hardcoded into borge core.
  * |) *)
 let verify_methods = function
-  | Ocaml_dune -> ["build"; "test"; "smoke"; "visual"; "flow"; "coq"]
+  | Ocaml_dune -> ["build"; "test"; "smoke"; "visual"; "flow"]
   | Go_standard -> ["build"; "test"; "bench"]
-
-(* agent note (|
- *   WHAT: The set of known prover names for (asserts (property ... (prover X)))
- *   stanzas. Initially only `coq`. Convention-defined so lint can flag
- *   unknown provers as errors.
- *   WHY: Implements the prover-name validation rule from docs/engine.borg
- *   subsection `obligations`. An unknown prover is a lint error, not a
- *   silent skip — prevents typos like (prover Coq) or (prover coqq) from
- *   silently disabling an obligation. The convention owns this list so
- *   future conventions (e.g. a Rust convention) can declare their own
- *   prover set without touching the core.
- * |) *)
-let known_provers = function
-  | Ocaml_dune -> ["coq"]
-  | Go_standard -> []  (* coq is OCaml-ecosystem; Go has no primary mechanical prover today *)

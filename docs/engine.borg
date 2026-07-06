@@ -282,7 +282,8 @@
   )
   (subsection obligations
    (doc "Proof obligations — giving (asserts ...) a real checker")
-   (status implemented)
+   (status planned)
+   (* agent note (| Removed for lack of utility. The Coq proof experiment was implemented (emitter, runner, .borg.meta recorder, CLI verbs, lint rules) and live-discharged one property on the crud-app example, then removed after review. Findings: (1) the right tool for borge's invariants is types (typed operations, phantom resolved/unresolved refs), not Coq proofs over stringly-typed data — the ownership-consistency property was re-establishing typing discipline that strings threw away; (2) borge has no internal property that's both provable with reasonable effort and not already covered by an enforcement mechanism (lint checks code behavior; borge's invariants are about programs not data); (3) hand-authoring Coq witnesses is a specialist skill with no demand. The implementation lives in git history (commits b4f82f4, 6b40cb8, ad747c4, 1e35c29, bd4c89c). This section stays planned as a design reference if a real provable property emerges. |) *)
    (details
     (doc (|
          richer-constraints (above) reserves (asserts FORM) as a

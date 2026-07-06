@@ -8,8 +8,6 @@
            surface meta fmt nodes generate agent review_quality stats json_out
            ui_ast ui_parse ui_validate ui_json ui_dream ui_clay
            db_ast db_parse db_validate db_json db_sql
-           ; PROOF OBLIGATIONS (see lib/proof/proof.borg)
-           proof_emit proof_run proof_meta
            config
            ; INBOX (see lib/inbox/inbox.borg)
            inbox

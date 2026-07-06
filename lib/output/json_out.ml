@@ -97,21 +97,6 @@ let lint_issue = function
       "method", `String method_;
       "line", `Int line;
     ]
-  | Lint.Unknown_prover { path; prover; obligation_name } ->
-    `Assoc [
-      "type", `String "unknown_prover";
-      "severity", `String "error";
-      "path", `String path;
-      "prover", `String prover;
-      "obligation", `String obligation_name;
-    ]
-  | Lint.Verified_without_obligation { path; section } ->
-    `Assoc [
-      "type", `String "verified_without_obligation";
-      "severity", `String "error";
-      "path", `String path;
-      "section", `String section;
-    ]
   | Lint.No_inline_on_root { path } ->
     `Assoc [
       "type", `String "no_inline_on_root";
