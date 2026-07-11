@@ -1,0 +1,38 @@
+(borge-bug (id "BORGE-1783788555")
+  (title "Add 'deprecated' status value for retired chapters")
+  (status triage)
+  (created 2026-07-11)
+  (filed-by roerick)
+  (doc (|
+    Borge's status enum (spec.ml) is: planned, in-progress,
+    partial, implemented, verified, drifted, blank. There is no
+    status for a chapter that has been RETIRED from the book but
+    is kept for historical context.
+
+    This came up in pricklypear it35: we pivoted from a
+    multi-process Mirage unikernel topology (supervisor +
+    per-user images + authd) to a single-image model. The old
+    chapters (architecture.borg, supervisor.borg, multi-user.borg)
+    are no longer authoritative for the live design, but deleting
+    them loses the record of WHY the pivot happened and the
+    prior intent. We want a status that means 'this chapter is
+    retired; the successor is X; do not implement against it.'
+
+    Without it, we are forced to use 'planned' or 'partial' on
+    retired chapters, which is misleading (implies the work is
+    still ahead) or 'blank' (implies no decision). Neither
+    communicates 'intentionally abandoned in favor of Y'.
+
+    Proposed status: 'deprecated'
+      - valid in (status deprecated) and lint
+      - report counts it separately (like drifted)
+      - drift/check treats deprecated sections as out of scope
+        (no unspecified-module noise from their modules)
+      - convention: pair with an agent note pointing at the
+        successor chapter
+
+    Alternative names: 'retired', 'abandoned', 'superseded'.
+    'deprecated' is the most familiar (matches language/lib
+    ecosystems) and distinct from the existing set.
+  |))
+)
