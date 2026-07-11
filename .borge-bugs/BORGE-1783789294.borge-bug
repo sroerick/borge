@@ -1,0 +1,42 @@
+(borge-bug (id "BORGE-1783789294")
+  (title "borge issue close strips id/title/context; writes blank record")
+  (status triage)
+  (created 2026-07-11)
+  (filed-by roerick)
+  (doc (|
+    `borge issue close ID` does not preserve the bug's identity or
+    context. Observed when closing BORGE-1783788555 after fixing it:
+
+    The original file .borge-bugs/BORGE-1783788555.borge-bug was
+    LEFT UNCHANGED (status still 'triage', full doc intact), and a
+    NEW file .borge-bugs/.borge-bug was created with the closed
+    state — but that new record is blank:
+
+      (borge-bug (id "")
+        (title "")
+        (status closed)
+        (created )
+        (filed-by )
+        (doc "")
+        (resolution (when 1783789187) (how closed) (by roerick)))
+
+    Problems:
+      1. id, title, filed-by, created are all empty strings — the
+         closed record has no link back to which bug it resolves.
+      2. The original .borge-bug file keeps status 'triage' — so
+         `borge issue list --status triage` still shows the bug as
+         open even though it was closed. The two disagree.
+      3. The closed record is written to a fixed filename
+         '.borge-bug' (no id in the name), so closing a second bug
+         would OVERWRITE the first closed record.
+
+    Expected behaviour: closing a bug should mark the ORIGINAL
+    file's status as 'closed' (or 'resolved') and append a
+    (resolution ...) stanza to it, in place — not fork a blank
+    twin into a collision-prone filename. At minimum the closed
+    record must carry the id and title.
+
+    Repro: borge issue new "test" ; borge issue close <id> ;
+    cat .borge-bugs/<id>.borge-bug ; cat .borge-bugs/.borge-bug
+  |))
+)
