@@ -7,6 +7,7 @@ type status =
   | Implemented
   | Verified
   | Drifted
+  | Deprecated
   | Blank
 
 (* (fn status_of_string
@@ -19,6 +20,7 @@ let status_of_string = function
   | "implemented" -> Some Implemented
   | "verified" -> Some Verified
   | "drifted" -> Some Drifted
+  | "deprecated" -> Some Deprecated
   | "blank" -> Some Blank
   | _ -> None
 
@@ -33,6 +35,7 @@ let string_of_status = function
   | Implemented -> "implemented"
   | Verified -> "verified"
   | Drifted -> "drifted"
+  | Deprecated -> "deprecated"
   | Blank -> "blank"
 
 (** Extract the project name from a top-level (project name ...) form *)
@@ -74,7 +77,7 @@ let statuses (file : Borge_lang.Ast.file) : status list =
   in
   walk file.top_level
 
-let status_order = [Planned; In_progress; Partial; Implemented; Verified; Drifted; Blank]
+let status_order = [Planned; In_progress; Partial; Implemented; Verified; Drifted; Deprecated; Blank]
 
 (* agent note [5200] (|
  *   WHAT: Ordered list of status values for display and comparison.

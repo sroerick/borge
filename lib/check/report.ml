@@ -7,6 +7,7 @@ type file_stats = {
   verified : int;
   in_progress : int;
   planned : int;
+  deprecated : int;
 }
 
 type totals = {
@@ -14,6 +15,7 @@ type totals = {
   verified : int;
   in_progress : int;
   planned : int;
+  deprecated : int;
 }
 
 type result = {
@@ -39,7 +41,8 @@ let stats_of_file path =
     let veri = match List.assoc_opt Spec.Verified counts with Some v -> v | None -> 0 in
     let plan = match List.assoc_opt Spec.Planned counts with Some v -> v | None -> 0 in
     let prog = match List.assoc_opt Spec.In_progress counts with Some v -> v | None -> 0 in
-    Some { path; project_name = name; implemented = impl; verified = veri; in_progress = prog; planned = plan }
+    let depr = match List.assoc_opt Spec.Deprecated counts with Some v -> v | None -> 0 in
+    Some { path; project_name = name; implemented = impl; verified = veri; in_progress = prog; planned = plan; deprecated = depr }
   with _ -> None
 
 (** Run report with inline-tree awareness.
@@ -65,4 +68,5 @@ let run dir =
   let tot_veri : int = List.fold_left (fun acc (r : file_stats) -> acc + r.verified) 0 rows in
   let tot_plan : int = List.fold_left (fun acc (r : file_stats) -> acc + r.planned) 0 rows in
   let tot_prog : int = List.fold_left (fun acc (r : file_stats) -> acc + r.in_progress) 0 rows in
-  { files = rows; totals = { implemented = tot_impl; verified = tot_veri; in_progress = tot_prog; planned = tot_plan }; orphans }
+  let tot_depr : int = List.fold_left (fun acc (r : file_stats) -> acc + r.deprecated) 0 rows in
+  { files = rows; totals = { implemented = tot_impl; verified = tot_veri; in_progress = tot_prog; planned = tot_plan; deprecated = tot_depr }; orphans }
