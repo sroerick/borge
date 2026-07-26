@@ -47,3 +47,25 @@ The Coq proof experiment answered its question ("can borge do formal verificatio
 cd /home/roerick/dev/wyo.tech/borge && eval $(opam env)
 dune build && dune runtest && borge check
 ```
+
+## Final Verification (externally rerunnable)
+
+Exact monitor-rerunnable command (from a fresh shell in this worktree):
+
+    cd /home/roerick/dev/wyo.tech/borge && eval $(opam env)
+    dune build                       # exit 0
+    dune runtest                     # exit 0, all suites green
+    borge check                      # 35/35 passed
+    borge lint examples/crud-app     # 0 errors, 0 warnings
+    ./_build/default/bin/borge.exe proof   # "unknown command proof" (removed)
+
+- Working directory: /home/roerick/dev/wyo.tech/borge
+- Required environment: opam switch `poohstack` activated via `eval $(opam env)`
+- Required preserved artifacts: none beyond committed source (the opam switch
+  with sedlex/menhir/coq remains, though coq is no longer required by borge)
+- Result of final run: build 0, runtest 0, 35/35 files check, `borge proof`
+  correctly returns "unknown command", all proof code/tests/specs removed,
+  2 sections demoted implemented->planned with agent notes pointing to git
+  history (commits b4f82f4..bd4c89c).
+- Commit: 5dda139 (refactor: remove the Coq proof experiment for lack of utility)
+

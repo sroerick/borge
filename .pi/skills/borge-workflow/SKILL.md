@@ -85,7 +85,13 @@ Per-section acceptance criteria. Example:
     (smoke "POST /api/login"))
 ```
 
-When marking `implemented` with verify, always write an agent note documenting verification results.
+Verify stanzas describe WHAT is checked, behaviorally. Do NOT record
+verification RESULTS in the spec — no `(* agent note (| verified
+<date> ... |) *)` blocks, no test counts, no dates, no iteration refs,
+no `/tmp/*.py` script paths. Evidence of a verification run belongs in
+the commit message or a `borge issue`, never in the book. The book is a
+declarative document: it states what must be true, not when or by whom
+it was last checked.
 
 ## Commands Summary
 
@@ -102,3 +108,18 @@ When marking `implemented` with verify, always write an agent note documenting v
 | `borge report` | Dashboard |
 | `borge future` | Roadmap view |
 | `borge issue new "title"` | During make phase for spec adjustments |
+
+## Spec Hygiene (the book is declarative)
+
+The `.borg` book states what the system IS and MUST BE. Keep out:
+- dates and "as of" status reports (staleness is invisible to readers)
+- iteration/session references (`it35`, "the it12 refactor")
+- changelog narration of what was deleted or pivoted (one orientation
+  sentence max; git history is the changelog)
+- borge issue IDs, drift/lint run notes, verification op-records
+- volatile counts (test tallies, LOC, table counts) that rot silently
+- project-management framing (phases, make-checklists, work packages)
+  — those live in `borge issue`/plan docs, not the book
+
+Human comments (`(* <name> ...)` for non-agent authors) are sacred:
+never create, modify, or delete them.
