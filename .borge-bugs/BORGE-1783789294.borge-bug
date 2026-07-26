@@ -1,9 +1,9 @@
 (borge-bug (id "BORGE-1783789294")
   (title "borge issue close strips id/title/context; writes blank record")
-  (status triage)
+  (status closed)
   (created 2026-07-11)
   (filed-by roerick)
-  (doc (|
+  (doc "
     `borge issue close ID` does not preserve the bug's identity or
     context. Observed when closing BORGE-1783788555 after fixing it:
 
@@ -38,5 +38,6 @@
 
     Repro: borge issue new "test" ; borge issue close <id> ;
     cat .borge-bugs/<id>.borge-bug ; cat .borge-bugs/.borge-bug
-  |))
+  ")
+  (resolution (when 1785098886) (how closed) (by roerick))
 )

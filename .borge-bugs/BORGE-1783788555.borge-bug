@@ -1,9 +1,9 @@
 (borge-bug (id "BORGE-1783788555")
   (title "Add 'deprecated' status value for retired chapters")
-  (status triage)
+  (status closed)
   (created 2026-07-11)
   (filed-by roerick)
-  (doc (|
+  (doc "
     Borge's status enum (spec.ml) is: planned, in-progress,
     partial, implemented, verified, drifted, blank. There is no
     status for a chapter that has been RETIRED from the book but
@@ -34,5 +34,6 @@
     Alternative names: 'retired', 'abandoned', 'superseded'.
     'deprecated' is the most familiar (matches language/lib
     ecosystems) and distinct from the existing set.
-  |))
+  ")
+  (resolution (when 1785098886) (how closed) (by roerick))
 )
