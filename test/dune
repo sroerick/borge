@@ -43,3 +43,7 @@
 (test
   (name test_queue)
   (libraries borge.lib alcotest))
+
+(test
+  (name test_bug)
+  (libraries borge.lang borge.lib alcotest))
