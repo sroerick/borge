@@ -132,16 +132,44 @@ let rec find_status : Borge_lang.Ast.sexp list -> status option = function
   | _ :: rest -> find_status rest
 
 (** Extract (implements ...) file paths from a list of sexp children.
-    Returns paths as strings. Multiple implements forms accumulate. *)
+
+    A single (implements ...) form may express its target path two ways:
+    - as one or more COMPLETE paths, each an atom containing '/':
+        (implements image/lib/a.ml image/lib/b.ml)
+    - as a path SPLIT across component atoms (none containing '/'),
+      conventionally ending in the file:
+        (implements lib lock lock.ml)   -> "lib/lock/lock.ml"
+    Grouping rule: an atom containing '/' is a complete standalone path;
+    consecutive atoms without '/' are joined with '/' into one path.
+    Multiple (implements ...) forms accumulate. Returns file paths. *)
 let extract_implements children =
+  let group_paths atoms =
+    let has_slash a = String.contains a '/' in
+    let rec loop acc current = function
+      | [] ->
+          (match current with
+           | [] -> acc
+           | c -> acc @ [String.concat "/" (List.rev c)])
+      | a :: rest when has_slash a ->
+          (* complete standalone path; flush any accumulating component path first *)
+          let acc' = match current with
+            | [] -> acc
+            | c -> acc @ [String.concat "/" (List.rev c)]
+          in
+          loop (acc' @ [a]) [] rest
+      | a :: rest ->
+          loop acc (a :: current) rest
+    in
+    loop [] [] atoms
+  in
   let rec find_impls = function
     | [] -> []
     | Borge_lang.Ast.List (_, Borge_lang.Ast.Atom (_, "implements") :: paths) :: rest ->
-        let files = List.filter_map (function
+        let atoms = List.filter_map (function
           | Borge_lang.Ast.Atom (_, p) -> Some p
           | _ -> None
         ) paths in
-        files @ find_impls rest
+        group_paths atoms @ find_impls rest
     | _ :: rest -> find_impls rest
   in
   find_impls children

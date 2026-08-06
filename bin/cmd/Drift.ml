@@ -174,8 +174,8 @@ let run_static dir json quiet modules =
   else begin
     Printf.printf "Spec drift (%d sections):\n" (List.length result.spec_drift);
     List.iter (fun (d : Drift.spec_drift) ->
-      Printf.printf "  ▷ %s: '%s' marked implemented but not found in code\n"
-        d.path d.section_name
+      Printf.printf "  ▷ %s: %s — %s
+" d.path d.section_name d.description
     ) result.spec_drift
   end;
   if result.code_drift = [] then
