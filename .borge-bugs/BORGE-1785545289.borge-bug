@@ -1,0 +1,7 @@
+(borge-bug (id "BORGE-1785545289")
+  (title "report does not count sections with (status partial) — pricklypear has ~45 partial sections invisible in report totals, so '54.6% complete' and the 130-tracked denominator understate the ledger. Include a partial column.")
+  (status triage)
+  (created 2026-07-31)
+  (filed-by roerick)
+  (doc "")
+)

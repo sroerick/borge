@@ -1,0 +1,8 @@
+(borge-bug (id "BORGE-1785545278")
+  (title "drift CLI: 'marked implemented but not found in code' label is hardcoded (bin/cmd/Drift.ml:177) and ignores d.description — every spec_drift item prints it. Real causes are 'missing agent verification note' / 'verify stanza modified since HEAD'. Also the feature_exists check is dead code (never returns Some false). Print d.description instead.")
+  (status closed)
+  (created 2026-07-31)
+  (filed-by roerick)
+  (doc "")
+  (resolution (when 1786034799) (how closed) (by roerick))
+)

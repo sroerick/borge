@@ -1,0 +1,7 @@
+(borge-bug (id "BORGE-1786034799")
+  (title "Drift refactor landed (existence not evidence + orphan detection): update lib/check/check.borg subsection drift to describe orphan-file detection (scripts/docs/libs/migrations) and the new implements-existence + verify-apparatus checks; also resolve docs/agent-cheatsheet.md now flagged as an orphan (declare in a spec section or excuse via (untracked)).")
+  (status triage)
+  (created 2026-08-06)
+  (filed-by roerick)
+  (doc "")
+)

@@ -1,0 +1,8 @@
+(borge-bug (id "BORGE-1785545310")
+  (title "drift check_missing_verify_notes contradicts current spec-hygiene doctrine: drift demands agent verification notes on implemented sections with verify stanzas, but book doctrine forbids recording verification RESULTS in the spec. Result: 51/52 drift items in pricklypear are this false-positive class. Either drop the check or reframe it (e.g. verify stanza stale vs git). NOTE: issue IDs collide when two issues are filed in the same second — 1785545289 was overwritten once.")
+  (status closed)
+  (created 2026-07-31)
+  (filed-by roerick)
+  (doc "")
+  (resolution (when 1786034799) (how closed) (by roerick))
+)
