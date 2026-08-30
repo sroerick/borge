@@ -80,10 +80,15 @@
   |) *)
  (doc (|
       One concrete expression of that narrative goal is the borge book
-      printer: it emits the spec tree as a paginated PDF with line
-      numbers and wide margins, ordered so that design documents come
-      before interfaces and interfaces come before implementations.
-      The book is meant to be read, not just referenced.
+      printer: it renders the spec tree as a paginated PDF with line
+      numbers and wide margins, and its table of contents is the
+      project's (inline ...) tree itself — the order the author wrote —
+      with unreferenced code appended as a lexicographic appendix. Two
+      render modes share one walk: workshop (the full workflow
+      scaffolding) and reader (prose, headings, and code only), and the
+      same walk exports a deterministic JSON artifact for other readers
+      of the book — the pricklypear habitat seeds its web reader from
+      that feed. The book is meant to be read, not just referenced.
     |))
  (* agent note (|
     roerick, on the book vision (2026-06-28): "I want to print
@@ -104,8 +109,8 @@
         review, discipline.
       - docs/merge.borg — transactional isolation, merge queue, branch
         management.
-      - docs/book.borg — the codebase book printer and its manifest
-        sidecar.
+      - docs/book.borg — the codebase book printer: print and export
+        projections over one shared walk, plus the manifest sidecar.
       - docs/{cli,db,ui,meta,history,convention-go}.borg — other
         design documents and conventions.
       - lib.borg — the implementation index; each lib/DIR/DIR.borg
