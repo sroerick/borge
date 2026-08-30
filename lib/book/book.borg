@@ -3,7 +3,7 @@
   (doc "Codebase book printer. lib/book/")
   (status planned)
   (subsection book-print-impl
-   (doc "Linearize source files to a paginated PDF (four-tier order: root .borg, other top-level .borg, .mli, .ml)")
+   (doc "Linearize source files to a paginated PDF (inline-aware order: the root's (inline ...) tree, then unreferenced files lexicographically)")
    (status implemented)
    (* agent note (|
      verified at this commit: build-pass, smoke-pass (borge book print
@@ -26,6 +26,18 @@
      habitat-book, code appendix after); alcotest book_walk suite
      covers order/appendix/missing-target/duplicate-inline.
    |) *)
+   (* agent note (|
+     P1.2 (2026-08-29): determinism + --root. PDFs are now
+     byte-identical across runs (pdflatex runs with cwd in the work
+     dir, listings cited relatively, SOURCE_DATE_EPOCH +
+     FORCE_SOURCE_DATE pin creation date and /ID; manifest
+     rendered_at stays the only wall-clock field). --root FILE
+     prints exactly the inline subtree rooted at FILE (no appendix;
+     hard error on missing file or unbuildable tree, unlike the
+     default walk's degrade-to-lone-chapter). Verified: alcotest
+     book_walk now also covers subtree selection, --root errors,
+     tex byte-determinism, and a full two-run PDF byte-compare.
+   |) *)
    (verify
     (build
     )
@@ -38,11 +50,12 @@
          lib/book/book_print.ml — the linearizer and LaTeX emitter.
 
          v2 scope: inline-aware ordering (the root project's
-         (inline ...) tree is the chapter order), no woven view,
-         no --section/--woven/--root yet. Unreferenced files
-         (.ml/.mli code, stray .borg) append lexicographically as
-         the appendix. Each file is read, sanitized, emitted as one
-         LaTeX document, run through pdflatex.
+         (inline ...) tree is the chapter order), byte-deterministic
+         PDFs, --root FILE subtree selection. No woven view, no
+         --section/--woven yet. Unreferenced files (.ml/.mli code,
+         stray .borg) append lexicographically as the appendix.
+         Each file is read, sanitized, emitted as one LaTeX
+         document, run through pdflatex.
 
          Pipeline:
          1. collect_files : dir -> string list
@@ -64,6 +77,13 @@
               borge/habitat-book.borg export-projection requires
               chapter order == inline order, shared by print,
               export, and the habitat loader.)
+         1b. collect_subtree : dir -> root_file:string -> string list
+              The --root FILE walk: Project.build_tree rooted at
+              FILE (resolved relative to dir, then CWD), flattened —
+              exactly the subtree, nothing else (no appendix, no
+              sibling roots). Missing file or unbuildable tree is a
+              hard error: an explicit selection is a contract, not
+              an implicit whole-book default.
          2. file_to_latex : path -> lines -> string
               For .ml/.mli: \section{path} + \lstinputlisting block
               (numbers=left, frame=single, mono, breaklines, wide
@@ -83,6 +103,14 @@
 
          Shell-out uses Unix.open_process and checks the exit code;
          a failed pdflatex is a hard error, not a silent fallback.
+
+         Determinism: pdflatex runs with cwd = the work directory
+         and cites sanitized listings by RELATIVE path (no temp-dir
+         name can leak into the .tex), under SOURCE_DATE_EPOCH +
+         FORCE_SOURCE_DATE so the PDF's timestamps and /ID derive
+         from a fixed epoch. The PDF is a pure function of the
+         printed tree; rendered_at in the manifest is the sole
+         wall-clock artifact.
        |))
    )
   )

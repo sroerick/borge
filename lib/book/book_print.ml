@@ -1,15 +1,23 @@
 (* agent note (|
  *   WHAT: v2 codebook printer. Chapters follow the root project's
  *   (inline ...) tree order (the spec IS the book); unreferenced
- *   files append lexicographically as the appendix. Emits a LaTeX
- *   document with the listings package (line numbers, framed code,
- *   a wide right-hand margin for hand annotations), runs pdflatex
- *   until the .aux/.toc stabilize (a multi-page TOC grows across
- *   passes), and writes a manifest sidecar via Book_manifest.
+ *   files append lexicographically as the appendix. --root FILE
+ *   prints exactly the inline subtree rooted at one file (course
+ *   roots, single chapters). Emits a LaTeX document with the
+ *   listings package (line numbers, framed code, a wide right-hand
+ *   margin for hand annotations), runs pdflatex until the .aux/.toc
+ *   stabilize (a multi-page TOC grows across passes), and writes a
+ *   manifest sidecar via Book_manifest.
  *   WHY: The "print" half of the book round trip (borge.borg
  *   section book; pricklypear borge/habitat-book.borg
  *   export-projection). One walk shared with book export and the
  *   habitat loader; no readdir order survives.
+ *   DETERMINISM: pdflatex runs with cwd = the work dir and cites the
+ *   sanitized listings by relative path (no PID-bearing tmpdir leaks
+ *   into the .tex), and SOURCE_DATE_EPOCH/FORCE_SOURCE_DATE pin the
+ *   PDF timestamps + /ID to a fixed epoch. Two runs of the same tree
+ *   produce byte-identical PDFs; wall clock survives in exactly one
+ *   artifact, the manifest's rendered_at.
  * |) *)
 
 let skip_dirs =
@@ -64,6 +72,11 @@ let rec collect ~root ~rel acc =
       else acc
   ) acc (List.sort compare entries)
 
+let tree_error_msg = function
+  | Project.File_not_found p -> "file not found: " ^ p
+  | Project.Parse_error (p, m) -> Printf.sprintf "%s: %s" p m
+  | Project.Cycle_detected cyc -> String.concat " -> " cyc
+
 (* Inline-aware ordered walk (spec: pricklypear borge/habitat-book.borg
    export-projection; borge self-spec docs/book.borg book-print):
 
@@ -91,16 +104,10 @@ let collect_files dir =
       match Project.build_tree (Filename.concat dir root_rel) with
       | Ok tree -> List.map (canon_path ~dir) (Project.tree_paths tree)
       | Error err ->
-        let msg =
-          match err with
-          | Project.File_not_found p -> "file not found: " ^ p
-          | Project.Parse_error (p, m) -> Printf.sprintf "%s: %s" p m
-          | Project.Cycle_detected cyc -> String.concat " -> " cyc
-        in
         prerr_endline
           (Printf.sprintf
              "borge book: inline tree error at %s (%s); printing it as a lone chapter"
-             root_rel msg);
+             root_rel (tree_error_msg err));
         [root_rel]
     ) roots
   in
@@ -114,6 +121,29 @@ let collect_files dir =
     List.filter (fun p -> not (Hashtbl.mem seen p)) all |> List.sort compare
   in
   chapters @ appendix
+
+(* Explicit-root walk (--root FILE): the book is exactly the inline
+   subtree rooted at FILE — course roots, single-chapter prints.
+   Nothing outside the subtree prints: no appendix, no sibling roots.
+   Unlike the default walk (which degrades to a lone chapter on a
+   broken tree so the whole book still renders), an explicit selection
+   is a contract: a missing file or an unbuildable tree is a hard
+   error. FILE resolves relative to dir first, then to the CWD. *)
+let collect_subtree ~dir ~root_file =
+  let root_abs =
+    if Filename.is_relative root_file
+       && Sys.file_exists (Filename.concat dir root_file)
+    then Filename.concat dir root_file
+    else root_file
+  in
+  if not (Sys.file_exists root_abs) then
+    failwith (Printf.sprintf "--root: no such file: %s" root_file);
+  match Project.build_tree root_abs with
+  | Ok tree -> List.map (canon_path ~dir) (Project.tree_paths tree)
+  | Error err ->
+    failwith
+      (Printf.sprintf "--root %s: inline tree error (%s)"
+         root_file (tree_error_msg err))
 
 (* Escape LaTeX special chars for use in \section{}, \markboth{}, headers.
    Paths contain _, ., /, alphanumerics — only _ needs escaping,
@@ -316,6 +346,12 @@ let borg_to_latex ~content =
 let render_to_tex ~dir ~files ~tex_path =
   let src_dir = Filename.concat (Filename.dirname tex_path) "src" in
   (try Unix.mkdir src_dir 0o755 with Unix.Unix_error (Unix.EEXIST, _, _) -> ());
+  (* Listings are cited by a path relative to tex_path's directory
+     (pdflatex runs with cwd there): keeps the .tex byte-identical
+     across runs regardless of the temp dir's name. *)
+  let rel_listing i ext =
+    Filename.concat "src" (Printf.sprintf "%04d.%s" i ext)
+  in
   let oc = open_out tex_path in
   output_string oc (preamble ());
   output_string oc "\\begin{document}\n";
@@ -340,14 +376,16 @@ let render_to_tex ~dir ~files ~tex_path =
         let soc = open_out sanitized_path in
         output_string soc (sanitize raw);
         close_out soc;
-        Printf.fprintf oc "\\lstinputlisting[firstnumber=1]{%s}\n" sanitized_path
+        Printf.fprintf oc "\\lstinputlisting[firstnumber=1]{%s}\n"
+          (rel_listing i "borg")
     end else begin
       let sanitized_path = Filename.concat src_dir (Printf.sprintf "%04d.ml" i) in
       let content = sanitize (try File_utils.read_file full with Sys_error _ -> "") in
       let soc = open_out sanitized_path in
       output_string soc content;
       close_out soc;
-      Printf.fprintf oc "\\lstinputlisting[firstnumber=1]{%s}\n" sanitized_path
+      Printf.fprintf oc "\\lstinputlisting[firstnumber=1]{%s}\n"
+        (rel_listing i "ml")
     end
   ) files;
   output_string oc "\\end{document}\n";
@@ -367,11 +405,17 @@ let file_hash path =
    (TOC renders 1 page, page numbers wrong), pass 2 renders the full
    TOC (pushing content down), pass 3 displays + records the corrected
    page numbers. Looping on the .aux+.toc hash catches the stabilization
-   the way latexmk does. *)
+   the way latexmk does.
+
+   Runs with cwd = tmpdir (the tex cites its listings relatively) and
+   SOURCE_DATE_EPOCH/FORCE_SOURCE_DATE pinned so the PDF's creation
+   date and /ID derive from a fixed epoch, not the wall clock —
+   byte-identical PDFs across runs and clones. *)
 let run_pdflatex ~tmpdir ~tex =
   let cmd =
-    Printf.sprintf "pdflatex -interaction=nonstopmode -halt-on-error -output-directory=%s %s >/dev/null 2>&1"
-      (Filename.quote tmpdir) (Filename.quote tex)
+    Printf.sprintf
+      "cd %s && SOURCE_DATE_EPOCH=0 FORCE_SOURCE_DATE=1 pdflatex -interaction=nonstopmode -halt-on-error -output-directory=. %s >/dev/null 2>&1"
+      (Filename.quote tmpdir) (Filename.quote (Filename.basename tex))
   in
   let aux = Filename.concat tmpdir "book.aux" in
   let toc = Filename.concat tmpdir "book.toc" in
@@ -420,15 +464,20 @@ let rm_rf dir =
   try walk dir; Unix.rmdir dir with _ -> ()
 
 (* Returns the number of files printed. On failure, keeps tmpdir
-   and prints the log path so the user can diagnose. *)
-let print ~dir ~stem =
+   and prints the log path so the user can diagnose. root selects an
+   explicit inline subtree (None = the whole book). *)
+let print ~dir ~stem ~root =
   if not (has_cmd "pdflatex") then begin
     if has_cmd "groff" then
       failwith "groff backend not implemented in v1 (install pdflatex/texlive)"
     else
       failwith "no PDF backend found: need pdflatex on PATH"
   end;
-  let files = collect_files dir in
+  let files =
+    match root with
+    | Some f -> collect_subtree ~dir ~root_file:f
+    | None -> collect_files dir
+  in
   if files = [] then
     failwith "no source files found";
   let tmpdir =

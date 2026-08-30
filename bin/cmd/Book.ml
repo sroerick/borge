@@ -1,9 +1,9 @@
 open Borge_lib
 
-let print_run dir stem =
+let print_run dir stem root =
   let dir = match dir with Some d -> d | None -> "." in
   try
-    let n = Book_print.print ~dir ~stem in
+    let n = Book_print.print ~dir ~stem ~root in
     Printf.printf "wrote %s.pdf and %s.book.manifest (%d files)\n" stem stem n;
     exit 0
   with
@@ -20,18 +20,32 @@ let stem_arg =
   Arg.(value & opt string "borge-book" & info ["o"] ~docv:"STEM"
     ~doc:"Output stem: writes STEM.pdf and STEM.book.manifest")
 
+let root_arg =
+  Arg.(value & opt (some string) None & info ["root"] ~docv:"FILE"
+    ~doc:"Print exactly the inline subtree rooted at FILE (course roots, \
+          single chapters). Nothing outside the subtree prints. Resolved \
+          relative to DIR first, then the working directory.")
+
 let print_cmd : unit Cmd.t =
   Cmd.v (Cmd.info "print" ~doc:"print the codebase as a paginated PDF book"
     ~man:[`S "DESCRIPTION";
           `P "Chapters follow the project's (inline ...) tree order; \
-              unreferenced files append lexicographically. Emits a paginated \
-              PDF with line numbers on every page and a wide right-hand \
-              margin for hand annotations. Writes a <STEM>.book.manifest \
-              sidecar (file identity + tree checksum) alongside the PDF.";
+              unreferenced files append lexicographically. Output is \
+              deterministic: two runs of the same tree produce \
+              byte-identical PDFs (only the manifest's rendered_at \
+              carries wall-clock time). Emits a paginated PDF with line \
+              numbers on every page and a wide right-hand margin for \
+              hand annotations. Writes a <STEM>.book.manifest sidecar \
+              (file identity + tree checksum) alongside the PDF.";
+          `P "--root FILE renders exactly the inline subtree rooted at \
+              FILE — a course root prints as that course, a single \
+              chapter prints alone. A missing file or unbuildable tree \
+              is a hard error.";
           `S "EXAMPLES";
           `P "borge book print .            # writes borge-book.pdf";
-          `P "borge book print lib -o lib   # writes lib.pdf"])
-    Term.(const print_run $ dir_arg $ stem_arg)
+          `P "borge book print lib -o lib   # writes lib.pdf";
+          `P "borge book print --root course/cs.borg -o cs  # one subtree"])
+    Term.(const print_run $ dir_arg $ stem_arg $ root_arg)
 
 let cmd : unit Cmd.t =
   Cmd.group (Cmd.info "book" ~doc:"print the codebase as a book")

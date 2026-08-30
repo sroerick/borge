@@ -53,4 +53,4 @@
   (libraries borge.lang borge.lib alcotest unix str))
 (test
   (name test_book_walk)
-  (libraries borge.lib unix alcotest))
+  (libraries borge.lib unix str alcotest))

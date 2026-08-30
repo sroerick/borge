@@ -70,7 +70,7 @@
    (status implemented)
    (details
     (doc (|
-         borge book print [--section NAME] [--woven] [-o FILE]
+         borge book print [DIR] [--root FILE] [-o STEM]
 
          Linearizes code into a paginated document with page
          numbers, line numbers on every page, and a right-hand
@@ -97,6 +97,27 @@
          A root whose inline tree fails to build (missing target,
          cycle, parse error) degrades to a lone chapter with a
          stderr warning — the book still renders, deterministically.
+
+         Determinism is byte-level, not just order-level. The walk
+         is a pure function of file contents; pdflatex runs inside
+         the work directory with SOURCE_DATE_EPOCH and
+         FORCE_SOURCE_DATE pinned, so the PDF's creation date and
+         /ID derive from a fixed epoch, and listings are cited by
+         temp-dir-independent relative paths. Two runs of the same
+         tree — in any directory, from any clone — produce
+         byte-identical PDFs. Wall clock survives in exactly one
+         artifact: the manifest's rendered_at.
+
+         --root FILE selects an exact subtree: the book is the
+         inline tree rooted at FILE and nothing else — no appendix,
+         no sibling roots. This is the paper-side hook for course
+         roots (pricklypear borge/habitat-book.borg
+         course-documents): a course .borg ordering chapters prints
+         as that course, and a single chapter prints alone. Unlike
+         the default walk, which degrades on a broken inline tree
+         so the whole book still prints, an explicit selection is a
+         contract: a missing file or an unbuildable tree is a hard
+         error.
 
          Still long-tail: the woven view (each chapter's code
          attached to its spec section), page-number cross-references

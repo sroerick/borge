@@ -82,6 +82,124 @@ let test_duplicate_inline () =
       Alcotest.(check (list string)) "duplicate inline keeps first position"
         [ "root3.borg"; "a.borg" ] files)
 
+(* --root FILE: exactly the inline subtree rooted at FILE — nested
+   inlines included, nothing outside it (no appendix, no siblings),
+   and a lone chapter prints as a book of one. *)
+let test_subtree_root () =
+  with_fixture "subtree"
+    [
+      ("root.borg", "(project demo\n (doc \"demo book\")\n (inline \"a.borg\")\n (inline \"sub/b.borg\")\n)\n");
+      ("a.borg", "(project a\n (doc \"chapter a\")\n)\n");
+      ("sub/b.borg", "(project b\n (doc \"chapter b\")\n (inline \"d.borg\")\n)\n");
+      ("sub/d.borg", "(project d\n (doc \"chapter d\")\n)\n");
+      ("other.borg", "(project other\n (doc \"standalone chapter\")\n)\n");
+      ("code/util.ml", "let hello = \"hi\"\n");
+    ]
+    (fun dir ->
+      let subtree = Book_print.collect_subtree ~dir ~root_file:"root.borg" in
+      Alcotest.(check (list string)) "full subtree in inline order"
+        [ "root.borg"; "a.borg"; "sub/b.borg"; "sub/d.borg" ] subtree;
+      let mid = Book_print.collect_subtree ~dir ~root_file:"sub/b.borg" in
+      Alcotest.(check (list string)) "mid-tree subtree roots its own book"
+        [ "sub/b.borg"; "sub/d.borg" ] mid;
+      let lone = Book_print.collect_subtree ~dir ~root_file:"other.borg" in
+      Alcotest.(check (list string)) "single chapter prints alone"
+        [ "other.borg" ] lone;
+      let leaf = Book_print.collect_subtree ~dir ~root_file:"a.borg" in
+      Alcotest.(check (list string)) "leaf chapter is a book of one"
+        [ "a.borg" ] leaf)
+
+(* --root is a contract, not a degrade-able default: a missing file or
+   an unbuildable tree fails hard with the reason. *)
+let test_subtree_errors () =
+  with_fixture "subtree-err"
+    [
+      ("bad.borg", "(project bad\n (doc \"broken tree\")\n (inline \"gone.borg\")\n)\n");
+    ]
+    (fun dir ->
+      Alcotest.check_raises "missing root file fails" (Failure "--root: no such file: nope.borg")
+        (fun () -> ignore (Book_print.collect_subtree ~dir ~root_file:"nope.borg"));
+      Alcotest.check_raises "broken inline tree fails with the target named"
+        (Failure ("--root bad.borg: inline tree error (file not found: " ^ dir ^ "/gone.borg)"))
+        (fun () -> ignore (Book_print.collect_subtree ~dir ~root_file:"bad.borg")))
+
+(* Determinism, .tex level: render twice into different temp dirs; the
+   document must be byte-identical (listings cited relatively, no
+   temp-dir names in the output). *)
+let tmp_subdir name =
+  let d =
+    Filename.concat (Filename.get_temp_dir_name ())
+      (Printf.sprintf "borge_%s_%d_%d" name (Unix.getpid ())
+         (int_of_float (Unix.time () *. 1000.0) mod 1_000_000))
+  in
+  mkdir_p d;
+  d
+
+let read_bytes path =
+  let ic = open_in_bin path in
+  let n = in_channel_length ic in
+  let buf = really_input_string ic n in
+  close_in ic;
+  buf
+
+let test_tex_deterministic () =
+  with_fixture "tex"
+    [
+      ("root.borg", "(project demo\n (doc \"demo book\")\n (inline \"a.borg\")\n)\n");
+      ("a.borg", "(project a\n (doc \"chapter a\")\n)\n");
+      ("code/util.ml", "let hello = \"hi\"\n");
+    ]
+    (fun dir ->
+      let files = Book_print.collect_files dir in
+      let t1 = tmp_subdir "tex1" in
+      let t2 = tmp_subdir "tex2" in
+      Book_print.render_to_tex ~dir ~files ~tex_path:(Filename.concat t1 "book.tex");
+      Book_print.render_to_tex ~dir ~files ~tex_path:(Filename.concat t2 "book.tex");
+      let tex1 = read_bytes (Filename.concat t1 "book.tex") in
+      let tex2 = read_bytes (Filename.concat t2 "book.tex") in
+      Alcotest.(check string) "tex bytes identical across runs" tex1 tex2;
+      Alcotest.(check string) "listings copied identically"
+        (read_bytes (Filename.concat t1 "src/0002.ml"))
+        (read_bytes (Filename.concat t2 "src/0002.ml"));
+      ignore (Sys.command (Printf.sprintf "rm -rf %s %s"
+                             (Filename.quote t1) (Filename.quote t2))))
+
+(* Determinism, PDF level (skipped when pdflatex is absent): two full
+   print runs of the same tree -- in two different directories, same
+   stem -- must produce byte-identical PDFs, and manifests identical
+   except rendered_at (the one allowed wall-clock field). *)
+let strip_rendered_at s =
+  Str.global_replace (Str.regexp "\"rendered_at\": *\"[^\" ]*\"")
+    "\"rendered_at\":\"\"" s
+
+let fixture_files =
+  [ ("root.borg", "(project demo\n (doc \"demo book\")\n (inline \"a.borg\")\n)\n");
+    ("a.borg", "(project a\n (doc \"chapter a\")\n)\n") ]
+
+let test_pdf_deterministic () =
+  if not (Book_print.has_cmd "pdflatex") then Alcotest.skip ()
+  else
+    with_fixture "pdf" fixture_files (fun dir ->
+      let run_in sub =
+        let d = Filename.concat dir sub in
+        mkdir_p d;
+        List.iter
+          (fun (name, content) -> write_file (Filename.concat d name) content)
+          fixture_files;
+        let cwd = Sys.getcwd () in
+        Sys.chdir d;
+        Fun.protect ~finally:(fun () -> Sys.chdir cwd) (fun () ->
+          let n = Book_print.print ~dir:"." ~stem:"book" ~root:None in
+          Alcotest.(check int) "file count" 2 n);
+        ( read_bytes (Filename.concat d "book.pdf"),
+          File_utils.read_file (Filename.concat d "book.book.manifest") )
+      in
+      let pdf1, man1 = run_in "run1" in
+      let pdf2, man2 = run_in "run2" in
+      Alcotest.(check string) "pdf bytes identical across runs" pdf1 pdf2;
+      Alcotest.(check string) "manifest identical modulo rendered_at"
+        (strip_rendered_at man1) (strip_rendered_at man2))
+
 let () =
   Alcotest.run "book_walk"
     [
@@ -93,5 +211,13 @@ let () =
             `Quick test_missing_target;
           Alcotest.test_case "duplicate inline keeps first position" `Quick
             test_duplicate_inline;
+          Alcotest.test_case "--root prints exactly the inline subtree" `Quick
+            test_subtree_root;
+          Alcotest.test_case "--root errors hard on missing file or broken tree"
+            `Quick test_subtree_errors;
+          Alcotest.test_case "tex output byte-identical across temp dirs" `Quick
+            test_tex_deterministic;
+          Alcotest.test_case "pdf bytes identical across runs (needs pdflatex)" `Slow
+            test_pdf_deterministic;
         ] );
     ]
