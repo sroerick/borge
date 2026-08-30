@@ -38,6 +38,15 @@
      book_walk now also covers subtree selection, --root errors,
      tex byte-determinism, and a full two-run PDF byte-compare.
    |) *)
+   (* agent note (|
+     P1.3 (2026-08-29): type coverage. .pp (Nopales product layer)
+     and .sql (migrations) are code chapters now — is_source accepts
+     them, listings are cited under their own extension (%04d.pp /
+     %04d.sql), and they land in the lexicographic appendix since
+     the inline tree never names them. backups/ joined skip_dirs:
+     pp-sync snapshot vault dumps are gitignored copies of branch
+     state (pricklypear alone holds 368 .pp dumps there), not source.
+   |) *)
    (verify
     (build
     )
@@ -68,10 +77,12 @@
               tree fails to build (missing target, cycle, parse
               error) degrades to a lone chapter, warning on stderr.
               Then a deterministic walk of all .borg (excl.
-              .borg.meta), .mli, .ml files; whatever the inline
-              tree did not reference is appended, sorted
-              lexicographically. No readdir order survives. Skip
-              _build/, .git/, and .gitignore build artifacts.
+              .borg.meta), .mli, .ml, .pp, .sql files (pp-sync vault
+              dumps under backups/ are skipped as gitignored build
+              artifacts); whatever the inline tree did not reference
+              is appended, sorted lexicographically. No readdir order
+              survives. Skip _build/, .git/, and .gitignore build
+              artifacts.
               (Obituary: the v1 four-tier + dependency-rank ordering
               was retired for this walk — spec
               borge/habitat-book.borg export-projection requires
@@ -85,9 +96,10 @@
               hard error: an explicit selection is a contract, not
               an implicit whole-book default.
          2. file_to_latex : path -> lines -> string
-              For .ml/.mli: \section{path} + \lstinputlisting block
-              (numbers=left, frame=single, mono, breaklines, wide
-              right margin for marginnote annotations).
+              For .ml/.mli/.pp/.sql: \section{path} +
+              \lstinputlisting block (numbers=left, frame=single,
+              mono, breaklines, wide right margin for marginnote
+              annotations), cited under the file's own extension.
               For .borg: parse with Borge_lang.Parse and emit prose
               (section/subsection -> headings, doc -> paragraphs,
               annotated comments -> attributed blockquotes, status ->

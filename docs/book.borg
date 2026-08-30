@@ -146,6 +146,15 @@
          .ml/.mli files keep the listings treatment (line numbers,
          framed code) — they are code, and the book shows them as code.
 
+         Type coverage (habitat-book workstream): .pp files (the
+         Nopales product layer) and .sql files (migrations) are code
+         chapters too — same listings treatment, cited under their own
+         extension. They are not named by the inline tree, so they
+         sort into the lexicographic appendix like the other code.
+         Gitignored vault dumps (pp-sync snapshot output, e.g.
+         pricklypear backups/) are skipped like build artifacts: they
+         are copies of branch state, not source.
+
          Page furniture, every page:
          - page number (top or bottom corner)
          - chapter name (the section title) and section path

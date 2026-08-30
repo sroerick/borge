@@ -33,6 +33,22 @@ let with_fixture name files (f : string -> unit) =
   f dir;
   cleanup ()
 
+let tmp_subdir name =
+  let d =
+    Filename.concat (Filename.get_temp_dir_name ())
+      (Printf.sprintf "borge_%s_%d_%d" name (Unix.getpid ())
+         (int_of_float (Unix.time () *. 1000.0) mod 1_000_000))
+  in
+  mkdir_p d;
+  d
+
+let read_bytes path =
+  let ic = open_in_bin path in
+  let n = in_channel_length ic in
+  let buf = really_input_string ic n in
+  close_in ic;
+  buf
+
 (* The inline tree is the chapter order; everything the tree does not
    reference (roots of their own, code) follows, lexicographic inside
    the appendix. Determinism: a second call is byte-identical, and dir
@@ -82,6 +98,59 @@ let test_duplicate_inline () =
       Alcotest.(check (list string)) "duplicate inline keeps first position"
         [ "root3.borg"; "a.borg" ] files)
 
+(* Type coverage (habitat-book): .pp (Nopales product layer) and .sql
+   (migrations) are code chapters — unreferenced by the inline tree,
+   they land in the lexicographic appendix. Gitignored vault dumps
+   (backups/, the pp-sync snapshot output) are skipped. *)
+let test_type_coverage () =
+  with_fixture "types"
+    [
+      ("root.borg", "(project demo\n (doc \"demo book\")\n)\n");
+      ("libs/spec/lib.pp", "(lib spec\n (doc \"spec package\")\n)\n");
+      ("migrations/001_init.sql", "create table t (id int);\n");
+      ("migrations/010_tree.sql", "create table tree_nodes (id int);\n");
+      ("backups/old/lib.pp", "(lib stale (doc \"vault dump\"))\n");
+    ]
+    (fun dir ->
+      let files = Book_print.collect_files dir in
+      Alcotest.(check (list string))
+        ".pp/.sql are chapters, backups/ dumps skipped"
+        [ "root.borg"; "libs/spec/lib.pp"; "migrations/001_init.sql";
+          "migrations/010_tree.sql" ]
+        files;
+      Alcotest.(check (list string)) "deterministic across calls" files
+        (Book_print.collect_files dir))
+
+(* Type coverage, tex level: a .pp/.sql chapter is cited as a raw
+   listing under its own extension, with the content copied through
+   sanitize verbatim; the .borg chapter stays prose, not a listing. *)
+let test_tex_code_extensions () =
+  with_fixture "texext"
+    [
+      ("root.borg", "(project demo\n (doc \"demo book\")\n)\n");
+      ("libs/spec/lib.pp", "(lib spec (doc \"spec package\"))\n");
+      ("migrations/001_init.sql", "create table t (id int);\n");
+    ]
+    (fun dir ->
+      let files = Book_print.collect_files dir in
+      let t = tmp_subdir "texext" in
+      Book_print.render_to_tex ~dir ~files ~tex_path:(Filename.concat t "book.tex");
+      let tex = File_utils.read_file (Filename.concat t "book.tex") in
+      let has s =
+        try ignore (Str.search_forward (Str.regexp (Str.quote s)) tex 0); true
+        with Not_found -> false
+      in
+      Alcotest.(check bool) ".pp cited under its own extension"
+        true (has "{src/0001.pp}");
+      Alcotest.(check bool) ".sql cited under its own extension"
+        true (has "{src/0002.sql}");
+      Alcotest.(check string) ".pp content copied verbatim"
+        "(lib spec (doc \"spec package\"))\n"
+        (read_bytes (Filename.concat t "src/0001.pp"));
+      Alcotest.(check bool) ".borg chapter stays prose, not a raw listing"
+        false (has "src/0000.borg}");
+      ignore (Sys.command (Printf.sprintf "rm -rf %s" (Filename.quote t))))
+
 (* --root FILE: exactly the inline subtree rooted at FILE — nested
    inlines included, nothing outside it (no appendix, no siblings),
    and a lone chapter prints as a book of one. *)
@@ -126,22 +195,6 @@ let test_subtree_errors () =
 (* Determinism, .tex level: render twice into different temp dirs; the
    document must be byte-identical (listings cited relatively, no
    temp-dir names in the output). *)
-let tmp_subdir name =
-  let d =
-    Filename.concat (Filename.get_temp_dir_name ())
-      (Printf.sprintf "borge_%s_%d_%d" name (Unix.getpid ())
-         (int_of_float (Unix.time () *. 1000.0) mod 1_000_000))
-  in
-  mkdir_p d;
-  d
-
-let read_bytes path =
-  let ic = open_in_bin path in
-  let n = in_channel_length ic in
-  let buf = really_input_string ic n in
-  close_in ic;
-  buf
-
 let test_tex_deterministic () =
   with_fixture "tex"
     [
@@ -211,6 +264,10 @@ let () =
             `Quick test_missing_target;
           Alcotest.test_case "duplicate inline keeps first position" `Quick
             test_duplicate_inline;
+          Alcotest.test_case ".pp/.sql are code chapters; backups/ dumps skipped"
+            `Quick test_type_coverage;
+          Alcotest.test_case "tex cites .pp/.sql listings under own extension"
+            `Quick test_tex_code_extensions;
           Alcotest.test_case "--root prints exactly the inline subtree" `Quick
             test_subtree_root;
           Alcotest.test_case "--root errors hard on missing file or broken tree"

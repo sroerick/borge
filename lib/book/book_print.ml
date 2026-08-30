@@ -22,7 +22,11 @@
 
 let skip_dirs =
   ["_build"; ".git"; ".pi"; ".ralph"; ".borge-bugs"; ".borge.lock";
-   "_build_test"; "node_modules"; "_opam"; ".opamswitch"]
+   "_build_test"; "node_modules"; "_opam"; ".opamswitch";
+   (* pp-sync snapshot vaults (pricklypear backups/): gitignored
+      branch dumps, not source — printing them would add hundreds of
+      stale chapters to the appendix. *)
+   "backups"]
 
 let is_source name =
   (* .borg yes; .borg.meta no — that's machine-generated, not the spec *)
@@ -30,6 +34,10 @@ let is_source name =
    && not (Filename.check_suffix name ".borg.meta"))
   || Filename.check_suffix name ".ml"
   || Filename.check_suffix name ".mli"
+  (* Type coverage (habitat-book): .pp is the Nopales product layer,
+     .sql is the migrations — both print as code chapters. *)
+  || Filename.check_suffix name ".pp"
+  || Filename.check_suffix name ".sql"
 
 (* Canonical dir-relative path form: absolutize against the CWD, strip
    the canonical dir prefix, drop "." components. The readdir walk and
@@ -379,13 +387,20 @@ let render_to_tex ~dir ~files ~tex_path =
         Printf.fprintf oc "\\lstinputlisting[firstnumber=1]{%s}\n"
           (rel_listing i "borg")
     end else begin
-      let sanitized_path = Filename.concat src_dir (Printf.sprintf "%04d.ml" i) in
+      (* Code chapter (.ml/.mli/.pp/.sql): raw listing, cited under
+         its own extension so the temp file stays honest. *)
+      let ext =
+        match Filename.extension f with
+        | "" -> "ml"
+        | e -> String.sub e 1 (String.length e - 1)
+      in
+      let sanitized_path = Filename.concat src_dir (Printf.sprintf "%04d.%s" i ext) in
       let content = sanitize (try File_utils.read_file full with Sys_error _ -> "") in
       let soc = open_out sanitized_path in
       output_string soc content;
       close_out soc;
       Printf.fprintf oc "\\lstinputlisting[firstnumber=1]{%s}\n"
-        (rel_listing i "ml")
+        (rel_listing i ext)
     end
   ) files;
   output_string oc "\\end{document}\n";
