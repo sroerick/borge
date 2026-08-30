@@ -12,6 +12,13 @@
  *   section book; pricklypear borge/habitat-book.borg
  *   export-projection). One walk shared with book export and the
  *   habitat loader; no readdir order survives.
+ *   MODES: register is a render mode, not a document fork
+ *   (habitat-book decision 1). Workshop (default) shows the full
+ *   workflow scaffolding: status labels, verify blocks, agent
+ *   notes, untracked lines. Reader strips that scaffolding for
+ *   students — prose, headings, and code only. Drift holes stay
+ *   visible in both: a file that fails to parse falls back to a
+ *   raw listing in either register.
  *   DETERMINISM: pdflatex runs with cwd = the work dir and cites the
  *   sanitized listings by relative path (no PID-bearing tmpdir leaks
  *   into the .tex), and SOURCE_DATE_EPOCH/FORCE_SOURCE_DATE pin the
@@ -19,6 +26,8 @@
  *   produce byte-identical PDFs; wall clock survives in exactly one
  *   artifact, the manifest's rendered_at.
  * |) *)
+
+type mode = Workshop | Reader
 
 let skip_dirs =
   ["_build"; ".git"; ".pi"; ".ralph"; ".borge-bugs"; ".borge.lock";
@@ -169,7 +178,12 @@ let escape_text s =
   ) s;
   Buffer.contents buf
 
-let preamble () =
+let preamble ~mode =
+  let head =
+    match mode with
+    | Workshop -> "borge codebook"
+    | Reader -> "borge codebook (reader)"
+  in
   "\\documentclass[10pt,oneside]{article}\n" ^
   "\\usepackage[T1]{fontenc}\n" ^
   "\\usepackage{lmodern}\n" ^
@@ -179,7 +193,7 @@ let preamble () =
   "\\usepackage{fancyhdr}\n" ^
   "\\pagestyle{fancy}\n" ^
   "\\fancyhf{}\n" ^
-  "\\fancyhead[L]{borge codebook}\n" ^
+  Printf.sprintf "\\fancyhead[L]{%s}\n" (escape_text head) ^
   (* \leftmark = the first mark set on the page. Each file starts with
      \clearpage + \markboth{file}{file}, so \leftmark is the current
      file with no lag. (\rightmark lags by one section by design.) *)
@@ -225,11 +239,16 @@ let sanitize content =
   Buffer.contents buf
 
 (* --- .borg -> LaTeX renderer (parses the sexp; no raw sexp in the PDF) ---
-   section/subsection -> headings, (doc ...) -> prose paragraphs,
-   (* author ... (|...|) *) comments -> attributed blockquotes,
-   (status X) -> an italic marker. Other forms (inline, verify,
-   depends-on, ...) are structural noise and are skipped. Falls back
-   to raw listing if the file fails to parse. *)
+   section/subsection -> headings, (doc ...) -> prose paragraphs.
+   Workshop scaffolding (stripped in reader mode): annotated author
+   comments -> attributed blockquotes, (status X) -> an italic
+   marker, (verify ...) -> a compact scaffold line, (untracked path
+   "reason") -> a small italic note. (inline path) renders as a
+   small note in BOTH modes (the printed book inlines those
+   chapters next, so it is navigation, not scaffolding).
+   depends-on/convention stay structural noise in both. Falls back
+   to raw listing if the file fails to parse — in both modes: that
+   fallback is the print-side drift hole. *)
 exception Fallback_raw
 
 let string_value_text = function
@@ -247,10 +266,13 @@ let render_prose buf text =
     end
   ) paras
 
-let render_borg_comment buf c =
+let render_borg_comment ~mode buf c =
   match c with
   | Borge_lang.Ast.Plain _ -> ()  (* skip (; machine comments *)
   | Borge_lang.Ast.Annotated ac ->
+    (* Reader mode strips agent notes: they are workflow
+       scaffolding, not chapter prose. *)
+    if mode = Workshop then begin
     let author =
       match ac.Borge_lang.Ast.authorship with
       | Borge_lang.Ast.Single a -> a
@@ -271,14 +293,15 @@ let render_borg_comment buf c =
       render_prose buf body;
       Buffer.add_string buf "\\end{quote}\n\n"
     end
+    end
 
-let rec render_borg_node buf depth pending node =
+let rec render_borg_node ~mode buf depth pending node =
   let open Borge_lang.Ast in
   let drain limit =
     let rec loop () =
       match !pending with
       | (cpos, c) :: rest when cpos.offset < limit ->
-          render_borg_comment buf c;
+          render_borg_comment ~mode buf c;
           pending := rest;
           loop ()
       | _ -> ()
@@ -307,7 +330,7 @@ let rec render_borg_node buf depth pending node =
       let inner = match rest with _ :: r -> r | _ -> [] in
       List.iter (fun child ->
         drain (start_pos_of child).offset;
-        render_borg_node buf (depth + 1) pending child
+        render_borg_node ~mode buf (depth + 1) pending child
       ) inner;
       drain (end_pos_of lst).offset
     end
@@ -317,23 +340,87 @@ let rec render_borg_node buf depth pending node =
     else if head_is "details" then begin
       List.iter (fun child ->
         drain (start_pos_of child).offset;
-        render_borg_node buf depth pending child
+        render_borg_node ~mode buf depth pending child
       ) rest;
       drain (end_pos_of lst).offset
     end
     else if head_is "status" then begin
-      match rest with Atom (_, s) :: _ ->
-        Printf.bprintf buf "\\textit{[status: %s]}\\par\n" (escape_text s)
-      | _ -> ()
+      (* Workshop scaffolding; reader strips it. *)
+      if mode = Workshop then
+        match rest with Atom (_, s) :: _ ->
+          Printf.bprintf buf "\\textit{[status: %s]}\\par\n" (escape_text s)
+        | _ -> ()
     end
     else if head_is "inline" then begin
       match rest with String (_, v) :: _ ->
         Printf.bprintf buf "\\textit{[inlines %s]}\\par\n" (escape_text (string_value_text v))
       | _ -> ()
     end
-    else ()   (* skip structural forms: verify, depends-on, convention, ... *)
+    else if head_is "verify" then begin
+      (* Workshop scaffolding (habitat-book: statuses/verify/
+         agent-notes visible in the workshop register; reader
+         suppresses). Rendered as one compact italic scaffold
+         line: "[verify] build: ...; smoke: ...". *)
+      (match rest with
+       | child :: _ -> drain (start_pos_of child).offset
+       | [] -> ());
+      if mode = Workshop then begin
+        let items =
+          List.filter_map (fun child ->
+            match child with
+            | List (_, Atom (_, h) :: r) ->
+              let strs =
+                List.filter_map
+                  (function String (_, v) -> Some (string_value_text v) | _ -> None)
+                  r
+              in
+              Some (if strs = [] then escape_text h
+                    else escape_text h ^ ": "
+                         ^ String.concat "; " (List.map escape_text strs))
+            | _ -> None
+          ) rest
+        in
+        if items = [] then Buffer.add_string buf "\\textit{[verify]}\\par\n"
+        else begin
+          Buffer.add_string buf "\\begin{quote}\\small\\itshape\n";
+          Printf.bprintf buf "[verify] %s\n" (String.concat "; " items);
+          Buffer.add_string buf "\\end{quote}\n\n"
+        end
+      end;
+      drain (end_pos_of lst).offset
+    end
+    else if head_is "untracked" then begin
+      (* Workshop scaffolding: (untracked <path> "reason") — a small
+         italic note naming the path (and reason, if given). *)
+      (match rest with
+       | child :: _ -> drain (start_pos_of child).offset
+       | [] -> ());
+      if mode = Workshop then
+        (match rest with
+         | path_node :: r ->
+           let path_text =
+             match path_node with
+             | Atom (_, p) -> escape_text p
+             | String (_, v) -> escape_text (string_value_text v)
+             | _ -> ""
+           in
+           let reasons =
+             List.filter_map
+               (function String (_, v) -> Some (escape_text (string_value_text v))
+                       | _ -> None)
+               r
+           in
+           (match reasons with
+            | reason :: _ ->
+              Printf.bprintf buf "\\textit{[untracked %s: %s]}\\par\n" path_text reason
+            | [] ->
+              Printf.bprintf buf "\\textit{[untracked %s]}\\par\n" path_text)
+         | [] -> ());
+      drain (end_pos_of lst).offset
+    end
+    else ()   (* skip structural forms: depends-on, convention, ... *)
 
-let borg_to_latex ~content =
+let borg_to_latex ~mode ~content =
   let open Borge_lang.Ast in
   let file =
     try Borge_lang.Parse.parse_file content
@@ -344,14 +431,14 @@ let borg_to_latex ~content =
     List.stable_sort (fun (p1, _) (p2, _) -> compare p1.offset p2.offset) file.nested_comments
   in
   let pending = ref sorted_nested in
-  List.iter (render_borg_comment buf) file.Borge_lang.Ast.top_level_comments;
+  List.iter (render_borg_comment ~mode buf) file.Borge_lang.Ast.top_level_comments;
   List.iter (fun swc ->
-    List.iter (render_borg_comment buf) swc.Borge_lang.Ast.comments_before;
-    render_borg_node buf 0 pending swc.Borge_lang.Ast.node
+    List.iter (render_borg_comment ~mode buf) swc.Borge_lang.Ast.comments_before;
+    render_borg_node ~mode buf 0 pending swc.Borge_lang.Ast.node
   ) file.Borge_lang.Ast.top_level;
   Buffer.contents buf
 
-let render_to_tex ~dir ~files ~tex_path =
+let render_to_tex ~mode ~dir ~files ~tex_path =
   let src_dir = Filename.concat (Filename.dirname tex_path) "src" in
   (try Unix.mkdir src_dir 0o755 with Unix.Unix_error (Unix.EEXIST, _, _) -> ());
   (* Listings are cited by a path relative to tex_path's directory
@@ -361,7 +448,7 @@ let render_to_tex ~dir ~files ~tex_path =
     Filename.concat "src" (Printf.sprintf "%04d.%s" i ext)
   in
   let oc = open_out tex_path in
-  output_string oc (preamble ());
+  output_string oc (preamble ~mode);
   output_string oc "\\begin{document}\n";
   output_string oc "\\tableofcontents\n";
   List.iteri (fun i f ->
@@ -374,7 +461,7 @@ let render_to_tex ~dir ~files ~tex_path =
          back to a raw listing if the file fails to parse. *)
       let raw = try File_utils.read_file full with Sys_error _ -> "" in
       let body =
-        try Some (borg_to_latex ~content:(sanitize raw))
+        try Some (borg_to_latex ~mode ~content:(sanitize raw))
         with Fallback_raw -> None
       in
       match body with
@@ -481,7 +568,7 @@ let rm_rf dir =
 (* Returns the number of files printed. On failure, keeps tmpdir
    and prints the log path so the user can diagnose. root selects an
    explicit inline subtree (None = the whole book). *)
-let print ~dir ~stem ~root =
+let print ~dir ~stem ~root ~mode =
   if not (has_cmd "pdflatex") then begin
     if has_cmd "groff" then
       failwith "groff backend not implemented in v1 (install pdflatex/texlive)"
@@ -506,7 +593,7 @@ let print ~dir ~stem ~root =
   in
   let tex = Filename.concat tmpdir "book.tex" in
   try
-    render_to_tex ~dir ~files ~tex_path:tex;
+    render_to_tex ~mode ~dir ~files ~tex_path:tex;
     run_pdflatex ~tmpdir ~tex;
     let aux = Filename.concat tmpdir "book.aux" in
     let page_map = aux_parse ~aux in

@@ -134,7 +134,8 @@ let test_tex_code_extensions () =
     (fun dir ->
       let files = Book_print.collect_files dir in
       let t = tmp_subdir "texext" in
-      Book_print.render_to_tex ~dir ~files ~tex_path:(Filename.concat t "book.tex");
+      Book_print.render_to_tex ~mode:Book_print.Workshop ~dir ~files
+        ~tex_path:(Filename.concat t "book.tex");
       let tex = File_utils.read_file (Filename.concat t "book.tex") in
       let has s =
         try ignore (Str.search_forward (Str.regexp (Str.quote s)) tex 0); true
@@ -206,8 +207,10 @@ let test_tex_deterministic () =
       let files = Book_print.collect_files dir in
       let t1 = tmp_subdir "tex1" in
       let t2 = tmp_subdir "tex2" in
-      Book_print.render_to_tex ~dir ~files ~tex_path:(Filename.concat t1 "book.tex");
-      Book_print.render_to_tex ~dir ~files ~tex_path:(Filename.concat t2 "book.tex");
+      Book_print.render_to_tex ~mode:Book_print.Workshop ~dir ~files
+        ~tex_path:(Filename.concat t1 "book.tex");
+      Book_print.render_to_tex ~mode:Book_print.Workshop ~dir ~files
+        ~tex_path:(Filename.concat t2 "book.tex");
       let tex1 = read_bytes (Filename.concat t1 "book.tex") in
       let tex2 = read_bytes (Filename.concat t2 "book.tex") in
       Alcotest.(check string) "tex bytes identical across runs" tex1 tex2;
@@ -242,7 +245,7 @@ let test_pdf_deterministic () =
         let cwd = Sys.getcwd () in
         Sys.chdir d;
         Fun.protect ~finally:(fun () -> Sys.chdir cwd) (fun () ->
-          let n = Book_print.print ~dir:"." ~stem:"book" ~root:None in
+          let n = Book_print.print ~dir:"." ~stem:"book" ~root:None ~mode:Book_print.Workshop in
           Alcotest.(check int) "file count" 2 n);
         ( read_bytes (Filename.concat d "book.pdf"),
           File_utils.read_file (Filename.concat d "book.book.manifest") )
@@ -252,6 +255,56 @@ let test_pdf_deterministic () =
       Alcotest.(check string) "pdf bytes identical across runs" pdf1 pdf2;
       Alcotest.(check string) "manifest identical modulo rendered_at"
         (strip_rendered_at man1) (strip_rendered_at man2))
+
+(* P1.4 reader/workshop modes: the workshop register shows the
+   scaffolding (status, verify, agent notes, untracked); the reader
+   register strips it. Both keep prose, headings, and inline notes
+   (inline is navigation — the printed book carries those chapters
+   next — not scaffolding). The drift-hole fallback (raw listing on
+   parse failure) is mode-independent by construction and is not
+   re-tested here. *)
+let mode_content =
+  "(project demo\n (doc \"chapter demo\")\n (status implemented)\n" ^
+  " (* agent note (|\n    note prose\n   |) *)\n" ^
+  " (verify (build \"dune build @all\") (smoke \"smoke desc\"))\n" ^
+  " (untracked \"extra.ml\" \"reason\")\n" ^
+  " (section demo\n  (doc \"body prose\")\n  (inline \"other.borg\")))\n"
+
+let contains s needle =
+  try ignore (Str.search_forward (Str.regexp (Str.quote needle)) s 0); true
+  with Not_found -> false
+
+let test_modes () =
+  let ws =
+    Book_print.borg_to_latex ~mode:Book_print.Workshop ~content:mode_content
+  in
+  let rd =
+    Book_print.borg_to_latex ~mode:Book_print.Reader ~content:mode_content
+  in
+  Alcotest.(check bool) "workshop keeps status"
+    true (contains ws "[status: implemented]");
+  Alcotest.(check bool) "workshop keeps verify scaffold"
+    true (contains ws "[verify] build: dune build @all; smoke: smoke desc");
+  Alcotest.(check bool) "workshop keeps agent note"
+    true (contains ws "-- agent note:");
+  Alcotest.(check bool) "workshop keeps untracked line"
+    true (contains ws "[untracked extra.ml: reason]");
+  Alcotest.(check bool) "reader strips status"
+    false (contains rd "[status:");
+  Alcotest.(check bool) "reader strips verify"
+    false (contains rd "[verify]");
+  Alcotest.(check bool) "reader strips agent note"
+    false (contains rd "-- agent note:");
+  Alcotest.(check bool) "reader strips untracked"
+    false (contains rd "untracked");
+  Alcotest.(check bool) "both keep doc prose"
+    true (contains rd "body prose" && contains ws "body prose");
+  Alcotest.(check bool) "both keep headings"
+    true
+    (contains rd "\\subsection*{demo}" && contains ws "\\subsection*{demo}");
+  Alcotest.(check bool) "both keep inline notes (navigation, not scaffolding)"
+    true
+    (contains rd "[inlines other.borg]" && contains ws "[inlines other.borg]")
 
 let () =
   Alcotest.run "book_walk"
@@ -276,5 +329,7 @@ let () =
             test_tex_deterministic;
           Alcotest.test_case "pdf bytes identical across runs (needs pdflatex)" `Slow
             test_pdf_deterministic;
+          Alcotest.test_case "reader strips scaffolding, workshop keeps it" `Quick
+            test_modes;
         ] );
     ]

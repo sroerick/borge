@@ -1,9 +1,9 @@
 open Borge_lib
 
-let print_run dir stem root =
+let print_run dir stem root mode =
   let dir = match dir with Some d -> d | None -> "." in
   try
-    let n = Book_print.print ~dir ~stem ~root in
+    let n = Book_print.print ~dir ~stem ~root ~mode in
     Printf.printf "wrote %s.pdf and %s.book.manifest (%d files)\n" stem stem n;
     exit 0
   with
@@ -26,6 +26,17 @@ let root_arg =
           single chapters). Nothing outside the subtree prints. Resolved \
           relative to DIR first, then the working directory.")
 
+let mode_arg =
+  Arg.(value & opt (enum ["workshop", Book_print.Workshop;
+                           "reader", Book_print.Reader])
+         Book_print.Workshop
+       & info ["mode"] ~docv:"MODE"
+    ~doc:"Render register. workshop (default) shows the full workflow \
+          scaffolding: status labels, verify blocks, agent notes, untracked \
+          lines. reader strips the scaffolding for students — prose, \
+          headings, and code only. Drift holes (raw fallback listings for \
+          unparseable files) render in both registers.")
+
 let print_cmd : unit Cmd.t =
   Cmd.v (Cmd.info "print" ~doc:"print the codebase as a paginated PDF book"
     ~man:[`S "DESCRIPTION";
@@ -41,11 +52,16 @@ let print_cmd : unit Cmd.t =
               FILE — a course root prints as that course, a single \
               chapter prints alone. A missing file or unbuildable tree \
               is a hard error.";
+          `P "--mode workshop (default) shows the workflow scaffolding: \
+              status labels, verify blocks, agent notes, untracked \
+              lines. --mode reader strips it: prose, headings, code. \
+              Drift holes render in both registers.";
           `S "EXAMPLES";
           `P "borge book print .            # writes borge-book.pdf";
           `P "borge book print lib -o lib   # writes lib.pdf";
-          `P "borge book print --root course/cs.borg -o cs  # one subtree"])
-    Term.(const print_run $ dir_arg $ stem_arg $ root_arg)
+          `P "borge book print --root course/cs.borg -o cs  # one subtree";
+          `P "borge book print . --mode reader -o reader  # student edition"])
+    Term.(const print_run $ dir_arg $ stem_arg $ root_arg $ mode_arg)
 
 let cmd : unit Cmd.t =
   Cmd.group (Cmd.info "book" ~doc:"print the codebase as a book")

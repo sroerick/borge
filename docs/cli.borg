@@ -63,7 +63,7 @@
    (status implemented)
   )
   (subsection book
-   (doc "Print the codebase as a paginated book: borge book print [DIR] [--root FILE] [-o STEM]. Chapters in (inline ...) tree order (byte-identical PDFs across runs), unreferenced files appended lexicographically (.pp/.sql code chapters included; vault dumps skipped), --root selects an exact inline subtree; emits PDF + manifest sidecar")
+   (doc "Print the codebase as a paginated book: borge book print [DIR] [--root FILE] [--mode workshop|reader] [-o STEM]. Chapters in (inline ...) tree order (byte-identical PDFs across runs), unreferenced files appended lexicographically (.pp/.sql code chapters included; vault dumps skipped), --root selects an exact inline subtree, --mode workshop (default) shows status/verify/agent-note/untracked scaffolding while reader strips it (drift holes visible in both); emits PDF + manifest sidecar")
    (status implemented)
   )
   (subsection fmt
