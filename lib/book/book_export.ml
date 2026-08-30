@@ -102,11 +102,9 @@ let walk_root ~dir = function
   | Some f ->
     Book_print.canon_path ~dir (Book_print.resolve_root_file ~dir ~root_file:f)
   | None ->
-    (match
-       Project.find_roots dir
-       |> List.map (Book_print.canon_path ~dir)
-       |> List.sort_uniq compare
-     with
+    (* Same roots the default walk consumes (course composition roots
+       excluded) — the manifest names the canonical book. *)
+    (match Book_print.default_roots ~dir with
      | r :: _ -> r
      | [] -> "")
 

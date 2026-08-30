@@ -63,6 +63,23 @@
      state (pricklypear alone holds 368 .pp dumps there), not source.
    |) *)
    (* agent note (|
+     P3.1 (2026-08-31): course composition roots. course/ joined
+     skip_dirs and the default walk filters course roots from
+     Project.find_roots (shared default_roots, also used by
+     book_export's walk_root so the manifest names the canonical
+     book). Why: a course/*.borg root is an implicit second root
+     (it inlines chapters) sorting BEFORE pricklypear.borg — the
+     canonical TOC would silently reorganize on course authoring.
+     Courses are compositions (habitat-book decision 5): --root
+     course/x.borg still selects the exact subtree, with ../
+     inline targets canonicalized in canon_path so chapters dedup
+     against root-written spellings. Verified: alcotest
+     test_course_composition; pricklypear canonical export stays
+     34ch/root pricklypear.borg with course/cs-interpreters.borg
+     present; --root export = 4 chapters in course order; --root
+     print = 48pp PDF, course TOC.
+   |) *)
+   (* agent note (|
      P1.4 (2026-08-29): reader/workshop modes. Register is a render
      mode, not a document fork (habitat-book decision 1).
      Workshop (default) renders status labels, verify blocks as one
@@ -126,8 +143,13 @@
          Pipeline:
          1. collect_files : dir -> string list
               Roots via Project.find_roots, canonicalized to paths
-              relative to dir. For each root (lexicographic when
-              there are several), Project.build_tree follows
+              relative to dir (canon_path folds . and .. — course
+              roots reference chapters as ../borge/x.borg and must
+              dedup against the root-written spelling), minus course
+              composition roots (course/* — chapter selections for
+              --root, never canonical chapters; skip_dirs keeps them
+              out of the appendix too). For each root (lexicographic
+              when there are several), Project.build_tree follows
               (inline ...) targets and Project.tree_paths flattens
               the subtree depth-first — that flatten IS the chapter
               order (deduped, first occurrence wins). A root whose

@@ -94,6 +94,16 @@
          retired by this rule; foundations-before-dependents inside
          the appendix is a future refinement, not a v2 requirement.)
 
+         Course composition roots are the one .borg class outside
+         this rule: files under course/ (habitat-book
+         course-documents names course/<slug>.borg) are chapter
+         SELECTIONS — compositions consumed via --root — never
+         chapters of the canonical book. They are excluded from the
+         default walk's roots AND from the appendix (skip_dirs), so
+         adding a course can never reorganize the spec's inline TOC
+         (a course root would otherwise sort before the project
+         root and silently reorder the book).
+
          A root whose inline tree fails to build (missing target,
          cycle, parse error) degrades to a lone chapter with a
          stderr warning — the book still renders, deterministically.
@@ -117,7 +127,10 @@
          the default walk, which degrades on a broken inline tree
          so the whole book still prints, an explicit selection is a
          contract: a missing file or an unbuildable tree is a hard
-         error.
+         error. Course roots write their (inline ...) targets
+         relative to their own directory ("../borge/x.borg"); the
+         walk canonicalizes .. so the course's chapters dedup and
+         label exactly like the root-written spelling.
 
          Still long-tail: the woven view (each chapter's code
          attached to its spec section), page-number cross-references

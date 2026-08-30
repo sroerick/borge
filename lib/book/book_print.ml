@@ -47,7 +47,14 @@ let skip_dirs =
    (* pp-sync snapshot vaults (pricklypear backups/): gitignored
       branch dumps, not source — printing them would add hundreds of
       stale chapters to the appendix. *)
-   "backups"]
+   "backups";
+   (* Course composition roots (pricklypear borge/habitat-book.borg
+      course-documents): course/*.borg files are chapter SELECTIONS
+      consumed via --root, never chapters of the canonical book.
+      Without this, a new course root would become a second walk root
+      (they sort before pricklypear.borg) and silently reorganize the
+      spec's inline TOC. *)
+   "course"]
 
 let is_source name =
   (* .borg yes; .borg.meta no — that's machine-generated, not the spec *)
@@ -66,10 +73,28 @@ let is_source name =
    is an exact string compare however dir was spelled (".", "./",
    relative, absolute, trailing slash or not). *)
 let canon_path ~dir p =
+  (* Fold "." and ".." components: course composition roots reference
+     chapters as ../borge/x.borg (inline targets resolve relative to
+     the parent file's dir), and the book must dedup + label them
+     exactly like the root-written borge/x.borg spelling. ".." above
+     the top of a relative path is kept (same as pre-fold behavior for
+     such paths). *)
+  let fold_dots parts =
+    let rec go acc = function
+      | [] -> List.rev acc
+      | "." :: rest -> go acc rest
+      | ".." :: rest ->
+        (match acc with
+         | [] | [ "" ] -> go (".." :: acc) rest
+         | _ :: tl -> go tl rest)
+      | c :: rest -> go (c :: acc) rest
+    in
+    go [] parts
+  in
   let drop_dots p =
     let is_abs = String.length p > 0 && p.[0] = '/' in
     let parts =
-      List.filter (fun c -> c <> "" && c <> ".") (String.split_on_char '/' p)
+      fold_dots (String.split_on_char '/' p)
     in
     String.concat "/" ((if is_abs then [""] else []) @ parts)
   in
@@ -106,6 +131,23 @@ let tree_error_msg = function
   | Project.Parse_error (p, m) -> Printf.sprintf "%s: %s" p m
   | Project.Cycle_detected cyc -> String.concat " -> " cyc
 
+(* True when a canon dir-relative path lives under a course
+   composition directory (see skip_dirs). *)
+let is_composition_root rel =
+  match String.index_opt rel '/' with
+  | Some i -> String.sub rel 0 i = "course"
+  | None -> false
+
+(* The default walk's roots: candidate roots minus course composition
+   roots, lexicographic. Shared with book_export's walk_root so the
+   manifest's root field names the same canonical book the chapters
+   came from (one walk, two projections). *)
+let default_roots ~dir =
+  Project.find_roots dir
+  |> List.map (canon_path ~dir)
+  |> List.filter (fun p -> not (is_composition_root p))
+  |> List.sort_uniq compare
+
 (* Inline-aware ordered walk (spec: pricklypear borge/habitat-book.borg
    export-projection; borge self-spec docs/book.borg book-print):
 
@@ -123,11 +165,7 @@ let tree_error_msg = function
    book still renders, deterministically. *)
 let collect_files dir =
   let all = collect ~root:dir ~rel:"" [] in
-  let roots =
-    Project.find_roots dir
-    |> List.map (canon_path ~dir)
-    |> List.sort_uniq compare
-  in
+  let roots = default_roots ~dir in
   let chapters =
     List.concat_map (fun root_rel ->
       match Project.build_tree (Filename.concat dir root_rel) with

@@ -277,6 +277,31 @@ let test_subtree_errors () =
         (Failure ("--root bad.borg: inline tree error (file not found: " ^ dir ^ "/gone.borg)"))
         (fun () -> ignore (Book_print.collect_subtree ~dir ~root_file:"bad.borg")))
 
+(* Course composition roots (habitat-book course-documents): a
+   course/*.borg root selects chapters via --root but is NOT a root of
+   the canonical book — otherwise its lexicographically-early name
+   would reorganize the project's inline TOC. *)
+let test_course_composition () =
+  with_fixture "course"
+    [
+      ("root.borg", "(project demo\n (doc \"demo book\")\n (inline \"a.borg\")\n)\n");
+      ("a.borg", "(project a\n (doc \"chapter a\")\n)\n");
+      ("course/cs101.borg",
+       "(project cs101\n (doc \"course: chapter a, retold\")\n (inline \"../a.borg\")\n)\n");
+      ("code/util.ml", "let hello = \"hi\"\n");
+    ]
+    (fun dir ->
+      let files = Book_print.collect_files dir in
+      Alcotest.(check (list string))
+        "course root is not a canonical book root"
+        [ "root.borg"; "a.borg"; "code/util.ml" ] files;
+      let sel = Book_print.collect_subtree ~dir ~root_file:"course/cs101.borg" in
+      Alcotest.(check (list string))
+        "--root still selects the course subtree"
+        [ "course/cs101.borg"; "a.borg" ] sel;
+      Alcotest.(check string) "export walk root stays canonical"
+        "root.borg" (Book_export.walk_root ~dir None))
+
 (* Determinism, .tex level: render twice into different temp dirs; the
    document must be byte-identical (listings cited relatively, no
    temp-dir names in the output). *)
@@ -413,6 +438,8 @@ let () =
             test_subtree_root;
           Alcotest.test_case "--root errors hard on missing file or broken tree"
             `Quick test_subtree_errors;
+          Alcotest.test_case "course roots compose via --root, never reorder the book"
+            `Quick test_course_composition;
           Alcotest.test_case "tex output byte-identical across temp dirs" `Quick
             test_tex_deterministic;
           Alcotest.test_case "pdf bytes identical across runs (needs pdflatex)" `Slow
