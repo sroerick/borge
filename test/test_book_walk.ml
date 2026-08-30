@@ -86,6 +86,22 @@ let test_missing_target () =
       Alcotest.(check (list string)) "missing target degrades, nothing lost"
         [ "root2.borg"; "x.borg" ] files)
 
+(* A parse-broken inlined chapter degrades too — the lexer raises
+   plain Failure ("Unterminated quoted string"), not the structured
+   Parse_error; the walk must survive it (book-print: parse error ->
+   lone chapter + warning) and the broken file must stay in the book
+   (as the drift-hole raw listing / raw node). *)
+let test_parse_broken_target () =
+  with_fixture "brokenparse"
+    [
+      ("root4.borg", "(project demo4\n (doc \"broken parse\")\n (inline \"bad.borg\")\n)\n");
+      ("bad.borg", "(section x (doc \"unterminated");
+    ]
+    (fun dir ->
+      let files = Book_print.collect_files dir in
+      Alcotest.(check (list string)) "parse error degrades, nothing lost"
+        [ "root4.borg"; "bad.borg" ] files)
+
 (* The same file inlined twice keeps its first position. *)
 let test_duplicate_inline () =
   with_fixture "dup"
@@ -315,6 +331,8 @@ let () =
             test_inline_order;
           Alcotest.test_case "missing inline target degrades to lone chapter"
             `Quick test_missing_target;
+          Alcotest.test_case "parse-broken inline target degrades, file kept"
+            `Quick test_parse_broken_target;
           Alcotest.test_case "duplicate inline keeps first position" `Quick
             test_duplicate_inline;
           Alcotest.test_case ".pp/.sql are code chapters; backups/ dumps skipped"

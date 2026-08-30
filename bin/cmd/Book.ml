@@ -10,6 +10,16 @@ let print_run dir stem root mode =
   | Failure msg -> prerr_endline ("borge book: " ^ msg); exit 1
   | e -> prerr_endline ("borge book: " ^ Printexc.to_string e); exit 1
 
+let export_run dir stem root mode =
+  let dir = match dir with Some d -> d | None -> "." in
+  try
+    let nc, nk = Book_export.export ~dir ~stem ~root ~mode in
+    Printf.printf "wrote %s.book.json (%d chapters, %d code chapters)\n" stem nc nk;
+    exit 0
+  with
+  | Failure msg -> prerr_endline ("borge book: " ^ msg); exit 1
+  | e -> prerr_endline ("borge book: " ^ Printexc.to_string e); exit 1
+
 open Cmdliner
 
 let dir_arg =
@@ -37,6 +47,16 @@ let mode_arg =
           headings, and code only. Drift holes (raw fallback listings for \
           unparseable files) render in both registers.")
 
+let export_stem_arg =
+  Arg.(value & opt string "borge-book" & info ["o"] ~docv:"STEM"
+    ~doc:"Output stem: writes STEM.book.json")
+
+let export_root_arg =
+  Arg.(value & opt (some string) None & info ["root"] ~docv:"FILE"
+    ~doc:"Export exactly the inline subtree rooted at FILE (course roots, \
+          single chapters). Nothing outside the subtree exports. Resolved \
+          relative to DIR first, then the working directory.")
+
 let print_cmd : unit Cmd.t =
   Cmd.v (Cmd.info "print" ~doc:"print the codebase as a paginated PDF book"
     ~man:[`S "DESCRIPTION";
@@ -63,6 +83,27 @@ let print_cmd : unit Cmd.t =
           `P "borge book print . --mode reader -o reader  # student edition"])
     Term.(const print_run $ dir_arg $ stem_arg $ root_arg $ mode_arg)
 
+let export_cmd : unit Cmd.t =
+  Cmd.v (Cmd.info "export"
+      ~doc:"export the book as a deterministic JSON artifact (habitat loader feed)"
+      ~man:[`S "DESCRIPTION";
+            `P "Writes <STEM>.book.json from the SAME walk as print: \
+                chapters in (inline ...) tree order, unreferenced files \
+                as the lexicographic appendix, --root selecting an \
+                exact subtree. Shape: {root, mode, chapters: [{slug, \
+                title, status, nodes: [{kind, title, body, children}], \
+                examples}], code-chapters: [{path, lang, source}]}. \
+                Sources are the true bytes; there is no wall clock in \
+                the artifact — two runs of the same tree are \
+                byte-identical. An unparseable chapter exports as a \
+                single raw node (drift hole, both registers). This \
+                artifact feeds the pricklypear habitat loader.";
+            `S "EXAMPLES";
+            `P "borge book export .                    # writes borge-book.book.json";
+            `P "borge book export . --mode reader -o reader";
+            `P "borge book export --root course/cs.borg -o cs"])
+    Term.(const export_run $ dir_arg $ export_stem_arg $ export_root_arg $ mode_arg)
+
 let cmd : unit Cmd.t =
   Cmd.group (Cmd.info "book" ~doc:"print the codebase as a book")
-    [print_cmd]
+    [print_cmd; export_cmd]

@@ -65,6 +65,30 @@
      additionally strips the agent note; default (no flag) is
      byte-identical to --mode workshop.
    |) *)
+   (* agent note (|
+     P1.5 (2026-08-30): export + the shared structure pass. The
+     borg->LaTeX renderer was refactored onto Book_structure
+     (parse + register filter applied ONCE, shared with the new
+     book_export.ml JSON projection — habitat-book decision 3).
+     Node vocabulary: project/section/subsection/doc/status/
+     verify/agent-note/untracked/inline/raw. Comment-drain order
+     reproduces print v2 exactly; the loop-4 determinism harness
+     (two-run PDF byte-compare) doubles as the refactor regression
+     check. Also: Project.build_tree now catches the lexer's plain
+     Failure (not just Parse_error) so a parse-broken inlined
+     chapter degrades instead of crashing the walk. One deliberate
+     print delta: (inline <atom>) targets now render the
+     navigation note — pre-v2 print silently dropped atom-form
+     inlines (only quoted strings rendered); Spec.inline_targets
+     accepts both spellings, so the note must too (pricklypear
+     writes atom-style exclusively). Verified:
+     alcotest book_export 6 cases (shape/order, mode filter, raw
+     fallback, byte-determinism + no-abs-paths, --root subtree,
+     atom inline target); full pricklypear export = 34 chapters in
+     inline order + 266 code chapters incl. libs/spec/lib.pp and
+     all 26 migrations, 33 inline nav nodes, two runs
+     byte-identical; print re-verified on the full tree.
+   |) *)
    (verify
     (build
     )
@@ -118,16 +142,18 @@
               \lstinputlisting block (numbers=left, frame=single,
               mono, breaklines, wide right margin for marginnote
               annotations), cited under the file's own extension.
-              For .borg: parse with Borge_lang.Parse and emit prose
-              (section/subsection -> headings, doc -> paragraphs;
-              workshop register only: annotated comments ->
-              attributed blockquotes, status -> italic marker,
-              verify -> compact scaffold line, untracked -> small
-              italic note; inline -> small note in BOTH registers;
-              depends-on/convention always skipped). Reader strips
-              the workshop-only scaffolding. Falls back to a raw
-              listing on parse failure — the print-side drift hole,
-              visible in both registers.
+              For .borg: Book_structure.of_file — the SHARED pass
+              (one parser, two projections: parse + register filter
+              applied once, consumed by print AND export) — then
+              emit LaTeX from the node tree (headings, prose;
+              workshop register only: status italic marker, verify
+              compact scaffold line, agent-note blockquote,
+              untracked small italic note; inline -> small note in
+              BOTH registers; depends-on/convention always
+              skipped). Reader strips the workshop-only
+              scaffolding. Falls back to a raw listing on parse
+              failure — the print-side drift hole, visible in both
+              registers.
          3. render : dir -> stem -> unit
               Assemble preamble + body + \end{document}, shell out
               to pdflatex (loop passes until .aux/.toc stabilize),
@@ -146,6 +172,35 @@
          from a fixed epoch. The PDF is a pure function of the
          printed tree; rendered_at in the manifest is the sole
          wall-clock artifact.
+       |))
+   )
+  )
+  (subsection book-export-impl
+   (doc "borge book export — the JSON projection of the shared walk (habitat loader feed)")
+   (status implemented)
+   (details
+    (doc (|
+         lib/book/book_export.ml (+ lib/book/book_structure.ml, the
+         shared parse+register pass consumed by print AND export —
+         decision 3: one parser, two projections, no forked
+         traversal). Writes <stem>.book.json; shape per
+         borge/habitat-book.borg export-projection (the pricklypear
+         loader is the client — keep in lockstep):
+
+         {root, mode, chapters:[{slug, title, status, nodes,
+          examples}], code-chapters:[{path, lang, source}]}
+
+         - chapters: .borg files in walk order (Book_print walk,
+         same collect_files / collect_subtree as print). Node
+         kinds: project/section/subsection headings, doc, and the
+         register-filtered scaffolding; examples stays empty until
+         example-fences lands (P1.6).
+         - code-chapters: true source bytes (sanitize is a
+         pdflatex concern only).
+         - Determinism: no wall clock, no absolute paths — two
+         runs byte-identical, loader checksums against this.
+         - Drift hole: unparseable chapter -> one raw node with
+         the true source, both registers.
        |))
    )
   )

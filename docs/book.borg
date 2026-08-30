@@ -175,6 +175,48 @@
        |))
    )
   )
+  (subsection book-export
+   (doc "Export the book as a deterministic JSON artifact — the habitat's feed")
+   (status implemented)
+   (details
+    (doc (|
+         borge book export [DIR] [--root FILE] [--mode workshop|reader]
+         [-o STEM]
+
+         Writes <STEM>.book.json from the SAME walk as print (habitat-
+         book decision 3: one parser, two projections — print and
+         export share the inline-aware walk and the register filter;
+         there is no forked traversal). This artifact is what the
+         pricklypear habitat loader seeds (borge/habitat-book.borg
+         habitat-loader); the loader is this shape's client — keep
+         them in lockstep.
+
+         Shape:
+         - root: the walk root, canon dir-relative (the --root file
+           when given, else the first root of the default walk)
+         - mode: "workshop" | "reader"
+         - chapters: .borg files in walk order, each {slug (path sans
+           .borg), title (first project/section/subsection name),
+           status (first (status X), mode-independent data), nodes
+           [{kind, title, body, children}], examples (fenced example
+           records — populated by the example-fence convention;
+           empty until then)}. Node kinds: project/section/subsection
+           headings, doc prose, and the register-filtered scaffolding
+           (status/verify/agent-note/untracked, workshop only;
+           inline navigation in both).
+         - code-chapters: .ml/.mli/.pp/.sql in appendix order, each
+           {path, lang, source} — source is the TRUE bytes (print's
+           ASCII sanitize is a pdflatex concern only).
+
+         Determinism: no wall clock anywhere in the artifact — two
+         runs of the same tree are byte-identical, so the loader can
+         checksum staleness against it. Drift hole: an unparseable
+         chapter exports as one raw node carrying its true source,
+         in both registers (the same hole print renders as a
+         fallback listing).
+       |))
+   )
+  )
   (subsection book-manifest
    (doc "Sidecar mapping page N to file, with a tree checksum. Line numbers are on the page.")
    (status implemented)

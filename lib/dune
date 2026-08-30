@@ -26,5 +26,5 @@
            ; FUTURE COMMAND
            future depends format
            ; BOOK
-           book_print book_manifest)
+           book_structure book_print book_export book_manifest)
   (libraries borge.lang unix str yojson))

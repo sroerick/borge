@@ -54,3 +54,6 @@
 (test
   (name test_book_walk)
   (libraries borge.lib unix str alcotest))
+(test
+  (name test_book_export)
+  (libraries borge.lib yojson unix str alcotest))

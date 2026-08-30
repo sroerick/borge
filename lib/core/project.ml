@@ -43,8 +43,16 @@ let rec build_tree ?(visited=[]) path =
       | None ->
           let children = List.filter_map (function Ok n -> Some n | _ -> None) children_with_errors in
           Ok { path; project_name = name; children; is_orphan = false }
-    with Borge_lang.Error.Parse_error e ->
+    with
+    | Borge_lang.Error.Parse_error e ->
       Error (Parse_error (path, Printf.sprintf "parse error at %d:%d - %s" e.line e.column e.message))
+    | Failure msg ->
+      (* The lexer raises plain Failure (e.g. "Unterminated quoted
+         string"), not the structured Parse_error — without this arm
+         a parse-broken inlined chapter crashes the whole walk
+         instead of degrading (book-print promises: parse error ->
+         lone chapter + warning). *)
+      Error (Parse_error (path, msg))
 
 (** Find all .borg files that are NOT inlined by any other file.
     These are the "root" candidates. *)

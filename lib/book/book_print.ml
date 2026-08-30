@@ -27,7 +27,10 @@
  *   artifact, the manifest's rendered_at.
  * |) *)
 
-type mode = Workshop | Reader
+(* Register lives in Book_structure (applied once, shared with book
+   export — habitat-book decision 3); this alias keeps the CLI and
+   tests spelled Book_print.Workshop/Reader. *)
+type mode = Book_structure.mode = Workshop | Reader
 
 let skip_dirs =
   ["_build"; ".git"; ".pi"; ".ralph"; ".borge-bugs"; ".borge.lock";
@@ -139,6 +142,13 @@ let collect_files dir =
   in
   chapters @ appendix
 
+(* --root FILE resolution: relative to dir first, then to the CWD. *)
+let resolve_root_file ~dir ~root_file =
+  if Filename.is_relative root_file
+     && Sys.file_exists (Filename.concat dir root_file)
+  then Filename.concat dir root_file
+  else root_file
+
 (* Explicit-root walk (--root FILE): the book is exactly the inline
    subtree rooted at FILE — course roots, single-chapter prints.
    Nothing outside the subtree prints: no appendix, no sibling roots.
@@ -147,12 +157,7 @@ let collect_files dir =
    is a contract: a missing file or an unbuildable tree is a hard
    error. FILE resolves relative to dir first, then to the CWD. *)
 let collect_subtree ~dir ~root_file =
-  let root_abs =
-    if Filename.is_relative root_file
-       && Sys.file_exists (Filename.concat dir root_file)
-    then Filename.concat dir root_file
-    else root_file
-  in
+  let root_abs = resolve_root_file ~dir ~root_file in
   if not (Sys.file_exists root_abs) then
     failwith (Printf.sprintf "--root: no such file: %s" root_file);
   match Project.build_tree root_abs with
@@ -238,22 +243,16 @@ let sanitize content =
   done;
   Buffer.contents buf
 
-(* --- .borg -> LaTeX renderer (parses the sexp; no raw sexp in the PDF) ---
-   section/subsection -> headings, (doc ...) -> prose paragraphs.
-   Workshop scaffolding (stripped in reader mode): annotated author
-   comments -> attributed blockquotes, (status X) -> an italic
-   marker, (verify ...) -> a compact scaffold line, (untracked path
-   "reason") -> a small italic note. (inline path) renders as a
-   small note in BOTH modes (the printed book inlines those
-   chapters next, so it is navigation, not scaffolding).
-   depends-on/convention stay structural noise in both. Falls back
-   to raw listing if the file fails to parse — in both modes: that
-   fallback is the print-side drift hole. *)
-exception Fallback_raw
-
-let string_value_text = function
-  | Borge_lang.Ast.Quoted q -> q.Borge_lang.Ast.q_content
-  | Borge_lang.Ast.Verbatim v -> v.Borge_lang.Ast.v_content
+(* --- .borg -> LaTeX renderer (over the shared structure) ---
+   Book_structure.of_file parses the sexp and applies the register
+   filter ONCE, shared with book export (habitat-book decision 3:
+   one parser, two projections); this pass only emits LaTeX from the
+   node tree — headings, prose paragraphs, and the workshop
+   scaffolding (status markers, verify scaffold lines, agent-note
+   blockquotes, untracked notes). Inline notes render in BOTH modes
+   (navigation, not scaffolding). Falls back to raw listing if the
+   file fails to parse — in both modes: that fallback is the
+   print-side drift hole. *)
 
 (* Emit prose: split on blank lines into paragraphs, escape, emit. *)
 let render_prose buf text =
@@ -266,176 +265,50 @@ let render_prose buf text =
     end
   ) paras
 
-let render_borg_comment ~mode buf c =
-  match c with
-  | Borge_lang.Ast.Plain _ -> ()  (* skip (; machine comments *)
-  | Borge_lang.Ast.Annotated ac ->
-    (* Reader mode strips agent notes: they are workflow
-       scaffolding, not chapter prose. *)
-    if mode = Workshop then begin
-    let author =
-      match ac.Borge_lang.Ast.authorship with
-      | Borge_lang.Ast.Single a -> a
-      | Borge_lang.Ast.Multiple xs -> String.concat "," xs
+let rec render_node buf n =
+  match n.Book_structure.kind with
+  | "project" | "section" | "subsection" ->
+    let cmd =
+      match n.Book_structure.kind with
+      | "project" -> "section*"
+      | "section" -> "subsection*"
+      | _ -> "subsubsection*"
     in
-    let typ = match ac.Borge_lang.Ast.comment_type with
-      | Borge_lang.Ast.Untyped -> ""
-      | Borge_lang.Ast.Typed t -> " " ^ t
-    in
-    let body =
-      match ac.Borge_lang.Ast.value with
-      | Some v -> String.trim (string_value_text v)
-      | None -> ""
-    in
-    if body <> "" then begin
-      Buffer.add_string buf "\\begin{quote}\n";
-      Printf.bprintf buf "\\textit{-- %s%s:} " (escape_text author) (escape_text typ);
-      render_prose buf body;
+    Printf.bprintf buf "\\%s{%s}\n" cmd (escape_text n.Book_structure.title);
+    List.iter (render_node buf) n.Book_structure.children
+  | "doc" -> render_prose buf n.Book_structure.body
+  | "status" ->
+    Printf.bprintf buf "\\textit{[status: %s]}\\par\n"
+      (escape_text n.Book_structure.body)
+  | "inline" ->
+    Printf.bprintf buf "\\textit{[inlines %s]}\\par\n"
+      (escape_text n.Book_structure.body)
+  | "verify" ->
+    if n.Book_structure.body = "" then
+      Buffer.add_string buf "\\textit{[verify]}\\par\n"
+    else begin
+      Buffer.add_string buf "\\begin{quote}\\small\\itshape\n";
+      Printf.bprintf buf "[verify] %s\n" (escape_text n.Book_structure.body);
       Buffer.add_string buf "\\end{quote}\n\n"
     end
-    end
-
-let rec render_borg_node ~mode buf depth pending node =
-  let open Borge_lang.Ast in
-  let drain limit =
-    let rec loop () =
-      match !pending with
-      | (cpos, c) :: rest when cpos.offset < limit ->
-          render_borg_comment ~mode buf c;
-          pending := rest;
-          loop ()
-      | _ -> ()
-    in
-    loop ()
-  in
-  match node with
-  | Atom _ | String _ -> ()
-  | List (_pos, children) as lst ->
-    let head_is s = match children with Atom (_, x) :: _ -> x = s | _ -> false in
-    let rest = match children with _ :: r -> r | [] -> [] in
-    if head_is "project" || head_is "section" || head_is "subsection" then begin
-      let name = match rest with Atom (_, n) :: _ -> n | _ -> "" in
-      let cmd =
-        if head_is "project" then "section*"
-        else if head_is "section" then "subsection*"
-        else "subsubsection*"
-      in
-      (* Drain nested comments that appear after the keyword atom but
-         before the name atom (or first inner child). *)
-      (match rest with
-       | Atom (p, _) :: _ -> drain p.offset
-       | child :: _ -> drain (start_pos_of child).offset
-       | [] -> drain (end_pos_of lst).offset);
-      Printf.bprintf buf "\\%s{%s}\n" cmd (escape_text name);
-      let inner = match rest with _ :: r -> r | _ -> [] in
-      List.iter (fun child ->
-        drain (start_pos_of child).offset;
-        render_borg_node ~mode buf (depth + 1) pending child
-      ) inner;
-      drain (end_pos_of lst).offset
-    end
-    else if head_is "doc" then begin
-      match rest with String (_, v) :: _ -> render_prose buf (string_value_text v) | _ -> ()
-    end
-    else if head_is "details" then begin
-      List.iter (fun child ->
-        drain (start_pos_of child).offset;
-        render_borg_node ~mode buf depth pending child
-      ) rest;
-      drain (end_pos_of lst).offset
-    end
-    else if head_is "status" then begin
-      (* Workshop scaffolding; reader strips it. *)
-      if mode = Workshop then
-        match rest with Atom (_, s) :: _ ->
-          Printf.bprintf buf "\\textit{[status: %s]}\\par\n" (escape_text s)
-        | _ -> ()
-    end
-    else if head_is "inline" then begin
-      match rest with String (_, v) :: _ ->
-        Printf.bprintf buf "\\textit{[inlines %s]}\\par\n" (escape_text (string_value_text v))
-      | _ -> ()
-    end
-    else if head_is "verify" then begin
-      (* Workshop scaffolding (habitat-book: statuses/verify/
-         agent-notes visible in the workshop register; reader
-         suppresses). Rendered as one compact italic scaffold
-         line: "[verify] build: ...; smoke: ...". *)
-      (match rest with
-       | child :: _ -> drain (start_pos_of child).offset
-       | [] -> ());
-      if mode = Workshop then begin
-        let items =
-          List.filter_map (fun child ->
-            match child with
-            | List (_, Atom (_, h) :: r) ->
-              let strs =
-                List.filter_map
-                  (function String (_, v) -> Some (string_value_text v) | _ -> None)
-                  r
-              in
-              Some (if strs = [] then escape_text h
-                    else escape_text h ^ ": "
-                         ^ String.concat "; " (List.map escape_text strs))
-            | _ -> None
-          ) rest
-        in
-        if items = [] then Buffer.add_string buf "\\textit{[verify]}\\par\n"
-        else begin
-          Buffer.add_string buf "\\begin{quote}\\small\\itshape\n";
-          Printf.bprintf buf "[verify] %s\n" (String.concat "; " items);
-          Buffer.add_string buf "\\end{quote}\n\n"
-        end
-      end;
-      drain (end_pos_of lst).offset
-    end
-    else if head_is "untracked" then begin
-      (* Workshop scaffolding: (untracked <path> "reason") — a small
-         italic note naming the path (and reason, if given). *)
-      (match rest with
-       | child :: _ -> drain (start_pos_of child).offset
-       | [] -> ());
-      if mode = Workshop then
-        (match rest with
-         | path_node :: r ->
-           let path_text =
-             match path_node with
-             | Atom (_, p) -> escape_text p
-             | String (_, v) -> escape_text (string_value_text v)
-             | _ -> ""
-           in
-           let reasons =
-             List.filter_map
-               (function String (_, v) -> Some (escape_text (string_value_text v))
-                       | _ -> None)
-               r
-           in
-           (match reasons with
-            | reason :: _ ->
-              Printf.bprintf buf "\\textit{[untracked %s: %s]}\\par\n" path_text reason
-            | [] ->
-              Printf.bprintf buf "\\textit{[untracked %s]}\\par\n" path_text)
-         | [] -> ());
-      drain (end_pos_of lst).offset
-    end
-    else ()   (* skip structural forms: depends-on, convention, ... *)
+  | "agent-note" ->
+    Buffer.add_string buf "\\begin{quote}\n";
+    Printf.bprintf buf "\\textit{-- %s:} " (escape_text n.Book_structure.title);
+    render_prose buf n.Book_structure.body;
+    Buffer.add_string buf "\\end{quote}\n\n"
+  | "untracked" ->
+    if n.Book_structure.body = "" then
+      Printf.bprintf buf "\\textit{[untracked %s]}\\par\n"
+        (escape_text n.Book_structure.title)
+    else
+      Printf.bprintf buf "\\textit{[untracked %s: %s]}\\par\n"
+        (escape_text n.Book_structure.title) (escape_text n.Book_structure.body)
+  | _ -> ()
 
 let borg_to_latex ~mode ~content =
-  let open Borge_lang.Ast in
-  let file =
-    try Borge_lang.Parse.parse_file content
-    with _ -> raise Fallback_raw
-  in
+  let body = Book_structure.of_file ~mode ~content in
   let buf = Buffer.create 4096 in
-  let sorted_nested =
-    List.stable_sort (fun (p1, _) (p2, _) -> compare p1.offset p2.offset) file.nested_comments
-  in
-  let pending = ref sorted_nested in
-  List.iter (render_borg_comment ~mode buf) file.Borge_lang.Ast.top_level_comments;
-  List.iter (fun swc ->
-    List.iter (render_borg_comment ~mode buf) swc.Borge_lang.Ast.comments_before;
-    render_borg_node ~mode buf 0 pending swc.Borge_lang.Ast.node
-  ) file.Borge_lang.Ast.top_level;
+  List.iter (render_node buf) body.Book_structure.nodes;
   Buffer.contents buf
 
 let render_to_tex ~mode ~dir ~files ~tex_path =
@@ -462,7 +335,7 @@ let render_to_tex ~mode ~dir ~files ~tex_path =
       let raw = try File_utils.read_file full with Sys_error _ -> "" in
       let body =
         try Some (borg_to_latex ~mode ~content:(sanitize raw))
-        with Fallback_raw -> None
+        with Book_structure.Fallback_raw -> None
       in
       match body with
       | Some b -> output_string oc b
