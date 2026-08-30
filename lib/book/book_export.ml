@@ -19,6 +19,10 @@
  *         examples: [] }],       fenced blocks land here (P1.6)
  *       code-chapters: [{        .ml/.mli/.pp/.sql, appendix order
  *         path, lang, source }] }
+ *   - examples carry the fenced example records (P1.6): one per
+ *     ```nopales/```ocaml doc fence in document order, each
+ *     {lang, src, expected?} — expected is the `expect =>` trailer
+ *     or null (the v1 captured-output record; no live evaluator).
  *   - code-chapters carries the spec's hyphenated spelling; sources
  *     are the TRUE bytes (print's ASCII sanitize is a pdflatex
  *     concern only).
@@ -50,13 +54,22 @@ and node_to_json (n : Book_structure.node) : Yojson.Safe.t =
       "body", `String n.body;
       "children", nodes_to_json n.children ]
 
-let chapter_to_json (slug, title, status, nodes) =
+let example_to_json (e : Book_structure.example) =
+  `Assoc
+    [ "lang", `String e.Book_structure.lang;
+      "src", `String e.Book_structure.src;
+      "expected",
+      (match e.Book_structure.expected with
+       | Some v -> `String v
+       | None -> `Null) ]
+
+let chapter_to_json (slug, title, status, nodes, examples) =
   `Assoc
     [ "slug", `String slug;
       "title", `String title;
       "status", (match status with Some s -> `String s | None -> `Null);
       "nodes", nodes_to_json nodes;
-      "examples", `List [] ]
+      "examples", `List (List.map example_to_json examples) ]
 
 let build_chapter ~mode ~dir path =
   let slug = Filename.remove_extension path in
@@ -68,14 +81,19 @@ let build_chapter ~mode ~dir path =
     let title =
       match body.Book_structure.title_hint with Some t -> t | None -> slug
     in
-    (slug, title, body.Book_structure.status, body.Book_structure.nodes)
+    ( slug,
+      title,
+      body.Book_structure.status,
+      body.Book_structure.nodes,
+      body.Book_structure.examples )
   | exception Book_structure.Fallback_raw ->
     (* Drift hole: the chapter ships as raw source, in both
        registers — same rule as print's fallback listing. *)
     ( slug,
       slug,
       None,
-      [ { Book_structure.kind = "raw"; title = ""; body = raw; children = [] } ] )
+      [ { Book_structure.kind = "raw"; title = ""; body = raw; children = [] } ],
+      [] )
 
 (* The walk root, canon dir-relative: for --root, the resolved root
    file; otherwise the first root of the default walk (lexicographic

@@ -168,6 +168,74 @@ let test_tex_code_extensions () =
         false (has "src/0000.borg}");
       ignore (Sys.command (Printf.sprintf "rm -rf %s" (Filename.quote t))))
 
+(* Example fences (P1.6), tex level: a ```nopales/```ocaml doc fence
+   renders as a lstlisting (no line numbers) with the `expect =>`
+   trailer as the captured-output annotation; other-language and
+   unterminated fences stay raw escaped prose. Both registers —
+   examples are content. *)
+let test_tex_example_fences () =
+  let chapter =
+    String.concat "\n"
+      [ "(section a";
+        " (doc (|";
+        "   Prose before.";
+        "";
+        "   ```nopales";
+        "   (+ 1 2)";
+        "   ```";
+        "   expect => 3";
+        "";
+        "   Prose after.";
+        " |))";
+        " (doc (|";
+        "   ```ocaml";
+        "   let x = 1";
+        "   ```";
+        " |))";
+        " (doc (|";
+        "   ```sh";
+        "   echo hi";
+        "   ```";
+        "";
+        "   unterminated:";
+        "";
+        "   ```nopales";
+        "   (+ 2 3)";
+        " |))";
+        ")" ]
+  in
+  with_fixture "texfences"
+    [ ("root.borg", "(project demo\n (doc \"demo book\")\n)\n");
+      ("a.borg", chapter ^ "\n") ]
+    (fun dir ->
+      let check_mode mode =
+        let files = Book_print.collect_files dir in
+        let t = tmp_subdir "texfences" in
+        Book_print.render_to_tex ~mode ~dir ~files
+          ~tex_path:(Filename.concat t "book.tex");
+        let tex = File_utils.read_file (Filename.concat t "book.tex") in
+        let has s =
+          try ignore (Str.search_forward (Str.regexp (Str.quote s)) tex 0); true
+          with Not_found -> false
+        in
+        Alcotest.(check bool) "nopales fence renders as a listing"
+          true (has "\\begin{lstlisting}[language=nopales, numbers=none]");
+        Alcotest.(check bool) "ocaml fence renders as a listing"
+          true
+          (has "\\begin{lstlisting}[language={[Objective]Caml}, numbers=none]");
+        Alcotest.(check bool) "fence source in the listing"
+          true (has "(+ 1 2)");
+        Alcotest.(check bool) "expect trailer renders as the annotation"
+          true (has "[expect => 3]");
+        Alcotest.(check bool) "non-example fence stays raw prose"
+          true (has "```sh");
+        Alcotest.(check bool) "unterminated example fence stays raw prose"
+          true (has "```nopales\n   (+ 2 3)");
+        ignore (Sys.command (Printf.sprintf "rm -rf %s" (Filename.quote t)))
+      in
+      check_mode Book_print.Workshop;
+      check_mode Book_print.Reader)
+
 (* --root FILE: exactly the inline subtree rooted at FILE — nested
    inlines included, nothing outside it (no appendix, no siblings),
    and a lone chapter prints as a book of one. *)
@@ -339,6 +407,8 @@ let () =
             `Quick test_type_coverage;
           Alcotest.test_case "tex cites .pp/.sql listings under own extension"
             `Quick test_tex_code_extensions;
+          Alcotest.test_case "example fences render as listings + expect annotation"
+            `Quick test_tex_example_fences;
           Alcotest.test_case "--root prints exactly the inline subtree" `Quick
             test_subtree_root;
           Alcotest.test_case "--root errors hard on missing file or broken tree"

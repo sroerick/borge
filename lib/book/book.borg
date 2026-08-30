@@ -6,6 +6,21 @@
    (doc "Linearize source files to a paginated PDF (inline-aware order: the root's (inline ...) tree, then unreferenced files lexicographically; register is a render flag: --mode workshop|reader, default workshop)")
    (status implemented)
    (* agent note (|
+     P1.6 (2026-08-30): example fences. Book_structure grew the
+     shared fence parser (fence_split): ```nopales/```ocaml doc
+     fences + optional `expect =>` trailer -> {lang, src, expected?}
+     records, collected per chapter in document order, mode-
+     independent (content, not scaffolding). ONE parser, two
+     consumers (decision 3): print renders segments (text ->
+     paragraphs, example -> lstlisting without line numbers + the
+     [expect => ...] captured-output annotation), export emits the
+     records in the chapter's examples field. Doc node bodies stay
+     verbatim (fences + trailer ride along); unparsed fences (other
+     languages, unterminated) stay raw text everywhere. The expect
+     trailer IS the v1 captured-output record — print never executes
+     code (decision 4: no live OCaml evaluator in v1).
+   |) *)
+   (* agent note (|
      verified at this commit: build-pass, smoke-pass (borge book print
      . opens with borge.borg as the introduction, then the other 8
      top-level .borg design docs, then .ml implementations; line
@@ -150,10 +165,14 @@
               compact scaffold line, agent-note blockquote,
               untracked small italic note; inline -> small note in
               BOTH registers; depends-on/convention always
-              skipped). Reader strips the workshop-only
-              scaffolding. Falls back to a raw listing on parse
-              failure — the print-side drift hole, visible in both
-              registers.
+              skipped). Doc prose is segmented by the shared fence
+              parser (fence_split): text -> paragraphs, ```nopales/
+              ```ocaml example fences -> lstlisting blocks (no line
+              numbers) + the [expect => ...] captured-output
+              annotation, in BOTH registers. Reader strips the
+              workshop-only scaffolding. Falls back to a raw listing
+              on parse failure — the print-side drift hole, visible
+              in both registers.
          3. render : dir -> stem -> unit
               Assemble preamble + body + \end{document}, shell out
               to pdflatex (loop passes until .aux/.toc stabilize),
@@ -193,8 +212,12 @@
          - chapters: .borg files in walk order (Book_print walk,
          same collect_files / collect_subtree as print). Node
          kinds: project/section/subsection headings, doc, and the
-         register-filtered scaffolding; examples stays empty until
-         example-fences lands (P1.6).
+         register-filtered scaffolding; examples = the fenced
+         example records (P1.6): one {lang, src, expected?} per
+         ```nopales/```ocaml doc fence, document order, both
+         registers; expected carries the `expect =>` trailer or
+         null. Same fence parser print renders from (decision 3);
+         unparsed fences stay raw text in the doc body.
          - code-chapters: true source bytes (sanitize is a
          pdflatex concern only).
          - Determinism: no wall clock, no absolute paths — two

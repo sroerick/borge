@@ -41,11 +41,138 @@ type node = {
   children : node list;
 }
 
+(* --- Example fences (habitat-book.borg export-projection, P1.6) ---
+   Doc-block convention shared by print and the habitat web render:
+   ```nopales / ```ocaml fenced blocks inside doc strings, with an
+   optional `expect => <value>` trailer line after the closing
+   fence. fence_split segments a doc body into prose text and
+   example records; ONE parser serves both projections (decision 3):
+   print renders the segments (text -> paragraphs, example ->
+   listing + expect annotation), export emits the example records
+   on the chapter. The doc node's body itself stays verbatim —
+   segments are derived. Unparsed fences (other languages,
+   unterminated) stay raw text everywhere: no record, prose render.
+   The expect trailer is the v1 captured-output record (habitat-book
+   decision 4: no live OCaml evaluator; print does not execute code). *)
+
+type example = {
+  lang : string;             (* "nopales" | "ocaml" *)
+  src : string;              (* fence body, one \n per source line *)
+  expected : string option;  (* `expect => v` trailer, if present *)
+}
+
+type segment = Text of string | Code of example
+
 type chapter_body = {
   title_hint : string option;
   status : string option;
   nodes : node list;
+  examples : example list;
 }
+
+let example_languages = [ "nopales"; "ocaml" ]
+
+(* Fence lines: ```lang opens (empty lang = untyped fence), a bare
+   ``` line closes. Strict end-of-line anchor: `` `lang extra`` is
+   not a fence — malformed fences stay raw text. *)
+let fence_open_re = Str.regexp "^[ \t]*```[ \t]*\\([A-Za-z0-9_-]*\\)[ \t]*$"
+let fence_close_re = Str.regexp "^[ \t]*```[ \t]*$"
+let expect_re = Str.regexp "^[ \t]*expect[ \t]*=>[ \t]*\\(.*\\)$"
+
+let fence_split (text : string) : segment list =
+  let lines = Array.of_list (String.split_on_char '\n' text) in
+  let len = Array.length lines in
+  let out = ref [] in
+  let buf = Buffer.create 0 in
+  let flush () =
+    if Buffer.length buf > 0 then begin
+      out := Text (Buffer.contents buf) :: !out;
+      Buffer.clear buf
+    end
+  in
+  let add_text ln =
+    Buffer.add_string buf ln;
+    Buffer.add_char buf '\n'
+  in
+  let i = ref 0 in
+  while !i < len do
+    let ln = lines.(!i) in
+    if Str.string_match fence_open_re ln 0 then begin
+      let lang = Str.matched_group 1 ln in
+      if List.mem lang example_languages then begin
+        (* Example fence: collect src until the close fence. An
+           unterminated fence is unparsed — fall back to raw text. *)
+        flush ();
+        let src = Buffer.create 0 in
+        let closed = ref false in
+        incr i;
+        while not !closed && !i < len do
+          if Str.string_match fence_close_re lines.(!i) 0 then closed := true
+          else begin
+            Buffer.add_string src lines.(!i);
+            Buffer.add_char src '\n'
+          end;
+          incr i
+        done;
+        if not !closed then begin
+          add_text ln;
+          Buffer.add_string buf (Buffer.contents src)
+        end
+        else begin
+          (* Optional expect trailer: the next non-blank line. If it
+             matches, it is consumed into the record (removed from
+             the prose stream — print re-renders it as the
+             annotation, the web render reads the record). *)
+          let j = ref !i in
+          while !j < len && String.trim lines.(!j) = "" do incr j done;
+          let expected =
+            if !j < len && Str.string_match expect_re lines.(!j) 0 then begin
+              let v = String.trim (Str.matched_group 1 lines.(!j)) in
+              i := !j + 1;
+              Some v
+            end
+            else None
+          in
+          out := Code { lang; src = Buffer.contents src; expected } :: !out
+        end
+      end
+      else begin
+        (* Non-example fence (other lang or untyped): raw text
+           through its close — a ```nopales inside must not leak. *)
+        add_text ln;
+        incr i;
+        let closed = ref false in
+        while not !closed && !i < len do
+          add_text lines.(!i);
+          if Str.string_match fence_close_re lines.(!i) 0 then closed := true;
+          incr i
+        done
+      end
+    end
+    else begin
+      add_text ln;
+      incr i
+    end
+  done;
+  flush ();
+  List.rev !out
+
+(* Chapter examples: every fenced example in doc nodes, document
+   order (preorder over the node tree). Mode-independent — examples
+   are content, not register scaffolding. *)
+let rec examples_of_nodes acc = function
+  | [] -> List.rev acc
+  | n :: rest ->
+    let acc =
+      if n.kind = "doc" then
+        List.fold_left
+          (fun acc seg -> match seg with Code e -> e :: acc | Text _ -> acc)
+          acc (fence_split n.body)
+      else acc
+    in
+    examples_of_nodes acc (n.children @ rest)
+
+let examples_of nodes = examples_of_nodes [] nodes
 
 (* Parse failure = drift hole. Print falls back to a raw listing;
    export falls back to a raw node — in both registers. *)
@@ -261,4 +388,7 @@ let of_file ~mode ~content =
           List.filter_map (comment_node ~mode) swc.comments_before @ build swc.node)
         file.top_level
   in
-  { title_hint = title_hint_of file; status = status_of file; nodes }
+  { title_hint = title_hint_of file;
+    status = status_of file;
+    nodes;
+    examples = examples_of nodes }

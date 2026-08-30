@@ -82,7 +82,7 @@ let test_shape_and_order () =
     Alcotest.(check string) "chapter title from first section" "a" (str ca "title");
     Alcotest.(check (option string)) "chapter status from first (status X)"
       (Some "implemented") (opt_str ca "status");
-    Alcotest.(check int) "examples empty until example-fences" 0
+    Alcotest.(check int) "no fences -> no examples" 0
       (List.length (arr ca "examples"));
     (* nodes: section a -> [status; doc; subsection a1] *)
     let kinds ns = List.map (fun n -> str n "kind") ns in
@@ -270,6 +270,100 @@ let test_inline_atom_target () =
       "reader: inline navigation kept"
       [ ("inline", "a.borg") ] rd)
 
+(* Example fences (P1.6): ```nopales/```ocaml doc fences become
+   structured example records on the chapter, in document order,
+   mode-independent (content, not scaffolding); the `expect =>`
+   trailer is captured into the record; other languages and
+   unterminated fences produce no record (raw text stays in the doc
+   body). *)
+let test_example_fences () =
+  let chapter =
+    String.concat "\n"
+      [ "(section a";
+        " (doc (|";
+        "   Prose before.";
+        "";
+        "   ```nopales";
+        "   (+ 1 2)";
+        "   ```";
+        "   expect => 3";
+        "";
+        "   Prose after.";
+        " |))";
+        " (doc (|";
+        "   ```ocaml";
+        "   let x = 1";
+        "   ```";
+        " |))";
+        " (doc (|";
+        "   ```sh";
+        "   echo hi";
+        "   ```";
+        "";
+        "   unterminated:";
+        "";
+        "   ```nopales";
+        "   (+ 2 3)";
+        " |))";
+        ")" ]
+  in
+  with_fixture "fences"
+    [ ("root.borg", "(project demo\n (inline \"a.borg\")\n)\n");
+      ("a.borg", chapter ^ "\n") ]
+    (fun dir ->
+      let export mode stem =
+        ignore (Book_export.export ~dir ~stem:(Filename.concat dir stem) ~root:None ~mode)
+      in
+      export Book_structure.Workshop "ws";
+      export Book_structure.Reader "rd";
+      let examples j =
+        let ch = List.find (fun c -> str c "slug" = "a") (arr j "chapters") in
+        (ch, arr ch "examples")
+      in
+      let ws = Yojson.Safe.from_file (Filename.concat dir "ws.book.json") in
+      let rd = Yojson.Safe.from_file (Filename.concat dir "rd.book.json") in
+      let ch_ws, ws_ex = examples ws in
+      Alcotest.(check int) "two example records" 2 (List.length ws_ex);
+      let e1 = List.nth ws_ex 0 in
+      Alcotest.(check string) "first record lang" "nopales" (str e1 "lang");
+      Alcotest.(check string) "first record src (verbatim, indent kept)"
+        "   (+ 1 2)\n" (str e1 "src");
+      Alcotest.(check (option string)) "expect trailer captured"
+        (Some "3") (opt_str e1 "expected");
+      let e2 = List.nth ws_ex 1 in
+      Alcotest.(check string) "second record lang" "ocaml" (str e2 "lang");
+      Alcotest.(check string) "second record src" "   let x = 1\n" (str e2 "src");
+      Alcotest.(check (option string)) "no trailer -> expected null" None
+        (opt_str e2 "expected");
+      (* sh + unterminated fences: raw text only, no records *)
+      Alcotest.(check int) "sh/unterminated produce no records" 2
+        (List.length ws_ex);
+      (* reader register: examples are content, kept identically *)
+      let _, rd_ex = examples rd in
+      Alcotest.(check int) "reader keeps the examples" 2 (List.length rd_ex);
+      (* doc bodies stay verbatim: fences + trailer remain in the text *)
+      let docs =
+        let rec walk ns =
+          List.concat_map
+            (fun n ->
+              (if str n "kind" = "doc" then [ str n "body" ] else [])
+              @ walk (arr n "children"))
+            ns
+        in
+        walk (arr ch_ws "nodes")
+      in
+      let body_has needle =
+        List.exists (fun b ->
+          try ignore (Str.search_forward (Str.regexp (Str.quote needle)) b 0); true
+          with Not_found -> false) docs
+      in
+      Alcotest.(check bool) "doc body keeps the raw fence" true
+        (body_has "```nopales");
+      Alcotest.(check bool) "doc body keeps the expect trailer" true
+        (body_has "expect => 3");
+      Alcotest.(check bool) "doc body keeps the sh fence" true
+        (body_has "```sh"))
+
 let () =
   Alcotest.run "book_export"
     [
@@ -287,5 +381,7 @@ let () =
             test_subtree_root;
           Alcotest.test_case "atom inline target renders in both registers" `Quick
             test_inline_atom_target;
+          Alcotest.test_case "example fences become chapter example records"
+            `Quick test_example_fences;
         ] );
     ]

@@ -154,6 +154,26 @@
          .ml/.mli files keep the listings treatment (line numbers,
          framed code) — they are code, and the book shows them as code.
 
+         Example fences (the habitat-book doc-block convention,
+         shared print/web — pricklypear borge/habitat-book.borg
+         export-projection): inside a doc string, ```nopales and
+         ```ocaml fenced blocks are examples, optionally followed by
+         an `expect => <value>` trailer line. ONE fence parser
+         (Book_structure.fence_split) serves both projections: print
+         renders each example as a listings block (no line numbers —
+         these are snippets, not file chapters; nopales gets a
+         defined listings language, ocaml the listings built-in)
+         followed by the captured output — the expect trailer — as a
+         small italic [expect => ...] annotation. Examples render in
+         BOTH registers (they are content, not scaffolding). The
+         expect trailer is the v1 captured-output record: the value
+         was captured when the example was written; print never
+         executes code (habitat-book decision 4 — no live OCaml
+         evaluator in v1; the habitat's live eval is Nopales-only,
+         read-time in the reader's session). Unparsed fences — other
+         languages, unterminated blocks — stay raw text everywhere:
+         no record, plain prose render.
+
          Type coverage (habitat-book workstream): .pp files (the
          Nopales product layer) and .sql files (migrations) are code
          chapters too — same listings treatment, cited under their own
@@ -199,11 +219,16 @@
            .borg), title (first project/section/subsection name),
            status (first (status X), mode-independent data), nodes
            [{kind, title, body, children}], examples (fenced example
-           records — populated by the example-fence convention;
-           empty until then)}. Node kinds: project/section/subsection
+           records)}. Node kinds: project/section/subsection
            headings, doc prose, and the register-filtered scaffolding
            (status/verify/agent-note/untracked, workshop only;
-           inline navigation in both).
+           inline navigation in both). Examples: one record per
+           ```nopales/```ocaml doc fence, document order, both
+           registers — {lang, src (verbatim fence body), expected
+           (the `expect =>` trailer, or null)}. The fence parser is
+           the same one print renders from (decision 3); unparsed
+           fences (other languages, unterminated) produce no record
+           and stay raw text in the doc body.
          - code-chapters: .ml/.mli/.pp/.sql in appendix order, each
            {path, lang, source} — source is the TRUE bytes (print's
            ASCII sanitize is a pdflatex concern only).

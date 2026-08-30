@@ -32,6 +32,15 @@
    tests spelled Book_print.Workshop/Reader. *)
 type mode = Book_structure.mode = Workshop | Reader
 
+(* Example fences (P1.6): nopales gets a defined listings language
+   (below); ocaml maps to the listings built-in as its [Objective]
+   Caml dialect (plain Caml is the light dialect — wrong keywords).
+   The value is brace-protected: listings' optional-argument scanner
+   does not balance nested [..] on its own. *)
+let example_latex_lang = function
+  | "ocaml" -> "{[Objective]Caml}"
+  | l -> l
+
 let skip_dirs =
   ["_build"; ".git"; ".pi"; ".ralph"; ".borge-bugs"; ".borge.lock";
    "_build_test"; "node_modules"; "_opam"; ".opamswitch";
@@ -205,7 +214,8 @@ let preamble ~mode =
   "\\fancyhead[R]{\\leftmark}\n" ^
   "\\fancyfoot[C]{\\thepage}\n" ^
   "\\renewcommand{\\headrulewidth}{0.4pt}\n" ^
-  "\\lstset{basicstyle=\\ttfamily\\footnotesize, numbers=left, numberstyle=\\tiny\\color{gray}, stepnumber=1, firstnumber=1, frame=single, rulecolor=\\color{gray!50}, breaklines=true, breakatwhitespace=true, showstringspaces=false, tabsize=2, xleftmargin=2em, numbersep=10pt, columns=fullflexible, keepspaces=true}\n"
+  "\\lstset{basicstyle=\\ttfamily\\footnotesize, numbers=left, numberstyle=\\tiny\\color{gray}, stepnumber=1, firstnumber=1, frame=single, rulecolor=\\color{gray!50}, breaklines=true, breakatwhitespace=true, showstringspaces=false, tabsize=2, xleftmargin=2em, numbersep=10pt, columns=fullflexible, keepspaces=true}\n" ^
+  "\\lstdefinelanguage{nopales}{morekeywords={define,lambda,let,if,else,cond,match,when,do,module,open,deftype,route,public-route,checkout,fork,merge,with-transaction,delay,force,load-library,whoami,current-author,is-admin?,create-user,get,create,update,delete,rows,type-of,str,list,car,cdr,cons,dict-get,dict-set,render-html,example-eval,book/verify},sensitive=false,morecomment=[l]{;},morestring=[b]\"}\n"
 
 (* Sanitize UTF-8 to ASCII for pdflatex+listings, which is byte-oriented.
    Maps common punctuation to ASCII equivalents, falls back to '?' for the
@@ -265,6 +275,41 @@ let render_prose buf text =
     end
   ) paras
 
+(* Example fence rendering: the listing (nopales = the defined
+   language, ocaml = the listings built-in; no line numbers — these
+   are snippets, not file chapters) plus the captured output — the
+   `expect =>` trailer — as a small italic annotation. Both
+   registers: examples are content, not scaffolding. The source is
+   already ASCII-sanitized (sanitize runs before the parse). *)
+let render_example buf (e : Book_structure.example) =
+  Buffer.add_string buf
+    (Printf.sprintf "\\begin{lstlisting}[language=%s, numbers=none]\n"
+       (example_latex_lang e.Book_structure.lang));
+  Buffer.add_string buf e.Book_structure.src;
+  if e.Book_structure.src = ""
+     || e.Book_structure.src.[String.length e.Book_structure.src - 1] <> '\n'
+  then Buffer.add_char buf '\n';
+  Buffer.add_string buf "\\end{lstlisting}\n\n";
+  match e.Book_structure.expected with
+  | Some v ->
+    Buffer.add_string buf "\\textit{[expect => ";
+    Buffer.add_string buf (escape_text v);
+    Buffer.add_string buf "]}";
+    Buffer.add_string buf "\\par\n\n"
+  | None -> ()
+
+(* Doc prose, segmented by the SHARED fence parser
+   (Book_structure.fence_split — one fence parser serves both
+   projections, decision 3): text -> paragraphs, example fences ->
+   listings. Unparsed fences ride along inside Text and render as
+   plain escaped prose. *)
+let render_doc buf body =
+  List.iter
+    (function
+      | Book_structure.Text t -> render_prose buf t
+      | Book_structure.Code e -> render_example buf e)
+    (Book_structure.fence_split body)
+
 let rec render_node buf n =
   match n.Book_structure.kind with
   | "project" | "section" | "subsection" ->
@@ -276,7 +321,7 @@ let rec render_node buf n =
     in
     Printf.bprintf buf "\\%s{%s}\n" cmd (escape_text n.Book_structure.title);
     List.iter (render_node buf) n.Book_structure.children
-  | "doc" -> render_prose buf n.Book_structure.body
+  | "doc" -> render_doc buf n.Book_structure.body
   | "status" ->
     Printf.bprintf buf "\\textit{[status: %s]}\\par\n"
       (escape_text n.Book_structure.body)
