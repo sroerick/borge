@@ -63,7 +63,7 @@
    (status implemented)
   )
   (subsection book
-   (doc "Print the codebase as a paginated book: borge book print [DIR] [-o STEM]. Emits PDF + manifest sidecar")
+   (doc "Print the codebase as a paginated book: borge book print [DIR] [-o STEM]. Chapters in (inline ...) tree order, unreferenced files appended lexicographically; emits PDF + manifest sidecar")
    (status implemented)
   )
   (subsection fmt

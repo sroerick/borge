@@ -13,6 +13,19 @@
      Uses lstinputlisting with sanitized temp files to dodge the UTF-8
      and \end{lstlisting}-in-source problems.
    |) *)
+   (* agent note (|
+     v2 walk (2026-08-29, habitat-book workstream): the four-tier +
+     dependency-rank ordering was REPLACED by the inline-aware walk —
+     chapter order = Project.build_tree flatten of the root's
+     (inline ...) tree, unreferenced files appended lexicographically.
+     Why: pricklypear's book printed chapters in readdir order at
+     p788+ with a clone-dependent TOC; the spec-as-book rule (one walk
+     shared by print/export/habitat-loader) needs the inline tree as
+     the single ordering authority. Verified: pricklypear manifest
+     order matches borge inline order (philosophy -> ... ->
+     habitat-book, code appendix after); alcotest book_walk suite
+     covers order/appendix/missing-target/duplicate-inline.
+   |) *)
    (verify
     (build
     )
@@ -22,36 +35,35 @@
    )
    (details
     (doc (|
-         lib/book/print.ml — the v1 linearizer and LaTeX emitter.
+         lib/book/book_print.ml — the linearizer and LaTeX emitter.
 
-         v1 scope: four-tier data-driven ordering (root .borg ->
-         other top-level .borg -> .mli -> .ml), no full spec-order,
-         no --section, no --woven. The root .borg (via
-         Project.find_roots) opens the book as the introduction;
-         other top-level .borg files follow as design docs; then
-         .mli interfaces; then .ml implementations. Each file is
-         read, sanitized, emitted as one LaTeX document, run through
-         pdflatex.
+         v2 scope: inline-aware ordering (the root project's
+         (inline ...) tree is the chapter order), no woven view,
+         no --section/--woven/--root yet. Unreferenced files
+         (.ml/.mli code, stray .borg) append lexicographically as
+         the appendix. Each file is read, sanitized, emitted as one
+         LaTeX document, run through pdflatex.
 
          Pipeline:
          1. collect_files : dir -> string list
-              Roots via Project.find_roots, normalized to paths
-              relative to dir. Then a deterministic walk of all
-              .borg (excl. .borg.meta), .mli, .ml files. Dedup
-              roots from the walk. Sort by:
-                (a) tier_of: tier 0 = root .borg, tier 1 = other
-                    top-level .borg, tier 2 = .mli, tier 3 = .ml.
-                (b) within the code tier (2/3): a dependency rank
-                    computed from `open X` and `Module.ref` per
-                    file — module basenames map to directories; a
-                    longest-path rank per dir (lang=0, core=1, ...).
-                    Stdlib/external names are excluded so a project
-                    module that shadows a stdlib name (lib/format)
-                    doesn't create a false dep.
-                (c) then dir_group (lib/ then bin/ then test/).
-                (d) then lexical.
-              Foundations precede dependents. Skip _build/, .git/,
-              and .gitignore build artifacts.
+              Roots via Project.find_roots, canonicalized to paths
+              relative to dir. For each root (lexicographic when
+              there are several), Project.build_tree follows
+              (inline ...) targets and Project.tree_paths flattens
+              the subtree depth-first — that flatten IS the chapter
+              order (deduped, first occurrence wins). A root whose
+              tree fails to build (missing target, cycle, parse
+              error) degrades to a lone chapter, warning on stderr.
+              Then a deterministic walk of all .borg (excl.
+              .borg.meta), .mli, .ml files; whatever the inline
+              tree did not reference is appended, sorted
+              lexicographically. No readdir order survives. Skip
+              _build/, .git/, and .gitignore build artifacts.
+              (Obituary: the v1 four-tier + dependency-rank ordering
+              was retired for this walk — spec
+              borge/habitat-book.borg export-projection requires
+              chapter order == inline order, shared by print,
+              export, and the habitat loader.)
          2. file_to_latex : path -> lines -> string
               For .ml/.mli: \section{path} + \lstinputlisting block
               (numbers=left, frame=single, mono, breaklines, wide

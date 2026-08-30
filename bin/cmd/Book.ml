@@ -23,7 +23,8 @@ let stem_arg =
 let print_cmd : unit Cmd.t =
   Cmd.v (Cmd.info "print" ~doc:"print the codebase as a paginated PDF book"
     ~man:[`S "DESCRIPTION";
-          `P "Walks the source tree in filesystem-order, emits a paginated \
+          `P "Chapters follow the project's (inline ...) tree order; \
+              unreferenced files append lexicographically. Emits a paginated \
               PDF with line numbers on every page and a wide right-hand \
               margin for hand annotations. Writes a <STEM>.book.manifest \
               sidecar (file identity + tree checksum) alongside the PDF.";

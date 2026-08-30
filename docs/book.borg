@@ -76,41 +76,31 @@
          numbers, line numbers on every page, and a right-hand
          margin wide enough to write in.
 
-         Ordering is four-tier, data-driven from the project's own
-         structure, so the book reads like a book rather than a
-         lexical file dump:
+         Ordering is inline-aware (v2): the root project's inline
+         tree IS the table of contents. Chapters render depth-first
+         in (inline ...) written order — the same order `borge
+         inline` prints, and the one order that `book export` and
+         the habitat loader consume — so paper, export, and web can
+         never disagree about chapter sequence. The root .borg opens
+         the book (the spec is the primary artifact per
+         literate-programming), then each inlined chapter in the
+         order its parent names it.
 
-           tier 0: root .borg file (the architecture / introduction)
-                   via Project.find_roots.
-           tier 1: other top-level .borg files (the design docs:
-                   cli.borg, lib.borg, db.borg, ui.borg, ...).
-           tier 2: .mli files (module signatures — the interface
-                   layer; empty in this repo until interfaces are added).
-           tier 3: .ml files (implementations), plus any
-                   sub-directory .borg files.
+         Files the walk does not reference — .ml/.mli code and any
+         .borg outside the tree — sort lexicographically AFTER the
+         inline tree, as an appendix. There is no readdir order
+         anywhere in the pipeline: two fresh clones print the same
+         book. (The v1 four-tier + dependency-rank ordering is
+         retired by this rule; foundations-before-dependents inside
+         the appendix is a future refinement, not a v2 requirement.)
 
-         Tier 0 makes the book open with the spec — the primary
-         artifact per literate-programming — not an alphabetical
-         accident. Tiers 1-2 give the design and interface layer
-         before the implementations.
+         A root whose inline tree fails to build (missing target,
+         cycle, parse error) degrades to a lone chapter with a
+         stderr warning — the book still renders, deterministically.
 
-         Within tier 3, code files are ordered by a dependency rank,
-         not lexically. The book parses `open X` and `Module.ref`
-         from each .ml file, maps module names to their directory,
-         and computes a longest-path rank per directory (lang has no
-         deps -> rank 0; core depends on lang -> rank 1; check
-         depends on core+lang -> rank 3; bin and test top the stack).
-         Stdlib/external names (Format, String, List, ...) are excluded
-         so a borge module that shadows a stdlib name (e.g. lib/format)
-         doesn't create a false dependency. Files then sort by
-         (rank, directory group lib/bin/test, lexical) — foundations
-         precede dependents, so the book reads like a stack.
-
-         Full spec-order — where the .borg section tree is the table
-         of contents and each chapter is the code a section covers —
-         remains the long-tail feature, along with page-number
-         cross-references for links between sections. --section NAME
-         is a no-op in v1; it lands with spec-order.
+         Still long-tail: the woven view (each chapter's code
+         attached to its spec section), page-number cross-references
+         between sections, and the --section/--woven flags.
 
          Rendering target: LaTeX with the listings package — line
          numbers, framed code blocks, and a right-hand marginnote

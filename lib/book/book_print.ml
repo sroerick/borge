@@ -1,13 +1,15 @@
 (* agent note (|
- *   WHAT: v1 codebook printer. Walks the source tree in
- *   deterministic filesystem-order, emits a LaTeX document with
- *   the listings package (line numbers, framed code, a wide
- *   right-hand margin for hand annotations), runs pdflatex until
- *   the .aux/.toc stabilize (a multi-page TOC grows across passes),
- *   and writes a manifest sidecar via Book_manifest.
+ *   WHAT: v2 codebook printer. Chapters follow the root project's
+ *   (inline ...) tree order (the spec IS the book); unreferenced
+ *   files append lexicographically as the appendix. Emits a LaTeX
+ *   document with the listings package (line numbers, framed code,
+ *   a wide right-hand margin for hand annotations), runs pdflatex
+ *   until the .aux/.toc stabilize (a multi-page TOC grows across
+ *   passes), and writes a manifest sidecar via Book_manifest.
  *   WHY: The "print" half of the book round trip (borge.borg
- *   section book). Code-only, no spec interleaving; spec-order
- *   and absorb are long-tail.
+ *   section book; pricklypear borge/habitat-book.borg
+ *   export-projection). One walk shared with book export and the
+ *   habitat loader; no readdir order survives.
  * |) *)
 
 let skip_dirs =
@@ -21,144 +23,29 @@ let is_source name =
   || Filename.check_suffix name ".ml"
   || Filename.check_suffix name ".mli"
 
-(* Ordering tiers (lower sorts first):
-     0 = root .borg file (the architecture / introduction)
-     1 = other top-level .borg files (direct sub-specs, design docs)
-     2 = .mli files (module signatures — interface layer)
-     3 = .ml files (implementations)
-   Within a tier, sort by directory group (lib/, bin/, test/) then lexical. *)
-let is_top_level_borg p =
-  not (String.contains p '/') && Filename.check_suffix p ".borg"
-
-let dir_group p =
-  let len = String.length p in
-  if len >= 4 && String.sub p 0 4 = "lib/" then 0
-  else if len >= 4 && String.sub p 0 4 = "bin/" then 1
-  else if len >= 5 && String.sub p 0 5 = "test/" then 2
-  else 3
-
-let file_kind p =
-  if Filename.check_suffix p ".mli" then `Mli
-  else if Filename.check_suffix p ".ml" then `Ml
-  else `Borg
-
-let tier_of ?(roots=[]) p =
-  if List.mem p roots then 0
-  else if is_top_level_borg p then 1
-  else match file_kind p with
-    | `Borg -> 3   (* sub-directory .borg falls in with code *)
-    | `Mli -> 2
-    | `Ml -> 3
-
-(* --- Dependency-aware ordering within the code tier ---
-   Parse `open X` and `Module.ref` from each .ml file, map module names
-   to their directory, and compute a dependency rank per directory
-   (longest path from a dependency root). The code tier then sorts by
-   (rank, dir_group, lexical) so foundations precede dependents —
-   the book reads like a stack, not a lexical shuffle. *)
-
-(* Map every .ml module basename to its directory, relative to dir.
-   e.g. "Spec" -> "lib/core", "Drift" -> "lib/check". Basenames are
-   unique in this repo (include_subdirs unqualified requires it). *)
-let module_dir_map ~dir =
-  let map = Hashtbl.create 256 in
-  let rec walk rel =
-    let d = if rel = "" then dir else Filename.concat dir rel in
-    let entries = try Sys.readdir d |> Array.to_list with Sys_error _ -> [] in
-    List.iter (fun name ->
-      if List.mem name skip_dirs then ()
-      else
-        let full = Filename.concat d name in
-        let r = if rel = "" then name else Filename.concat rel name in
-        if (try Sys.is_directory full with Sys_error _ -> false)
-        then walk r
-        else if Filename.check_suffix name ".ml" then
-          let mod_name = String.capitalize_ascii (Filename.chop_suffix name ".ml") in
-          Hashtbl.replace map mod_name (Filename.dirname r)
-    ) (List.sort compare entries)
-  in
-  walk "";
-  map
-
-(* Stdlib / external module names that must never be treated as project deps,
-   even if a project module happens to share the basename (e.g. borge's
-   lib/format/format.ml shadows stdlib Format). `Format` in source almost
-   always means stdlib formatting, not the project's fmt module. *)
-let stdlib_names = [
-  "Format"; "String"; "List"; "Printf"; "Buffer"; "Bytes"; "Array";
-  "Scanf"; "Map"; "Set"; "Hashtbl"; "Queue"; "Stack"; "Stream";
-  "Char"; "Bool"; "Int"; "Float"; "Option"; "Result"; "Marshal";
-  "Obj"; "Lazy"; "Arg"; "Sys"; "Filename"; "Uchar"; "Lexing";
-  "Sedlexing"; "Parser"; "Parse"; "Lexer"; "Error"; "State";
-  "Unix"; "Str"; "Digest"; "Yojson"; "Cmdliner"; "Dream"; "Html";
-  "Atomic"; "Mutex"; "Condition"; "Domain"; "In_channel"; "Out_channel";
-  "LargeFile"; "Bigarray"; "Stdlib"; "Unit"; "Assert"; "Location";
-  "Longident"; "Asttypes"; "Parsetree"; "Ppxlib"; "Ast_iterator";
-  "Docstrings"; "Migrate_parsetree"; "Tbl"; "Either";
-]
-
-(* Resolve a module reference (possibly qualified, e.g. Borge_lang.Ast)
-   to a directory. Take the first and last segments of the dotted name
-   and look each up; Borge_lang (the lang sublibrary) maps to lib/lang.
-   Stdlib/external names are skipped to avoid false deps. *)
-let dir_of_ref ~module_map ~lang_dir name =
-  let parts = String.split_on_char '.' name in
-  let candidates =
-    match parts with
-    | [] -> []
-    | [x] -> [x]
-    | xs -> [List.hd xs; List.hd (List.rev xs)]
-  in
-  let lookup s =
-    if List.mem s stdlib_names then None
-    else if s = "Borge_lang" then Some lang_dir
-    else (try Some (Hashtbl.find module_map s) with Not_found -> None)
-  in
-  List.find_map lookup candidates
-
-(* Directories a file depends on (excluding its own directory). *)
-let file_deps ~dir ~module_map ~lang_dir path =
-  let full = Filename.concat dir path in
-  let content = try File_utils.read_file full with Sys_error _ -> "" in
-  let mydir = Filename.dirname path in
-  let seen = Hashtbl.create 16 in
-  let add_name name =
-    match dir_of_ref ~module_map ~lang_dir name with
-    | Some d when d <> mydir -> Hashtbl.replace seen d true
-    | _ -> ()
-  in
-  let scan re =
-    let rec loop start =
-      try
-        let _ = Str.search_forward re content start in
-        add_name (Str.matched_group 1 content);
-        loop (Str.match_end ())
-      with Not_found -> ()
+(* Canonical dir-relative path form: absolutize against the CWD, strip
+   the canonical dir prefix, drop "." components. The readdir walk and
+   Project.build_tree both normalize to this form, so chapter membership
+   is an exact string compare however dir was spelled (".", "./",
+   relative, absolute, trailing slash or not). *)
+let canon_path ~dir p =
+  let drop_dots p =
+    let is_abs = String.length p > 0 && p.[0] = '/' in
+    let parts =
+      List.filter (fun c -> c <> "" && c <> ".") (String.split_on_char '/' p)
     in
-    loop 0
+    String.concat "/" ((if is_abs then [""] else []) @ parts)
   in
-  scan (Str.regexp "open[ \t]+\\([A-Za-z_][A-Za-z0-9_.]*\\)");
-  scan (Str.regexp "\\([A-Z][A-Za-z0-9_]*\\)\\.");
-  Hashtbl.fold (fun k _ acc -> k :: acc) seen []
-
-(* Longest-path rank per directory. Roots (no internal deps) rank 0;
-   a directory that depends on a rank-n dir ranks at least n+1. Cycle-safe
-   via a visited mark written before recursing. *)
-(* Root .borg files (the spec — the primary artifact) relative to dir.
-   These become the introduction / front matter, ahead of the code. *)
-let collect_borg_roots ~dir =
-  let roots = Project.find_roots dir in
-  List.filter_map (fun p ->
-    let d = Filename.concat dir "" in
-    let dlen = String.length d in
-    let rel =
-      if String.length p >= dlen && String.sub p 0 dlen = d
-      then String.sub p dlen (String.length p - dlen)
-      else if p = Filename.concat dir p then p
-      else p
-    in
-    if is_top_level_borg rel then Some rel else None
-  ) roots
+  let abs p =
+    if Filename.is_relative p then Filename.concat (Sys.getcwd ()) p else p
+  in
+  let dir_abs = drop_dots (abs dir) in
+  let p_abs = drop_dots (abs p) in
+  let prefix = dir_abs ^ "/" in
+  let n = String.length prefix in
+  if String.length p_abs >= n && String.sub p_abs 0 n = prefix then
+    String.sub p_abs n (String.length p_abs - n)
+  else p_abs
 
 let rec collect ~root ~rel acc =
   let dir = if rel = "" then root else Filename.concat root rel in
@@ -177,66 +64,56 @@ let rec collect ~root ~rel acc =
       else acc
   ) acc (List.sort compare entries)
 
-(* Longest-path rank per directory. Roots (no internal deps) rank 0;
-   a directory that depends on a rank-n dir ranks at least n+1. Cycle-safe
-   via a visited mark written before recursing. *)
-let compute_dir_ranks ~dir ~module_map ~lang_dir =
-  let files = collect ~root:dir ~rel:"" [] in
-  let edges = Hashtbl.create 64 in
-  List.iter (fun path ->
-    let mydir = Filename.dirname path in
-    List.iter (fun d ->
-      let s = try Hashtbl.find edges mydir with Not_found -> [] in
-      if not (List.mem d s) then Hashtbl.replace edges mydir (d :: s)
-    ) (file_deps ~dir ~module_map ~lang_dir path)
-  ) files;
-  let memo = Hashtbl.create 64 in
-  let rec rank d =
-    if Hashtbl.mem memo d then Hashtbl.find memo d
-    else begin
-      Hashtbl.add memo d 0;  (* guard against cycles *)
-      let deps = try Hashtbl.find edges d with Not_found -> [] in
-      let r = match deps with
-        | [] -> 0
-        | xs -> 1 + List.fold_left (fun acc x -> max acc (rank x)) 0 xs
-      in
-      Hashtbl.replace memo d r; r
-    end
-  in
-  Hashtbl.iter (fun k _ -> ignore (rank k)) edges;
-  List.iter (fun p -> ignore (rank (Filename.dirname p))) files;
-  memo
+(* Inline-aware ordered walk (spec: pricklypear borge/habitat-book.borg
+   export-projection; borge self-spec docs/book.borg book-print):
 
+   1. The root project's inline tree defines chapter order, depth-first:
+      each root .borg first, then each (inline ...) target in written
+      order. Multiple roots (rare) order lexicographically; a file
+      inlined twice keeps its first position.
+   2. Every source file the tree does not reference — .ml/.mli code
+      and stray .borg alike — sorts lexicographically AFTER the tree
+      (the appendix). There is no readdir order anywhere: two fresh
+      clones print the same book.
+
+   A root whose inline tree fails to build (missing target, cycle,
+   parse error) degrades to a lone chapter with a stderr warning; the
+   book still renders, deterministically. *)
 let collect_files dir =
-  let module_map = module_dir_map ~dir in
-  let lang_dir = "lib/lang" in
-  let ranks = compute_dir_ranks ~dir ~module_map ~lang_dir in
-  let roots = collect_borg_roots ~dir in
-  let code = collect ~root:dir ~rel:"" [] in
-  let roots = List.sort_uniq compare roots in
-  let is_root p = List.mem p roots in
-  let code = List.filter (fun p -> not (is_root p)) code in
-  let files = roots @ code in
-  let rank_of p =
-    try Hashtbl.find ranks (Filename.dirname p) with Not_found -> 0
+  let all = collect ~root:dir ~rel:"" [] in
+  let roots =
+    Project.find_roots dir
+    |> List.map (canon_path ~dir)
+    |> List.sort_uniq compare
   in
-  List.sort (fun a b ->
-    let ta = tier_of ~roots a and tb = tier_of ~roots b in
-    if ta <> tb then compare ta tb
-    else if ta = 2 || ta = 3 then begin
-      (* code tier: dependency rank first, then dir group, then lexical *)
-      let ra = rank_of a and rb = rank_of b in
-      if ra <> rb then compare ra rb
-      else begin
-        let ga = dir_group a and gb = dir_group b in
-        if ga <> gb then compare ga gb else compare a b
-      end
-    end else begin
-      (* borg tiers: dir group then lexical *)
-      let ga = dir_group a and gb = dir_group b in
-      if ga <> gb then compare ga gb else compare a b
-    end
-  ) files
+  let chapters =
+    List.concat_map (fun root_rel ->
+      match Project.build_tree (Filename.concat dir root_rel) with
+      | Ok tree -> List.map (canon_path ~dir) (Project.tree_paths tree)
+      | Error err ->
+        let msg =
+          match err with
+          | Project.File_not_found p -> "file not found: " ^ p
+          | Project.Parse_error (p, m) -> Printf.sprintf "%s: %s" p m
+          | Project.Cycle_detected cyc -> String.concat " -> " cyc
+        in
+        prerr_endline
+          (Printf.sprintf
+             "borge book: inline tree error at %s (%s); printing it as a lone chapter"
+             root_rel msg);
+        [root_rel]
+    ) roots
+  in
+  let seen = Hashtbl.create 64 in
+  let chapters =
+    List.filter (fun p ->
+      if Hashtbl.mem seen p then false
+      else (Hashtbl.add seen p (); true)) chapters
+  in
+  let appendix =
+    List.filter (fun p -> not (Hashtbl.mem seen p)) all |> List.sort compare
+  in
+  chapters @ appendix
 
 (* Escape LaTeX special chars for use in \section{}, \markboth{}, headers.
    Paths contain _, ., /, alphanumerics — only _ needs escaping,

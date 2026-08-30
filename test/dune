@@ -51,3 +51,6 @@
 (test
   (name test_drift)
   (libraries borge.lang borge.lib alcotest unix str))
+(test
+  (name test_book_walk)
+  (libraries borge.lib unix alcotest))
