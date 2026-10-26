@@ -127,15 +127,19 @@ let compute_avg_length lines functions =
   else float_of_int lines /. float_of_int functions
 
 (** Measure a single .ml file *)
-let measure_file ml_path =
+let measure_file ?(conv=Convention.default) ml_path =
   let content = File_utils.read_file ml_path in
   let module_name = String.capitalize_ascii
     (Filename.chop_extension (Filename.basename ml_path)) in
   let lines = count_lines content in
   let functions = count_functions content in
   let avg_length = compute_avg_length lines functions in
-  let mli_path = Filename.chop_extension ml_path ^ ".mli" in
-  let has_mli = Sys.file_exists mli_path in
+  (* has_mli is an OCaml-shaped question; a convention without interface
+     files simply always reports false, which is honest. *)
+  let mli_path = match conv.Convention.interface_ext with
+    | Some ext -> Filename.chop_extension ml_path ^ ext
+    | None -> ml_path in
+  let has_mli = conv.Convention.interface_ext <> None && Sys.file_exists mli_path in
   let surface = Surface.extract_surface ml_path in
   let exports = List.length surface.exports in
   let documented = count_documented ml_path in
@@ -146,7 +150,7 @@ let measure_file ml_path =
   { path = ml_path; module_name; lines; functions; avg_length; exports; documented; verified_count; doc_coverage; has_mli; literacy }
 
 (** Find all .ml files in a directory, excluding _build, .git, and test dirs *)
-let find_ml_files dir =
+let find_ml_files ?(conv=Convention.default) dir =
   let is_test_module name =
     String.length name >= 5 &&
     (String.sub name 0 5 = "test_" || String.sub name 0 5 = "Test_")
@@ -155,11 +159,11 @@ let find_ml_files dir =
     try
       let entries = Sys.readdir path in
       Array.fold_left (fun acc entry ->
-        if entry = "_build" || entry = ".git" || entry = "test" then acc
+        if List.mem entry conv.Convention.excluded_dirs || entry = "test" then acc
         else
           let full = Filename.concat path entry in
           if Sys.is_directory full then find full @ acc
-          else if Filename.check_suffix entry ".ml" then begin
+          else if Convention.is_component conv entry then begin
             let mod_name = Filename.chop_extension entry in
             if is_test_module mod_name then acc
             else full :: acc
@@ -172,8 +176,9 @@ let find_ml_files dir =
 
 (** Run stats on a directory *)
 let run dir =
-  let ml_files = find_ml_files dir in
-  let metrics = List.map measure_file ml_files in
+  let conv = Convention.resolve dir in
+  let ml_files = find_ml_files ~conv dir in
+  let metrics = List.map (measure_file ~conv) ml_files in
   let total_lines = List.fold_left (fun acc (m : file_metrics) -> acc + m.lines) 0 metrics in
   let total_functions = List.fold_left (fun acc (m : file_metrics) -> acc + m.functions) 0 metrics in
   let total_exports = List.fold_left (fun acc (m : file_metrics) -> acc + m.exports) 0 metrics in

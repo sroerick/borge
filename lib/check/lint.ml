@@ -322,7 +322,7 @@ let check_literacy dir =
  * |) *)
 let check_invalid_verify dir path file =
   let convention = Convention.resolve dir in
-  let valid_methods = Convention.verify_methods convention in
+  let valid_methods = convention.Convention.verify_methods in
   let mappings = Spec.extract_section_mappings file in
   let issues = ref [] in
   List.iter (fun (m : Spec.section_mapping) ->

@@ -56,12 +56,12 @@ let skip_dirs =
       spec's inline TOC. *)
    "course"]
 
-let is_source name =
+let is_source ?(conv=Convention.default) name =
   (* .borg yes; .borg.meta no — that's machine-generated, not the spec *)
   (Filename.check_suffix name ".borg"
    && not (Filename.check_suffix name ".borg.meta"))
-  || Filename.check_suffix name ".ml"
-  || Filename.check_suffix name ".mli"
+  || Convention.is_component conv name
+  || Convention.is_interface conv name
   (* Type coverage (habitat-book): .pp is the Nopales product layer,
      .sql is the migrations — both print as code chapters. *)
   || Filename.check_suffix name ".pp"
@@ -109,7 +109,7 @@ let canon_path ~dir p =
     String.sub p_abs n (String.length p_abs - n)
   else p_abs
 
-let rec collect ~root ~rel acc =
+let rec collect ~conv ~root ~rel acc =
   let dir = if rel = "" then root else Filename.concat root rel in
   let entries =
     try Sys.readdir dir |> Array.to_list
@@ -121,8 +121,8 @@ let rec collect ~root ~rel acc =
       let full = Filename.concat dir name in
       let r = if rel = "" then name else Filename.concat rel name in
       if (try Sys.is_directory full with Sys_error _ -> false)
-      then collect ~root ~rel:r acc
-      else if is_source name then r :: acc
+      then collect ~conv ~root ~rel:r acc
+      else if is_source ~conv name then r :: acc
       else acc
   ) acc (List.sort compare entries)
 
@@ -164,7 +164,8 @@ let default_roots ~dir =
    parse error) degrades to a lone chapter with a stderr warning; the
    book still renders, deterministically. *)
 let collect_files dir =
-  let all = collect ~root:dir ~rel:"" [] in
+  let conv = Convention.resolve dir in
+  let all = collect ~conv ~root:dir ~rel:"" [] in
   let roots = default_roots ~dir in
   let chapters =
     List.concat_map (fun root_rel ->
