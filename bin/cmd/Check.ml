@@ -17,6 +17,7 @@ let print_result (result : Check.result) =
 
 (** Run all checks on a worktree: diff clean, balance, check, build, test *)
 let run_worktree dir quiet =
+  let conv = Convention.resolve dir in
   let failures = ref [] in
   (* 1. git diff is clean *)
   let cmd = Printf.sprintf "git -C %s diff --quiet 2>/dev/null" (Filename.quote dir) in
@@ -35,14 +36,26 @@ let run_worktree dir quiet =
   let check_result = Check.run dir in
   if check_result.failed > 0 then
     failures := "borge check: some files failed" :: !failures;
-  (* 4. dune build succeeds *)
-  let cmd = Printf.sprintf "cd %s && dune build 2>/dev/null" (Filename.quote dir) in
-  if Sys.command cmd <> 0 then
-    failures := "dune build failed" :: !failures;
-  (* 5. dune runtest passes *)
-  let cmd = Printf.sprintf "cd %s && dune runtest 2>/dev/null" (Filename.quote dir) in
-  if Sys.command cmd <> 0 then
-    failures := "dune runtest failed" :: !failures;
+  (* 4. build succeeds — commands come from the convention, never hardcoded.
+     An empty list means the convention declares no build gate; that is
+     reported as a skip, not silently passed. *)
+  (match conv.Convention.build with
+   | [] -> if not quiet then Printf.printf "  (no build gate declared for %s)\n" conv.Convention.name
+   | argv ->
+     let cmd = Printf.sprintf "cd %s && %s 2>/dev/null"
+         (Filename.quote dir)
+         (String.concat " " (List.map Filename.quote argv)) in
+     if Sys.command cmd <> 0 then
+       failures := Printf.sprintf "%s failed" (String.concat " " argv) :: !failures);
+  (* 5. test passes *)
+  (match conv.Convention.test with
+   | [] -> if not quiet then Printf.printf "  (no test gate declared for %s)\n" conv.Convention.name
+   | argv ->
+     let cmd = Printf.sprintf "cd %s && %s 2>/dev/null"
+         (Filename.quote dir)
+         (String.concat " " (List.map Filename.quote argv)) in
+     if Sys.command cmd <> 0 then
+       failures := Printf.sprintf "%s failed" (String.concat " " argv) :: !failures);
   (* Report *)
   if !failures = [] then begin
     if not quiet then Printf.printf "✓ Worktree check passed — clean and ready.\n";

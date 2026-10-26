@@ -96,7 +96,10 @@ let looks_like_path arg =
   not (String.contains arg ' ')
   && (let lc = String.lowercase_ascii arg in
       List.exists (Filename.check_suffix lc)
-        [".sh"; ".ksh"; ".py"; ".mjs"; ".ml"; ".mli"; ".sql"; ".go"; ".borg"]
+        [".sh"; ".ksh"; ".py"; ".mjs"; ".ml"; ".mli"; ".sql"; ".go"; ".borg";
+         (* conventions beyond the two live ones: a verify artifact is a
+            path whatever language the project is written in *)
+         ".rs"; ".rb"; ".toml"; ".gemspec"; ".json"]
       || String.contains arg '/')
 
 (* agent note (|
@@ -229,23 +232,6 @@ let build_covered_modules borg_files =
   ) borg_files;
   names
 
-(** Find .ml files recursively *)
-let find_ml_files dir =
-  let rec find path =
-    try
-      let entries = Sys.readdir path in
-      Array.fold_left (fun acc entry ->
-        if entry = "_build" || entry = ".git" then acc
-        else
-          let full = Filename.concat path entry in
-          if Sys.is_directory full then find full @ acc
-          else if Filename.check_suffix entry ".ml" then full :: acc
-          else acc
-      ) [] entries
-    with Sys_error _ -> []
-  in
-  List.sort String.compare (find dir)
-
 (** {1 Orphan file detection (code -> spec completeness)} *)
 
 (* agent note (|
@@ -255,16 +241,12 @@ let find_ml_files dir =
  *   WHY: A complete-manifest model still respects repo conventions;
  *   these files don't belong in the spec.
  * |) *)
-let is_conventional_file rel =
+let is_conventional_file ?(conv=Convention.default) rel =
   let basename = Filename.basename rel in
   basename <> "" && basename.[0] = '.'
-  || List.mem basename [
-    "README"; "README.md"; "LICENSE"; "LICENSE.md"; "AGENTS.md";
-    "TODO.md"; "CHANGELOG.md"; "pipe.yaml"; "dune-project"; "dune";
-  ]
-  || Filename.check_suffix basename ".opam"
-  || Filename.check_suffix basename ".borg.meta"
-  || Filename.check_suffix basename ".borg"
+  || List.mem basename conv.Convention.conventional_files
+  || List.exists (fun ext -> Filename.check_suffix basename ext)
+       [".opam"; ".borg.meta"; ".borg"]
 
 (* agent note (|
  *   WHAT: Infer an orphan kind from a repo-relative path's directory.
@@ -381,11 +363,11 @@ let tracked_files dir =
  *   isn't in the book is drift (the code->spec direction). Existence
  *   correspondence, both ways.
  * |) *)
-let check_orphan_files dir =
+let check_orphan_files ?(conv=Convention.default) dir =
   let excused = extract_untracked dir in
   let declared = declared_paths dir in
   let is_ok rel =
-    is_conventional_file rel
+    is_conventional_file ~conv rel
     || Hashtbl.mem excused rel
     || Hashtbl.mem declared rel
   in
@@ -395,26 +377,25 @@ let check_orphan_files dir =
     else None
   ) (tracked_files dir)
 
-(** Cross-reference dune modules with .borg sections *)
-let check_code_drift dir =
+(** Cross-reference the convention's discovered code units with .borg
+    sections.
+
+    One pipeline for every language. The convention's [index] supplies the
+    units (dune libraries for ocaml-dune, package dirs for go-standard);
+    everything below is shared. This replaced a per-language pair of
+    functions (check_code_drift / check_go_code_drift), which is why a third
+    language previously meant a third copy. *)
+let check_code_drift ?(conv=Convention.default) dir =
   let borg_files = File_utils.find_borg_files dir in
   let covered = build_covered_modules borg_files in
-  let dune_files = Dune_parse.parse_all dir in
-  (* Collect all lib modules from dune *)
-  let lib_modules = List.concat_map (fun df ->
-    List.concat_map (function
-      | Dune_parse.Library lib ->
-          List.map (fun m -> (lib.Dune_parse.name, m)) lib.Dune_parse.modules
-      | _ -> []
-    ) df.Dune_parse.stanzas
-  ) dune_files in
-  let unspecified = List.filter_map (fun (lib_name, mod_name) ->
-    let capitalized = String.capitalize_ascii mod_name in
-    if Hashtbl.mem covered capitalized then None
-    else Some { path = Printf.sprintf "lib/%s/%s.ml" lib_name mod_name;
-                kind = "unspecified-module"; name = capitalized }
-  ) lib_modules in
-  unspecified @ check_orphan_files dir
+  let units = conv.Convention.index dir in
+  let unspecified = List.filter_map (fun (u : Convention.code_unit) ->
+    if Hashtbl.mem covered u.Convention.unit_name then None
+    else Some { path = u.Convention.unit_path;
+                kind = u.Convention.unit_kind;
+                name = u.Convention.unit_name }
+  ) units in
+  unspecified @ check_orphan_files ~conv dir
 
 (** {1 Structural drift} *)
 
@@ -426,6 +407,7 @@ let check_structural_drift _dir =
 
 (** Generate findings from drift analysis *)
 let generate_findings dir =
+  let conv = Convention.resolve dir in
   let timestamp = Meta.current_timestamp () in
   let borg_files = File_utils.find_borg_files dir in
   let dune_file = Dune_parse.parse_all dir in
@@ -443,10 +425,13 @@ let generate_findings dir =
       | _ -> []
     ) df.Dune_parse.stanzas
   ) lib_dune_files in
+  let source_ext = match conv.Convention.component_ext with
+    | ext :: _ -> ext
+    | [] -> ".ml" in
   let all_surfaces = List.filter_map (fun (dir, mod_name) ->
-    let ml_path = Filename.concat dir (mod_name ^ ".ml") in
-    if Sys.file_exists ml_path then
-      Some (Surface.extract_surface ml_path)
+    let src_path = Filename.concat dir (mod_name ^ source_ext) in
+    if Sys.file_exists src_path then
+      Some (Surface.extract_surface ~conv src_path)
     else None
   ) lib_modules in
 
@@ -558,163 +543,11 @@ let write_meta_files dir =
   ) borg_files;
   meta
 
-(** {1 Go-aware code drift} *)
-
-(* agent note (|
- *   WHAT: Check for code drift in a Go project by discovering
- *   packages from directory structure and cross-referencing
- *   against .borg spec sections.
- *
- *   WHY: Go projects don't have dune files — packages are
- *   discovered from the directory layout and go.mod.
- * |) *)
-let check_go_code_drift dir =
-  let borg_files = File_utils.find_borg_files dir in
-  let covered = build_covered_modules borg_files in
-  let project = Go_parse.parse_all dir in
-  (* Collect all library packages (not cmd executables) *)
-  let lib_packages = Go_parse.library_packages project in
-  let unspecified = List.filter_map (fun (pkg : Go_parse.go_package) ->
-    let capitalized = String.capitalize_ascii pkg.Go_parse.package_name in
-    if Hashtbl.mem covered capitalized then None
-    else Some { path = pkg.Go_parse.dir_path;
-                kind = "unspecified-package";
-                name = capitalized }
-  ) lib_packages in
-  unspecified @ check_orphan_files dir
-
-(* agent note (|
- *   WHAT: Generate findings from drift analysis for a Go project.
- *   Uses Go_parse for package discovery and Go_surface for
- *   exported symbol extraction.
- *
- *   WHY: The meta generation pipeline needs Go-aware equivalents
- *   of the dune-aware code in generate_findings.
- * |) *)
-let generate_go_findings dir =
-  let timestamp = Meta.current_timestamp () in
-  let borg_files = File_utils.find_borg_files dir in
-  let project = Go_parse.parse_all dir in
-
-  (* Collect package surfaces for library packages *)
-  let lib_packages = Go_parse.library_packages project in
-  let all_surfaces = List.filter_map (fun (pkg : Go_parse.go_package) ->
-    if Sys.is_directory pkg.Go_parse.dir_path then
-      Some (Go_surface.extract_package_surface pkg.Go_parse.dir_path)
-    else None
-  ) lib_packages in
-
-  (* Build package snapshot (analogous to dune_snapshot) *)
-  let package_snapshot = List.filter_map (fun (pkg : Go_parse.go_package) ->
-    let surface = Go_surface.extract_package_surface pkg.Go_parse.dir_path in
-    let _exports = Go_surface.exported_names surface in
-    Some {
-      Meta.name = pkg.Go_parse.package_name;
-      Meta.modules = List.map (fun f -> Filename.chop_extension f) pkg.Go_parse.go_files;
-      Meta.public_name = (match pkg.Go_parse.kind with
-                          | Go_parse.Pkg -> Some pkg.Go_parse.package_name
-                          | _ -> None);
-      Meta.libraries = [];
-    }
-  ) lib_packages in
-
-  (* Cross-reference: packages in go.mod but not in .borg *)
-  let covered = build_covered_modules borg_files in
-  let unspecified_findings = List.filter_map (fun (surface : Go_surface.go_package_surface) ->
-    if Hashtbl.mem covered (String.capitalize_ascii surface.Go_surface.package_name) then None
-    else Some {
-      Meta.ft_type = Unspecified_module;
-      Meta.section = None;
-      Meta.module_ = Some surface.Go_surface.package_name;
-      Meta.file = Some surface.Go_surface.path;
-      Meta.export = None;
-      Meta.detail = Some (Printf.sprintf "package %s not mentioned in any .borg spec" surface.Go_surface.package_name);
-      Meta.spec_status = None;
-      Meta.actual_status = None;
-      Meta.confidence = High;
-      Meta.source = Static;
-      Meta.at = timestamp;
-    }
-  ) all_surfaces in
-
-  (* Cross-reference: exports in package but not in spec *)
-  let export_findings =
-    let surfaces_with_spec = List.filter (fun (surface : Go_surface.go_package_surface) ->
-      Hashtbl.mem covered (String.capitalize_ascii surface.Go_surface.package_name)
-    ) all_surfaces in
-    List.filter_map (fun (surface : Go_surface.go_package_surface) ->
-      let exported = Go_surface.exported_names surface in
-      if List.length exported > 15 then
-        Some {
-          Meta.ft_type = Extra_export;
-          Meta.section = None;
-          Meta.module_ = Some surface.Go_surface.package_name;
-          Meta.file = Some surface.Go_surface.path;
-          Meta.export = None;
-          Meta.detail = Some (Printf.sprintf
-            "package %s has %d exports — may not all be covered by spec"
-            surface.Go_surface.package_name (List.length exported));
-          Meta.spec_status = None;
-          Meta.actual_status = None;
-          Meta.confidence = Low;
-          Meta.source = Static;
-          Meta.at = timestamp;
-        }
-      else None
-    ) surfaces_with_spec
-  in
-
-  (* Collect content hashes for staleness detection *)
-  let content_hashes = List.map (fun path ->
-    let hash = Meta.hash_file path in
-    (path, hash)
-  ) borg_files in
-
-  let findings = Meta.sort_findings (unspecified_findings @ export_findings) in
-  let meta_surfaces = List.map (fun (s : Go_surface.go_package_surface) ->
-    let exports = Go_surface.exported_names s in
-    { Meta.module_name = s.Go_surface.package_name; Meta.file = s.Go_surface.path; Meta.exports = exports }
-  ) all_surfaces in
-
-  let project_name = match project.Go_parse.go_mod with
-    | Some m -> m.Go_parse.module_path
-    | None -> "go-project"
-  in
-  let meta : Meta.meta = {
-    Meta.project_name = project_name;
-    Meta.analyzed_at = timestamp;
-    Meta.content_hashes = content_hashes;
-    Meta.module_surfaces = meta_surfaces;
-    Meta.dune_snapshot = package_snapshot;
-    Meta.findings = findings;
-  } in
-  meta
-
-(** Write .borg.meta files for Go projects *)
-let write_go_meta_files dir =
-  let meta = generate_go_findings dir in
-  let borg_files = File_utils.find_borg_files dir in
-  List.iter (fun borg_path ->
-    let meta_path = Meta.meta_path_of borg_path in
-    let project_name = try
-      let input = File_utils.read_file borg_path in
-      let file = Parse.parse_file input in
-      Spec.project_name file
-    with _ -> Some "go-project"
-    in
-    let per_meta = { meta with Meta.project_name = Option.value project_name ~default:"go-project" } in
-    Meta.write_meta meta_path per_meta
-  ) borg_files;
-  meta
-
 (** {1 Main entry point with convention dispatch} *)
 
 let run dir =
+  let conv = Convention.resolve dir in
   let spec = check_spec_drift dir in
-  let convention = Convention.resolve dir in
-  let code = match convention with
-    | Convention.Go_standard -> check_go_code_drift dir
-    | Convention.Ocaml_dune -> check_code_drift dir
-  in
+  let code = check_code_drift ~conv dir in
   let structural = check_structural_drift dir in
   { spec_drift = spec; code_drift = code; structural_drift = structural }

@@ -171,17 +171,17 @@ let extract_bindings path =
  *   WHY: Doc_coverage needs to scan the entire project for
  *   .ml files to calculate project-wide documentation coverage.
  * |) *)
-let find_ml_files dir =
+let find_ml_files ?(conv=Convention.default) dir =
   let rec find acc path =
     if Sys.is_directory path then
-      if Filename.basename path = "_build" || Filename.basename path = ".git" then
+      if List.mem (Filename.basename path) conv.Convention.excluded_dirs then
         acc
       else
         Sys.readdir path
         |> Array.to_list
         |> List.map (Filename.concat path)
         |> List.fold_left find acc
-    else if Filename.check_suffix path ".ml" then
+    else if Convention.is_component conv path then
       path :: acc
     else
       acc

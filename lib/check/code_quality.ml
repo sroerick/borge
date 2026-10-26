@@ -181,17 +181,18 @@ let check_file path lines =
 
 (*| Public entry point: scan a directory of .ml/.mli files for mechanical issues. |*)
 let run dir : issue list =
+  let conv = Convention.resolve dir in
   let rec find_files acc path =
     if not (Sys.file_exists path) then acc
     else if Sys.is_directory path then
-      if Filename.basename path = "_build" || Filename.basename path = ".git" then
+      if List.mem (Filename.basename path) conv.Convention.excluded_dirs then
         acc
       else
         Sys.readdir path
         |> Array.to_list
         |> List.map (Filename.concat path)
         |> List.fold_left find_files acc
-    else if Filename.check_suffix path ".ml" || Filename.check_suffix path ".mli" then
+    else if Convention.is_component conv path || Convention.is_interface conv path then
       path :: acc
     else
       acc

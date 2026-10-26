@@ -194,10 +194,13 @@ let extract_exports content =
  *   WHY: The main entry point for getting a module's public interface
  *   for drift checking.
  * |) *)
-let extract_surface ml_path =
-  let mli_path = Filename.chop_extension ml_path ^ ".mli" in
+let extract_surface ?(conv=Convention.default) ml_path =
   let module_name = String.capitalize_ascii
     (Filename.chop_extension (Filename.basename ml_path)) in
+  let mli_path = match conv.Convention.interface_ext with
+    | Some ext -> Filename.chop_extension ml_path ^ ext
+    | None -> ml_path   (* no separate interface: the source IS the surface *)
+  in
   if Sys.file_exists mli_path then
     let content = File_utils.read_file mli_path in
     { path = mli_path; module_name; exports = extract_exports content;
@@ -207,27 +210,7 @@ let extract_surface ml_path =
     { path = ml_path; module_name; exports = extract_exports content;
       source = `Ml_inferred ml_path }
 
-(* agent note (|
- *   WHAT: Find .ml files in a directory recursively.
- *   Excludes _build and .git directories.
- *
- *   WHY: Need to enumerate source files for surface extraction.
- * |) *)
-let find_ml_files dir =
-  let rec find path =
-    try
-      let entries = Sys.readdir path in
-      Array.fold_left (fun acc entry ->
-        if entry = "_build" || entry = ".git" then acc
-        else
-          let full = Filename.concat path entry in
-          if Sys.is_directory full then find full @ acc
-          else if Filename.check_suffix entry ".ml" then full :: acc
-          else acc
-      ) [] entries
-    with Sys_error _ -> []
-  in
-  List.sort String.compare (find dir)
+
 
 (* agent note (|
  *   WHAT: Extract surfaces for all modules listed in a dune library.
