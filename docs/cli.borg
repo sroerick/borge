@@ -3,24 +3,16 @@
  (status implemented)
  (exports cmd_balance
   cmd_check
-  cmd_diff
   cmd_drift
   cmd_fmt
   cmd_inline
-  cmd_issue
   cmd_lint
-  cmd_log
-  cmd_make
-  cmd_modules
   cmd_nodes
   cmd_normalize
   cmd_parse
-  cmd_plan
   cmd_print
   cmd_report
-  cmd_review
   cmd_stats
-  cmd_undo
   cmd_version
  )
  (section commands
@@ -121,44 +113,58 @@
    (status implemented)
   )
   (subsection review
-   (doc "Non-deterministic advisory review: lint + drift")
-   (status implemented)
+   (doc "Non-deterministic advisory review: lint + drift — REMOVED")
+   (status deprecated)
   )
  )
  (section history-commands
-  (doc "Git operations that understand borge structure")
-  (status implemented)
-  (subsection log
-   (doc "git log filtered to .borg file changes")
-   (status implemented)
-  )
-  (subsection diff
-   (doc "git diff for .borg files with status annotations")
-   (status implemented)
-  )
-  (subsection undo
-   (doc "git revert HEAD — convenience command")
-   (status implemented)
+  (doc "Git frontends — REMOVED")
+  (status deprecated)
+  (details
+   (doc (|
+        log, diff and undo were deleted 2026-10-26. They were thin
+        wrappers over git, not checks:
+
+          borge log   was  git log --oneline -20 -- *.borg
+          borge diff  was  git diff -- *.borg  (plus status highlighting)
+          borge undo  was  git revert HEAD
+
+        The status highlighting in \`diff\` was its only real value, and it
+        belongs in a git pager rather than in a second binary that has to
+        shell out to git anyway. Use git directly, or add a git alias:
+
+          git log --oneline -20 -- '*.borg'
+
+        This is a boundary decision, not a coupling one. borge still USES
+        git as an input where the tree's history is the question — lint
+        reads \`git diff HEAD\` to catch deleted human comments, and drift
+        reads \`git show HEAD:<path>\` to detect verify stanzas modified
+        since the last commit. Reading history to answer a spec question is
+        borge's job; rendering history is git's.
+       |))
   )
  )
  (section agent-commands
-  (doc "Agent-driven commands that launch pi interactively")
-  (status implemented)
-  (subsection make
-   (doc "Implement planned sections interactively with pi")
-   (status implemented)
-  )
-  (subsection plan
-   (doc "Edit the spec interactively with pi")
-   (status implemented)
-  )
-  (subsection commit
-   (doc "Finalize the current agent session")
-   (status implemented)
-  )
-  (subsection abort
-   (doc "Abort session and restore .borg files from snapshot")
-   (status implemented)
+  (doc "Agent-driven commands that launched pi interactively — REMOVED")
+  (status deprecated)
+  (details
+   (doc (|
+        plan, make, commit and abort were deleted in Phase D of
+        docs/orchestration-deprecation.borg, along with lib/lock and the
+        .borge.lock snapshot mechanism they operated on.
+
+        What replaced each:
+          borge plan     -> edit the .borg file directly, then run
+                            borge balance and borge check.
+          borge make     -> implement against the spec with whatever agent
+                            runtime you already use, then run borge drift.
+          borge commit   -> git commit. There is no snapshot to finalize.
+          borge abort    -> git restore. There is no snapshot to restore.
+
+        The section is kept rather than deleted because the book records
+        what was tried; delete it only if the 2026-10 decision to stop
+        owning an agent loop is itself reversed.
+       |))
   )
  )
  (section output-conventions
@@ -169,8 +175,8 @@
    (status implemented)
   )
   (subsection make-spec
-   (doc "Single-shot spec generation from todo description")
-   (status planned)
+   (doc "Single-shot spec generation from a todo description — REMOVED")
+   (status deprecated)
    (details
     (doc (|
          borge make spec "description of what to build"
@@ -201,16 +207,27 @@
    (status implemented)
   )
   (subsection issue
-   (doc "Issue tracker commands: new, list, show, close")
-   (status implemented)
+   (doc "Issue tracker commands — REMOVED")
+   (status deprecated)
+   (details
+    (doc (|
+         `borge issue` (new, list, show, close) was deleted 2026-10-26
+         with lib/bug. It was a small git-backed .borge-bug tracker — it
+         never touched a lock or a model, so it survived the orchestration
+         deprecation, but it is not a spec operation.
+
+         Retaining it meant borge owned an issue format, an ID scheme
+         (timestamp-based, which collided when two bugs were filed in the
+         same second), a status workflow, and prose resolution records —
+         none of which any check reads. The .borge-bug files remain in
+         .borge-bugs/ as plain sexp, and scripts/migrate-borge-bugs.py
+         renders them to markdown for reading without borge.
+        |))
+   )
   )
-  (subsection modules
-   (doc "Check distributed module specs")
-   (status implemented)
-  )
-  (subsection review
-   (doc "Semantic code review (planned, not fully active)")
-   (status planned)
+  (subsection review-semantic
+   (doc "LLM semantic code review — REMOVED")
+   (status deprecated)
   )
  )
 )

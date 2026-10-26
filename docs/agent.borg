@@ -1,7 +1,22 @@
 (project borge-docs-agent
  (section make
-  (doc "Agent-driven implementation — have an agent write code to match spec")
-  (status implemented)
+  (doc "Agent-driven implementation — REMOVED (was: have an agent write code to match spec)")
+  (status deprecated)
+  (* agent note (|
+     RETIRED 2026-10-26 (Phase D of docs/orchestration-deprecation.borg).
+
+     This section describes mechanisms that no longer exist in the
+     binary: lib/lock, the .borge.lock snapshot, prompt assembly, and
+     the pi launcher were all deleted. The prose is kept because the
+     book records what was tried and why it stopped — not because the
+     commands run.
+
+     The doctrine that survives is in section agent-discipline: no
+     unspec'd code, read the spec before building, update status after
+     implementing, agents write only agent comments. Those rules never
+     depended on borge owning the loop.
+   |) *)
+
   (details
    (doc (|
         borge make is the interactive entry point for agent-driven
@@ -46,8 +61,8 @@
       |))
   )
   (subsection make-command
-   (doc "Make code match spec — implement planned sections")
-   (status implemented)
+   (doc "Make code match spec — implement planned sections (command removed)")
+   (status deprecated)
    (details
     (doc (|
          borge make: open pi with the implementer role. The agent
@@ -61,8 +76,8 @@
    )
   )
   (subsection plan-command
-   (doc "Edit the spec — add sections, refine descriptions")
-   (status implemented)
+   (doc "Edit the spec — add sections, refine descriptions (command removed)")
+   (status deprecated)
    (details
     (doc (|
          borge plan: open pi with the spec-writer role. The agent
@@ -72,8 +87,8 @@
    )
   )
   (subsection drift-agent-command
-   (doc "Check and optionally fix alignment between spec and code")
-   (status implemented)
+   (doc "Check and optionally fix alignment between spec and code (command removed; use borge drift)")
+   (status deprecated)
    (details
     (doc (|
          borge drift --agent: open pi with the observer role. The
@@ -85,8 +100,8 @@
    )
   )
   (subsection answer-command
-   (doc "Answer ask comments in .borg files")
-   (status planned)
+   (doc "Answer ask comments in .borg files (never implemented; command removed)")
+   (status deprecated)
    (details
     (doc (|
          borge answer: Scan .borg files for open ask comments and
@@ -169,8 +184,8 @@
    )
   )
   (subsection loops-module
-   (doc "Extract the shared create/launch/teardown loop into a named, navigable module")
-   (status planned)
+   (doc "Extract the shared create/launch/teardown loop into a named module (moot: the loops were deleted)")
+   (status deprecated)
    (details
     (doc (|
          Today the agent loop is duplicated across bin/cmd/Make.ml,
@@ -207,8 +222,23 @@
   )
  )
  (section execute
-  (doc "Make code match spec — interactive agent mode with role-gated behavior")
-  (status implemented)
+  (doc "Make code match spec — REMOVED (was: interactive agent mode with role-gated behavior)")
+  (status deprecated)
+  (* agent note (|
+     RETIRED 2026-10-26 (Phase D of docs/orchestration-deprecation.borg).
+
+     This section describes mechanisms that no longer exist in the
+     binary: lib/lock, the .borge.lock snapshot, prompt assembly, and
+     the pi launcher were all deleted. The prose is kept because the
+     book records what was tried and why it stopped — not because the
+     commands run.
+
+     The doctrine that survives is in section agent-discipline: no
+     unspec'd code, read the spec before building, update status after
+     implementing, agents write only agent comments. Those rules never
+     depended on borge owning the loop.
+   |) *)
+
   (* agent note (|
      roerick, on the envisioned workflow (2026-05-17): "I'm kind of
      envisioning a workflow where we go like, okay, generate the code
@@ -281,8 +311,23 @@
   )
  )
  (section inbox
-  (doc "The outlet the gate creates — agent feedback queued for human triage")
-  (status planned)
+  (doc "The outlet the gate creates — REMOVED (implemented then deleted in Phase E)")
+  (status deprecated)
+  (* agent note (|
+     RETIRED 2026-10-26 (Phase D of docs/orchestration-deprecation.borg).
+
+     This section describes mechanisms that no longer exist in the
+     binary: lib/lock, the .borge.lock snapshot, prompt assembly, and
+     the pi launcher were all deleted. The prose is kept because the
+     book records what was tried and why it stopped — not because the
+     commands run.
+
+     The doctrine that survives is in section agent-discipline: no
+     unspec'd code, read the spec before building, update status after
+     implementing, agents write only agent comments. Those rules never
+     depended on borge owning the loop.
+   |) *)
+
   (details
    (doc (|
         The inbox exists because the gate exists. Borge gates spec
@@ -734,8 +779,23 @@
   )
  )
  (section review
-  (doc "Review code quality against spec using LLM")
-  (status implemented)
+  (doc "Review code quality against spec using LLM — REMOVED (Phase D)")
+  (status deprecated)
+  (* agent note (|
+     RETIRED 2026-10-26 (Phase D of docs/orchestration-deprecation.borg).
+
+     This section describes mechanisms that no longer exist in the
+     binary: lib/lock, the .borge.lock snapshot, prompt assembly, and
+     the pi launcher were all deleted. The prose is kept because the
+     book records what was tried and why it stopped — not because the
+     commands run.
+
+     The doctrine that survives is in section agent-discipline: no
+     unspec'd code, read the spec before building, update status after
+     implementing, agents write only agent comments. Those rules never
+     depended on borge owning the loop.
+   |) *)
+
   (details
    (doc (|
         Every file should carry a quality review — this is the review
@@ -807,12 +867,13 @@
         explicit instruction.
 
         Rule 3: Follow existing patterns. When the codebase has an
-        established pattern (like generate.ml using Agent.run_pi_print
-        for LLM-mediated generation), and the spec describes the same
-        pattern (like ui.borg's generation-workflow section saying
-        "assemble prompt, call the LLM"), follow that pattern. Do not
-        invent alternative approaches (like template rendering) unless
-        the spec explicitly calls for them.
+        established pattern and the spec describes the same pattern,
+        follow it. Do not invent alternative approaches unless the spec
+        explicitly calls for them. (The example this rule used to cite —
+        generate.ml calling Agent.run_pi_print — was deleted in Phase D;
+        the rule itself never depended on it. Pick a live pattern:
+        doc_detect's carrier handling, or the convention record in
+        convention.ml.)
 
         Rule 4: Update spec status after implementation. When you
         implement something that was (status planned) in a .borg file,
@@ -836,9 +897,12 @@
         (* agent note (|The user said: ...|) *). If a human wants a
         conversation captured in the spec, the human writes
         (* <name> ask ...) and the agent writes (* agent response ...).
-        This rule is enforced by the lock integrity check (detects
-        inserted and deleted human comments) and by lint (detects
-        added human comments via git diff).
+        This rule is enforced by lint, which reads `git diff HEAD` and
+        reports Deleted_human_comment / Inserted_human_comment. It used
+        to be enforced twice — the lock integrity check also did it — but
+        that check was deleted with lib/lock in Phase D. Lint is now the
+        only enforcement point, which makes `borge lint` in a pre-commit
+        hook more load-bearing than it was.
       |))
   )
  )

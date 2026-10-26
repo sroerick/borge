@@ -4,34 +4,19 @@ open Borge_cmd
 open Cmdliner
 
 let cmds = [
-  Abort.cmd;
   Balance.cmd;
   Book.cmd;
-  Inbox.cmd;
-  Issue.cmd;
   Check.cmd;
-  Commit.cmd;
-  Diff.cmd;
   Drift.cmd;
-  Execute.cmd;
   Fmt.cmd;
-  Generate.cmd;
   Inline.cmd;
   Lint.cmd;
-  Log.cmd;
-  Make.cmd;
-  Merge_queue.cmd;
-  Merge.cmd;
-  Modules.cmd;
   Nodes.cmd;
   Normalize.cmd;
   Parse.cmd;
-  Plan.cmd;
   Print.cmd;
   Report.cmd;
-  Review.cmd;
   Stats.cmd;
-  Undo.cmd;
   Version.cmd;
 ]
 
@@ -56,13 +41,7 @@ let () =
     `I ("lint", "Semantic validation");
     `I ("drift", "Detect spec/code/structural drift");
     `I ("normalize", "Fmt all + accept comment deletions");
-    `I ("execute", "Execute (implement) a planned section");
-    `I ("generate", "Generate spec sections or code from specs");
     `I ("stats", "Code intelligence metrics (lines, functions, exports)");
-    `I ("review", "Advisory review (lint + drift)");
-    `I ("log", "Git log for .borg changes");
-    `I ("diff", "Git diff with status annotations");
-    `I ("undo", "Revert last commit");
     `S "WORKFLOW";
     `P "1. Edit .borg files in your editor";
     `P "2. Run 'borge balance' to catch structural errors";

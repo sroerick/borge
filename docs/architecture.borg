@@ -87,7 +87,7 @@
   (subsection lib
    (doc "Domain operations: checking, reporting, formatting, spec extraction")
    (status implemented)
-   (inline lib.borg
+   (inline "../lib.borg"
    )
   )
   (subsection cli

@@ -17,9 +17,6 @@
   (name test_ui_db)
   (libraries borge.lang borge.lib alcotest))
 (test
-  (name test_review)
-  (libraries borge.lang borge.lib alcotest))
-(test
   (name test_doc_coverage)
   (libraries borge.lang borge.lib alcotest))
 (test
@@ -35,18 +32,6 @@
 (test
   (name test_config)
   (libraries borge.lib alcotest unix))
-
-(test
-  (name test_inbox)
-  (libraries borge.lib alcotest unix str))
-
-(test
-  (name test_queue)
-  (libraries borge.lib alcotest))
-
-(test
-  (name test_bug)
-  (libraries borge.lang borge.lib alcotest))
 
 (test
   (name test_drift)

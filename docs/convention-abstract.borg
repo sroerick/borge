@@ -309,12 +309,26 @@
           lib/convention.ml     — deleted, superseded by the directory
           lib/check/drift.ml    — one pipeline, conv-parameterised
           bin/cmd/Check.ml      — build/test from conv
-          bin/cmd/Plan.ml       — module list from conv.index
-          bin/cmd/Make.ml       — module list from conv.index
           lib/doc/doc_detect.ml — carrier offsets supplied, not hardcoded
-          lib/metrics/stats.ml, lib/review/*, lib/book/book_print.ml,
-          lib/inbox/inbox.ml, lib/check/code_quality.ml
+          lib/metrics/stats.ml, lib/book/book_print.ml,
+          lib/check/code_quality.ml
                                 — read conv.component_ext instead of ".ml"
+
+        REMOVED FROM THIS LIST on 2026-10-26, because the orchestration
+        deprecation landed first and deleted them: bin/cmd/Plan.ml and
+        bin/cmd/Make.ml (the Dune_parse-only module lists this chapter
+        cited as a blocker no longer exist — the commands do), lib/review/*
+        and lib/inbox/inbox.ml. The ".ml" sites remaining to fix are the
+        nine above, not the fourteen originally counted.
+
+        ORDERING — this matters and was wrong when this chapter was first
+        written. Do the orchestration deprecation (docs/
+        orchestration-deprecation.borg, phases A-E) BEFORE Phase 0 here.
+        Measured reason: of the ~41 hardcoded ".ml" sites, eight lived in
+        files the deprecation deletes outright (semantic_review 3,
+        module_spec 2, generate, agent, inbox). Refactoring first would
+        have meant porting convention fields into ~6,350 lines scheduled
+        for deletion.
 
         Note on scope: the last group is why this chapter exists. Each
         of those files is a place where a third language would otherwise

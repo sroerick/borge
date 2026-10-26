@@ -13,8 +13,7 @@
 
         KEPT (the gates):
           borge balance, parse, check, fmt, drift, lint, report, book,
-          inline, nodes, stats, log, diff, normalize, version, modules,
-          print.
+          inline, nodes, stats, normalize, version, print.
 
           These are the parts that make borge borge: a spec format, a
           structural checker, a drift detector, and a renderer. They are
@@ -23,7 +22,30 @@
 
         DEPRECATED (the orchestration):
           plan, make, execute, generate, review (agent mode), commit,
-          abort, undo, merge, merge-queue, inbox, issue.
+          abort, merge, merge-queue, inbox.
+
+        DEPRECATED (not ours to own) — added 2026-10-26 after the
+        orchestration phases landed:
+          log, diff, undo  (git frontends)
+          issue            (git-backed .borge-bug tracker, with lib/bug)
+
+          These passed the first boundary test — none of them knows what
+          an agent is — and were kept through phases A-E on that basis.
+          They fail a stricter one: is this borge's job at all?
+
+          borge log was `git log --oneline -20 -- *.borg`. borge undo was
+          `git revert HEAD`. borge diff was `git diff -- *.borg` plus
+          status highlighting. A second binary that shells out to git to
+          re-render git's own output is a wrapper, not a tool, and its
+          only real value (status highlighting) belongs in a pager.
+
+          borge issue is the same argument one level up. It never touched
+          a lock or a model, so it survived the orchestration cull — but
+          retaining it meant borge owned an issue FILE FORMAT, a
+          timestamp-based ID scheme that collided when two bugs were
+          filed in the same second (BORGE-1785545310 documents the
+          collision), a status workflow, and prose resolution records.
+          No check reads any of it.
 
           These all presuppose that borge is the thing driving an agent:
           it writes a prompt, launches pi, holds a lock, watches an exit
@@ -35,9 +57,14 @@
           queue solves a concurrency problem borge created by launching
           agents itself.
 
-        The boundary test for anything in between: does it require
-        borge to know what an agent is? If yes, it is orchestration. If
-        it only needs an editor and git, it stays.
+        The boundary test, in two passes. First: does it require borge
+        to know what an agent is? If yes, it is orchestration. Second,
+        for what survives: does it compare the spec against the code, or
+        does it merely format somebody else's output? borge READS git
+        where history is the question — lint reads `git diff HEAD` to
+        catch deleted human comments, drift reads `git show HEAD:<path>`
+        to detect verify stanzas modified since the last commit — and
+        that stays. Rendering git's log, diff or revert is git's job.
 
         The replacement is not "no workflow". It is that the agent
         runtime (rein, or pi invoked by a human, or an editor) owns the
@@ -126,11 +153,18 @@
                           never needed an agent.
           book          — survives whole (print/export/manifest).
           stats         — survives; needs conv.component_ext.
-          modules       — currently reads distributed/module_spec. Either
-                          reimplement on Spec.extract_implements (the
-                          data is in the .borg (implements) forms) or
-                          delete with the rest. Leaning reimplement: it
-                          is 73 lines of CLI over spec data.
+          issue, bug    — SURVIVE (Phase E). Git-backed .borge-bug sexp
+                          tracker, no lock/prompt/pi. Kept deliberately,
+                          with a live open bug in it.
+          modules       — DELETED in Phase C, not preserved. Investigated
+                          2026-10-26: it reports "all exports documented"
+                          for any spec without sibling .ml files, which
+                          includes its own headline case (lib.borg, 40
+                          exports, no adjacent .ml -> fold over [] ->
+                          checkmark). It also keys specs by basename and
+                          so conflates the four .borg names that exist in
+                          two directories. Drift and lint --code-doc
+                          already answer its question against real files.
           log, diff     — survive. `log` is git log over .borg files,
                           `diff` is git diff with status annotations.
                           Neither needs a lock.
@@ -176,35 +210,110 @@
           Delete lib/merge (1538 lines) and the merge, merge-queue, and
           agent-submit commands. Nothing in the keep-set imports them.
           Verify: dune build, then `borge check --worktree` and
-          `borge drift` on three OCaml and three Go repos.
-          Also delete lib/distributed and reimplement `borge modules` on
-          Spec.extract_implements in the same commit, so the command
-          does not blink out and back.
+          `borge drift` on the baseline repo set.
+
+          Also delete lib/distributed (borg_comment, module_spec) and the
+          `borge modules` command — DO NOT reimplement it, which this
+          chapter originally said to do. Investigated on 2026-10-26 and
+          the command is vacuous, so preserving it would preserve a gate
+          that always passes:
+
+            - module_spec.find_implementation_files resolves a .borg
+              file's sibling .ml files in the SAME directory. For the
+              specs it actually discovers that is usually zero files:
+              lib.borg (the 40-export case) has no sibling .ml, so
+              impl_files = [] and the fold over it yields ([], []),
+              which render_report prints as "all exports documented".
+              docs/*.borg likewise has no adjacent .ml at all.
+            - discover_specs keys specs by BASENAME. book.borg, db.borg,
+              merge.borg and ui.borg each exist in more than one
+              directory, so the report conflates them ("book" is listed
+              once while lib/book/book.borg and docs/book.borg both
+              exist).
+            - It has no callers in any repo (grepped .md/.sh/.borg/.ml)
+              and appears only in its own --help text.
+            - (exports ...) appears in 10 places repo-wide, and
+              (implements ...) in only 3 of 18 lib/*.borg files — so
+              neither data source would make a reimplementation honest
+              today.
+
+          The real coverage question ("does code that exists have a
+          section?") is already answered by drift's unspecified-module
+          findings, and ("is it documented?") by lint --code-doc. Both
+          read real files. modules was a third, weaker answer to the
+          same question, so it dies with its only consumer.
 
         Phase D — kill the loops and the lock.
           Delete plan, make, execute, generate, review, commit, abort,
-          undo, lib/lock (437), lib/generate, lib/review, and
+          lib/lock (437), lib/generate, lib/review, and
           Drift.run_agent. This is the big one and the least risky,
-          because by now nothing depends on it: D removed the merge
+          because by now nothing depends on it: C removed the merge
           queue's consumers, B removed pi, and C removed the shared
           lockfile types.
-          Keep `borge undo` if it is only a git revert wrapper — check
-          first; if it names the lock, drop it.
+
+          Note on `borge undo`, which this phase first kept and then
+          removed. It is a `git revert HEAD` wrapper — no lock, no
+          prompt, no model subprocess — so it passed the orchestration
+          test and looked like a keeper. It was deleted the same day
+          under the stricter second test in §thesis: rendering git's own
+          operations is git's job. See the "not ours to own" paragraph.
 
         Phase E — kill the inbox.
-          Delete lib/inbox, lib/bug, and the inbox/issue commands.
-          Inbox exists to give a gated agent somewhere to file scope
-          concerns instead of editing the spec. With no gated agent, the
-          queue has no producer.
-          Before deleting: check for live .borge-inbox files in other
-          repos and convert them (they are plain sexp; a one-shot
-          markdown dump is enough). Same for lib/bug.
+          Delete lib/inbox and the `inbox` command. Inbox exists to give
+          a gated agent somewhere to file scope concerns instead of
+          editing the spec. With no gated agent, the queue has no
+          producer — and there is no live data anywhere: .borge-inbox in
+          borge is an empty directory, and no *.borge-inbox file exists
+          in any repo. Nothing to migrate.
+
+          `borge issue` and lib/bug were kept at the end of this phase,
+          then deleted with the git frontends under the stricter second
+          test in §thesis — borge owned an issue format, a colliding
+          timestamp ID scheme, and a status workflow that no check reads.
+          They never touched a lock or a model, so they were never
+          orchestration; they were simply not spec operations.
+
+          Ordering mattered here: the inline bug (BORGE-1788068865) was
+          closed through `borge issue` BEFORE the reader was deleted, so
+          the record shows a resolution rather than staying open forever.
+          That is the one real cost of dropping the tracker — close what
+          is fixed first, then remove the tool.
+
+          The .borge-bugs/ archives: pricklypear and pricklypear-gate
+          gitignore that directory as "agent / design-session debris
+          (never re-commit)", so their records are local-only by intent.
+          borge tracks its seven. scripts/migrate-borge-bugs.py renders
+          any .borge-bugs/ directory to markdown for reading without the
+          borge binary, and was used to produce ARCHIVE.md in all three
+          repos before this phase. Note it handles malformed records: two
+          pricklypear files and one borge file contain unescaped quotes
+          in their doc body — the exact corruption BORGE-1783789294
+          documents — and the script recovers those leniently rather
+          than dropping them.
 
         Ordering rationale: B severs the harness, C removes the
         concurrency machinery that only the harness needed, D removes
         the loops that only the harness ran, E removes the queue that
         only the gated harness wrote to. Each phase leaves the tree
         building and linting.
+
+        WHY THIS COMES BEFORE THE CONVENTION REFACTOR: docs/
+        convention-abstract.borg (Phase 0) generalises Convention.t so a
+        third language costs one module and one registration line. It
+        should run AFTER phases A-E, not before. Of the ~41 hardcoded
+        ".ml" sites it has to fix, eight lived in files these phases
+        delete — semantic_review (3), module_spec (2), generate, agent,
+        inbox. Doing Phase 0 first would mean threading convention fields
+        through ~6,350 lines that are about to be removed, and reviewing
+        that work twice.
+
+        The reverse dependency does not exist: nothing in phases A-E
+        needed the convention record, only conv.build/test as the
+        replacement for the literal `dune build` in Check.run_worktree,
+        which is a two-line change either way. Two things did get simpler
+        by going first: bin/cmd/Plan.ml and Make.ml were on Phase 0's
+        "changed" list purely for their Dune_parse-only module lists, and
+        deleting those commands removed that work entirely.
       |))
   )
  )

@@ -1,7 +1,18 @@
 (project borge-docs-merge
  (section lock-mechanism
-  (doc "Transactional isolation for agent sessions — metadata, not workspace")
-  (status implemented)
+  (doc "Transactional isolation for agent sessions — REMOVED (lib/lock deleted)")
+  (status deprecated)
+  (* agent note (|
+     RETIRED 2026-10-26. lib/lock and lib/merge were deleted in phases D
+     and C of docs/orchestration-deprecation.borg, and the commands that
+     used them (plan, make, commit, abort, drift --agent, merge,
+     merge-queue) with them. Nothing described in this chapter runs.
+
+     Kept as a record of what was tried: worktree isolation and a batched
+     merge queue are reasonable ideas, they just belong to whatever
+     runtime supervises the agents rather than to the spec checker.
+   |) *)
+
   (details
    (doc (|
         Every agent-driven command (make, plan, drift --agent) creates
@@ -66,11 +77,11 @@
   )
  )
  (section merge-queue
-  (doc "CI/CD pipeline for agentic development — isolated worktrees, batched merges")
-  (status implemented)
+  (doc "CI/CD pipeline for agentic development — REMOVED (lib/merge deleted)")
+  (status deprecated)
   (subsection agent-isolation
-   (doc "Every agent run is isolated in its own worktree and branch")
-   (status implemented)
+   (doc "Every agent run is isolated in its own worktree and branch (removed)")
+   (status deprecated)
    (details
     (doc (|
          PROBLEM: Agents running concurrently clobber each other's

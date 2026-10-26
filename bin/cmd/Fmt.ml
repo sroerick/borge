@@ -72,7 +72,7 @@ let run path check diff output quiet repair =
              let oc = open_out dst in
              output_string oc formatted;
              close_out oc
-         | None -> print_endline formatted);
+         | None -> print_string formatted);
         exit 1
     | Fmt.Formatted _ -> (* shouldn't happen in check mode *) exit 1
   else if diff then begin
@@ -92,7 +92,7 @@ let run path check diff output quiet repair =
              output_string oc txt;
              close_out oc;
              if not quiet then Printf.printf "%s\n" (Filename.basename dst)
-         | None -> if not quiet then print_endline txt else ());
+         | None -> if not quiet then print_string txt else ());
         exit 0
     | _ -> (* check results in format mode shouldn't happen *) exit 1
 
@@ -103,7 +103,11 @@ let path =
     ~doc:"The .borg file to format")
 
 let output =
-  Arg.(value & opt (some file) None & info ["o"] ~docv:"FILE"
+  (* NOTE: a plain `string`, not cmdliner's `file` converter. `file` rejects
+     paths that do not exist yet, so `borge fmt -o out.borg in.borg` could
+     never create its output — it died with "no 'out.borg' file or
+     directory" before doing any formatting. *)
+  Arg.(value & opt (some string) None & info ["o"] ~docv:"FILE"
     ~doc:"Write output to FILE (default: stdout)")
 
 let check =
