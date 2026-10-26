@@ -40,57 +40,116 @@
   )
  )
  (section convention-record
-  (doc "One record, registered in a list, one module per convention")
-  (status planned)
+  (doc "One record, registered in a list — SHIPPED, but smaller than specced")
+  (status implemented)
   (details
    (doc (|
         Convention.t becomes a record of functions and data, and each
         language ships as a module that constructs it:
 
-          type carrier = {
-            line_prefix : string option;   (* "//" "#" — None = block *)
-            open_delim : string;           (* "(*" *)
-            close_delim : string;          (* "*)" *)
-          }
+        What shipped (2026-10-26, commit 772b22b) — NINE fields, not the
+        thirteen specced below. The count came down because measuring beat
+        speculating; see §measured-correction.
 
-          type unit_kind =
-            | Package    (* dir is the unit: Go *)
-            | Crate      (* build unit above modules: Rust *)
-            | Distribution (* pyproject/setup: Python *)
-            | Gem        (* gemspec: Ruby *)
-            | Library    (* dune library: OCaml *)
+          type code_unit = {
+            unit_path : string;   (* the path drift reports *)
+            unit_name : string;   (* the name drift compares, capitalized *)
+            unit_kind : string;   (* "unspecified-module" | "unspecified-package" *)
+          }
 
           type t = {
             name : string;
-            unit : unit_kind;
-            component_ext : string list;         (* [".rs"], [".py"] *)
-            interface_ext : string option;       (* Some ".mli" | None *)
+            component_ext : string list;      (* [".ml"] [".go"] *)
+            interface_ext : string option;    (* Some ".mli" | None *)
             excluded_dirs : string list;
-            conventional_files : string list;    (* Cargo.toml, ... *)
-            index : string -> unit_spec list;    (* discover build units *)
-            surface : string -> symbol list;     (* component -> exports *)
-            component_paths : section_name:string -> string list;
-            carrier : carrier;
-            build : string list;                 (* ["cargo";"build";"--workspace"] *)
-            test : string list;                  (* ["cargo";"test";"--workspace"] *)
+            conventional_files : string list; (* README, dune-project, go.mod *)
+            index : string -> code_unit list; (* THE seam *)
+            build : string list;              (* ["dune";"build"] *)
+            test : string list;               (* ["dune";"runtest"] *)
             verify_methods : string list;
-            naming : naming_rule;                (* Explicit | Zeitwerk | Snake *)
           }
 
-        Registration is a list, not a match: Convention.all : t list,
-        Convention.of_string resolves against it, and Convention.resolve
-        reads the root (convention NAME) as it does today. The closed
-        variant and its four match sites disappear at the same commit
-        that migrates Go onto the record — Go is the free test case,
-        since its behaviour is already known and already specced in
-        docs/convention-go.borg.
+        Registration is a list, not a match: Convention.all, with
+        Convention.of_string resolving against it. The closed variant and
+        its two match sites (drift.run, lint.check_invalid_verify) are
+        gone. Adding a language is one value plus one line in `all`.
 
-        naming is its own field because section-to-path is not derivable
-        from directory layout in every language (see convention-rust-cargo
-        §unit-map and the Ruby note in §open-questions). Explicit means
-        (implements path) wins; the convention default only applies when
-        the spec is silent.
+        DELIBERATELY ABSENT — each was in the original sketch and each
+        lacks a consumer today:
+
+          unit / unit_kind variant   Collapsed to a string on code_unit.
+                                     Drift only prints it.
+          surface                    Drift gets symbols from Surface /
+                                     Go_surface directly; the record never
+                                     needed a hook.
+          component_paths            Nothing resolves section->path yet.
+                                     Rust needs it (convention-rust-cargo
+                                     §unit-map); it lands with Rust.
+          carrier                    Doc_detect still hardcodes (* *). The
+                                     line-carrier adapter is the next real
+                                     piece of work, not a field with no
+                                     implementation behind it.
+          naming                     Same: needed by Ruby, not by anything
+                                     shipped.
+
+        The rule this chapter now follows: a field is added by the
+        convention that first needs it, never in advance. A record with
+        nine used fields beats one with thirteen aspirational ones.
       |))
+  )
+ )
+ (section measured-correction
+  (doc "What measuring the tree changed about this chapter's own design")
+  (status implemented)
+  (details
+   (doc (|
+        This chapter was written as a design document, then executed. The
+        execution disagreed with it in four places. Each correction below
+        was made by counting callers before writing code, not by judgment.
+
+        CORRECTION 1 — nine of the record's fields had no consumer.
+        The sketch had thirteen fields and nine hook functions. Counting
+        callers of the old API: of resolve, name, source_extension,
+        interface_extension, excluded_dirs, of_string, resolve_from_file,
+        section_to_module_name, suggest_module_files,
+        normalize_section_name and verify_methods — only resolve,
+        verify_methods and normalize_section_name had any caller at all.
+        Eight of eleven were dead code. The record ships with nine fields,
+        all used.
+
+        CORRECTION 2 — the Go-specific functions were already dead.
+        generate_go_findings and write_go_meta_files had NO caller. The
+        only meta writer reachable from the CLI (Drift.write_meta_files,
+        called from bin/cmd/Drift.ml) is dune-aware, so a Go repo's
+        .borg.meta was never generated at all. Verified against the
+        pre-refactor binary: it writes no meta for teachings either. That
+        is a pre-existing hole, not a regression — and it means the
+        "three parallel copies of the pipeline" this chapter complained
+        about was really two live ones plus a dead third.
+
+        CORRECTION 3 — the drift pipeline collapsed to ONE function, not a
+        parameterised three-stage pipeline. check_go_code_drift was 16
+        lines whose only Go-specific part was which units to enumerate.
+        That is exactly what `index` is for. The result is a single
+        check_code_drift ~conv that walks conv.index; the whole
+        Go-aware block (362 lines including the two dead functions) is
+        gone rather than abstracted.
+
+        CORRECTION 4 — extension threading needed optional arguments, not
+        a rewrite. Surface.extract_surface, Stats.measure_file,
+        Doc_extract.find_ml_files, Code_quality.run and
+        Book_print.is_source each took `?(conv=Convention.default)`. Every
+        existing caller compiles unchanged. This is not the final shape —
+        a caller that forgets to pass the convention silently gets OCaml
+        rules — but it converts "a third language is silently wrong"
+        into "a third language works if you thread one argument", which
+        is the difference between possible and not.
+
+        Also deleted while counting: Drift.find_ml_files and
+        Surface.find_ml_files, both zero-caller.
+
+        Net effect of executing the chapter: -105 lines.
+       |))
   )
  )
  (section unit-model
