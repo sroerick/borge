@@ -278,6 +278,24 @@
         the loops that only the harness ran, E removes the queue that
         only the gated harness wrote to. Each phase leaves the tree
         building and linting.
+
+        WHY THIS COMES BEFORE THE CONVENTION REFACTOR: docs/
+        convention-abstract.borg (Phase 0) generalises Convention.t so a
+        third language costs one module and one registration line. It
+        should run AFTER phases A-E, not before. Of the ~41 hardcoded
+        ".ml" sites it has to fix, eight lived in files these phases
+        delete — semantic_review (3), module_spec (2), generate, agent,
+        inbox. Doing Phase 0 first would mean threading convention fields
+        through ~6,350 lines that are about to be removed, and reviewing
+        that work twice.
+
+        The reverse dependency does not exist: nothing in phases A-E
+        needed the convention record, only conv.build/test as the
+        replacement for the literal `dune build` in Check.run_worktree,
+        which is a two-line change either way. Two things did get simpler
+        by going first: bin/cmd/Plan.ml and Make.ml were on Phase 0's
+        "changed" list purely for their Dune_parse-only module lists, and
+        deleting those commands removed that work entirely.
       |))
   )
  )
