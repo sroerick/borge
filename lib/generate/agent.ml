@@ -127,20 +127,20 @@ let parse_agent_response response timestamp =
   with _ ->
     []
 
-(** {1 Pi -p mode integration} *)
+(** {1 Pi integration — REMOVED} *)
 
-let find_pi () =
-  try
-    let p = Sys.getenv "BORGE_PI_PATH" in
-    if Sys.file_exists p then Some p else None
-  with Not_found ->
-  try
-    let ic = Unix.open_process_in "command -v pi 2>/dev/null" in
-    let path = String.trim (input_line ic) in
-    let _ = Unix.close_process_in ic in
-    if String.length path > 0 && Sys.file_exists path then Some path
-    else None
-  with _ -> None
+(* agent note (|
+ *   WHAT: find_pi now always returns None. The pi harness was removed
+ *   in Phase B of the orchestration deprecation.
+ *
+ *   WHY: borge is splitting into gates (deterministic, no model) and a
+ *   retired orchestration half. shelling out to an agent runtime was the
+ *   orchestration half. Keeping the detection function as a stub means
+ *   the callers that Phase D deletes still compile in the meantime, and
+ *   nothing silently starts launching pi again.
+ *   See docs/orchestration-deprecation.borg.
+ * |) *)
+let find_pi () = None
 
 let extract_sexp_from_response text =
   (* Scan the response for a sexp starting with (findings or (finding.
@@ -161,47 +161,18 @@ let extract_sexp_from_response text =
   in
   find 0
 
-let run_pi_print prompt =
-  match find_pi () with
-  | None -> None
-  | Some pi_path ->
-    let tmp_prompt = Filename.temp_file "borge_prompt" ".txt" in
-    let tmp_out = Filename.temp_file "borge_response" ".txt" in
-    let oc_prompt = open_out tmp_prompt in
-    output_string oc_prompt prompt;
-    close_out oc_prompt;
-    Printf.eprintf "  pi: running semantic analysis...";
-    flush stderr;
-    let cmd = Printf.sprintf "%s -p --no-session --no-tools < '%s' > '%s' 2>&1"
-      pi_path tmp_prompt tmp_out in
-    let start_time = Unix.gettimeofday () in
-    let pid = Unix.fork () in
-    if pid = 0 then begin
-      let _ = Sys.command cmd in
-      exit 0
-    end else begin
-      let running = ref true in
-      while !running do
-        match Unix.waitpid [Unix.WNOHANG] pid with
-        | 0, _ -> Printf.eprintf "."; flush stderr; Unix.sleep 1
-        | _, _ -> running := false
-      done;
-      let elapsed = Unix.gettimeofday () -. start_time in
-      Printf.eprintf " done (%.1fs)\n" elapsed;
-      let response =
-        try File_utils.read_file tmp_out with _ -> "" in
-      Sys.remove tmp_prompt;
-      Sys.remove tmp_out;
-      if String.length response > 0 then begin
-        let sexp_part = extract_sexp_from_response response in
-        if sexp_part != response then
-          Printf.eprintf "  pi: extracted sexp from response\n";
-        Some sexp_part
-      end else begin
-        Printf.eprintf "  pi: no response received\n";
-        None
-      end
-    end
+(* agent note (|
+ *   WHAT: run_pi_print is now a stub that always returns None without
+ *   spawning anything.
+ *
+ *   WHY: this was the only place borge forked a model subprocess. It is
+ *   gone, so callers fall through to their "no LLM available" path
+ *   instead of hanging on a 600s child. Deliberately keeps the name and
+ *   signature so the files deleted in Phase D are untouched here.
+ * |) *)
+let run_pi_print _prompt =
+  Printf.eprintf "  borge: no LLM backend (orchestration removed)\n";
+  None
 
 (** {1 Fallback: BORGE_AGENT_CMD} *)
 

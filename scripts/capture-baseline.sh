@@ -6,9 +6,15 @@
 # There is no unit test for that. So we capture the answers before touching
 # anything, and diff against them after.
 #
+# WHICH BINARY: set BORGE_BIN explicitly. This script deliberately does NOT
+# rely on `borge` from PATH — that resolves to the opam-installed binary,
+# which lags the tree you are editing, and a baseline captured from it
+# measures the OLD code no matter what you just built. That failure mode
+# silently makes every diff pass.
+#
 # Usage:
-#   scripts/capture-baseline.sh OUTDIR            # capture
-#   scripts/capture-baseline.sh --diff OUTDIR     # compare current to OUTDIR
+#   BORGE_BIN=/path/to/borge.exe scripts/capture-baseline.sh OUTDIR
+#   BORGE_BIN=/path/to/borge.exe scripts/capture-baseline.sh --diff OUTDIR
 #
 # Exit 1 on any difference (in --diff mode).
 
@@ -31,54 +37,80 @@ $HOME/dev/wyo.tech/teachings
 MODE=capture
 OUT=""
 case "${1:---help}" in
-  --help|-h) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  --help|-h) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
   --diff) MODE=diff; OUT="${2:?--diff needs a baseline dir}" ;;
   *) OUT="$1" ;;
 esac
 
-eval "$(opam env --switch=poohstack --set-switch)" 2>/dev/null
+BORGE_BIN="${BORGE_BIN:-}"
+if [ -z "$BORGE_BIN" ]; then
+  printf 'BORGE_BIN is required (absolute path to the borge exe under test).\n' >&2
+  printf 'Refusing to fall back to PATH: that measures the installed binary,\n' >&2
+  printf 'not the tree being changed, and every diff would falsely pass.\n' >&2
+  exit 2
+fi
+[ -x "$BORGE_BIN" ] || { printf 'not executable: %s\n' "$BORGE_BIN" >&2; exit 2; }
+BORGE_BIN=$(cd "$(dirname "$BORGE_BIN")" && pwd)/$(basename "$BORGE_BIN")
 
 slug() {
   # /home/u/dev/wyo.tech/borge -> wyo.tech_borge
   printf '%s' "$1" | sed "s|^$HOME/dev/||; s|/|_|g"
 }
 
-rc=0
-[ "$MODE" = capture ] && mkdir -p "$OUT"
+# Produce one command's output for one repo on stdout, with the repo's
+# absolute path normalised so the baseline is portable across checkouts.
+# The binary under test is invoked by absolute path, from the repo's cwd so
+# that relative-path conventions inside borge behave normally.
+emit() {
+  repo=$1
+  cmd=$2
+  case $cmd in
+    drift|lint) (cd "$repo" && "$BORGE_BIN" "$cmd" --json 2>/dev/null) ;;
+    report)     (cd "$repo" && "$BORGE_BIN" report 2>/dev/null) ;;
+  esac | sed "s|$repo|<REPO>|g"
+}
 
+rc=0
+
+if [ "$MODE" = capture ]; then
+  [ -n "$OUT" ] || { printf 'usage: %s OUTDIR\n' "$0" >&2; exit 2; }
+  for repo in $REPOS; do
+    [ -d "$repo" ] || { printf 'skip (missing): %s\n' "$repo"; continue; }
+    name=$(slug "$repo")
+    mkdir -p "$OUT/$name"
+    for cmd in drift lint report; do
+      emit "$repo" "$cmd" > "$OUT/$name/$cmd.txt"
+    done
+    printf 'captured: %s\n' "$name"
+  done
+  printf '\nbaseline written to %s (binary %s)\n' "$OUT" "$BORGE_BIN"
+  exit 0
+fi
+
+# --- diff mode -------------------------------------------------------------
+# NOTE: this arm must never write into $OUT. An earlier version created
+# $OUT/$name and wrote the current output before comparing, which made the
+# comparison current-vs-current and always passed. Keep every write out of
+# the baseline directory.
+[ -d "$OUT" ] || { printf 'no baseline dir: %s\n' "$OUT" >&2; exit 2; }
+
+printf '== diff vs %s (binary %s) ==\n' "$OUT" "$BORGE_BIN"
 for repo in $REPOS; do
   [ -d "$repo" ] || { printf 'skip (missing): %s\n' "$repo"; continue; }
   name=$(slug "$repo")
-  mkdir -p "$OUT/$name"
   for cmd in drift lint report; do
-    # --json where supported; report has no --json so capture text with
-    # absolute paths stripped so the baseline is machine-portable.
-    case $cmd in
-      drift|lint) raw=$(cd "$repo" && borge "$cmd" --json 2>/dev/null) ;;
-      report)     raw=$(cd "$repo" && borge report 2>/dev/null | sed "s|$repo|<REPO>|g") ;;
-    esac
-    printf '%s\n' "$raw" | sed "s|$repo|<REPO>|g" > "$OUT/$name/$cmd.txt"
-  done
-  printf 'captured: %s\n' "$name"
-done
-
-[ "$MODE" = capture ] && { printf '\nbaseline written to %s\n' "$OUT"; exit 0; }
-
-printf '\n== diff vs %s ==\n' "$OUT"
-for repo in $REPOS; do
-  [ -d "$repo" ] || continue
-  name=$(slug "$repo")
-  for cmd in drift lint report; do
-    f="$OUT/$name/$cmd.txt"
-    [ -f "$f" ] || { printf 'MISSING baseline: %s\n' "$f"; rc=1; continue; }
-    case $cmd in
-      drift|lint) raw=$(cd "$repo" && borge "$cmd" --json 2>/dev/null) ;;
-      report)     raw=$(cd "$repo" && borge report 2>/dev/null | sed "s|$repo|<REPO>|g") ;;
-    esac
-    now=$(printf '%s\n' "$raw" | sed "s|$repo|<REPO>|g")
-    if ! printf '%s' "$now" | diff -q "$f" - >/dev/null 2>&1; then
+    saved="$OUT/$name/$cmd.txt"
+    if [ ! -f "$saved" ]; then
+      printf 'MISSING baseline: %s\n' "$saved"
+      rc=1
+      continue
+    fi
+    now=$(emit "$repo" "$cmd")
+    # Command substitution strips trailing newlines from both sides, so a
+    # trailing-newline difference alone cannot produce a false "changed".
+    if [ "$(cat "$saved")" != "$now" ]; then
       printf 'CHANGED: %s/%s\n' "$name" "$cmd"
-      printf '%s' "$now" | diff "$f" - | head -20
+      printf '%s\n' "$now" | diff "$saved" - | head -20
       rc=1
     fi
   done
