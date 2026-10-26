@@ -20,9 +20,6 @@ let cmds = [
   Lint.cmd;
   Log.cmd;
   Make.cmd;
-  Merge_queue.cmd;
-  Merge.cmd;
-  Modules.cmd;
   Nodes.cmd;
   Normalize.cmd;
   Parse.cmd;

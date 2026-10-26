@@ -126,11 +126,15 @@
                           never needed an agent.
           book          — survives whole (print/export/manifest).
           stats         — survives; needs conv.component_ext.
-          modules       — currently reads distributed/module_spec. Either
-                          reimplement on Spec.extract_implements (the
-                          data is in the .borg (implements) forms) or
-                          delete with the rest. Leaning reimplement: it
-                          is 73 lines of CLI over spec data.
+          modules       — DELETED in Phase C, not preserved. Investigated
+                          2026-10-26: it reports "all exports documented"
+                          for any spec without sibling .ml files, which
+                          includes its own headline case (lib.borg, 40
+                          exports, no adjacent .ml -> fold over [] ->
+                          checkmark). It also keys specs by basename and
+                          so conflates the four .borg names that exist in
+                          two directories. Drift and lint --code-doc
+                          already answer its question against real files.
           log, diff     — survive. `log` is git log over .borg files,
                           `diff` is git diff with status annotations.
                           Neither needs a lock.
@@ -176,10 +180,38 @@
           Delete lib/merge (1538 lines) and the merge, merge-queue, and
           agent-submit commands. Nothing in the keep-set imports them.
           Verify: dune build, then `borge check --worktree` and
-          `borge drift` on three OCaml and three Go repos.
-          Also delete lib/distributed and reimplement `borge modules` on
-          Spec.extract_implements in the same commit, so the command
-          does not blink out and back.
+          `borge drift` on the baseline repo set.
+
+          Also delete lib/distributed (borg_comment, module_spec) and the
+          `borge modules` command — DO NOT reimplement it, which this
+          chapter originally said to do. Investigated on 2026-10-26 and
+          the command is vacuous, so preserving it would preserve a gate
+          that always passes:
+
+            - module_spec.find_implementation_files resolves a .borg
+              file's sibling .ml files in the SAME directory. For the
+              specs it actually discovers that is usually zero files:
+              lib.borg (the 40-export case) has no sibling .ml, so
+              impl_files = [] and the fold over it yields ([], []),
+              which render_report prints as "all exports documented".
+              docs/*.borg likewise has no adjacent .ml at all.
+            - discover_specs keys specs by BASENAME. book.borg, db.borg,
+              merge.borg and ui.borg each exist in more than one
+              directory, so the report conflates them ("book" is listed
+              once while lib/book/book.borg and docs/book.borg both
+              exist).
+            - It has no callers in any repo (grepped .md/.sh/.borg/.ml)
+              and appears only in its own --help text.
+            - (exports ...) appears in 10 places repo-wide, and
+              (implements ...) in only 3 of 18 lib/*.borg files — so
+              neither data source would make a reimplementation honest
+              today.
+
+          The real coverage question ("does code that exists have a
+          section?") is already answered by drift's unspecified-module
+          findings, and ("is it documented?") by lint --code-doc. Both
+          read real files. modules was a third, weaker answer to the
+          same question, so it dies with its only consumer.
 
         Phase D — kill the loops and the lock.
           Delete plan, make, execute, generate, review, commit, abort,

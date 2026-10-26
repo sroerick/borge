@@ -141,22 +141,22 @@ let run_static dir json quiet modules =
   let _meta = Drift.write_meta_files dir in
   let result = Drift.run dir in
 
-  (* Optionally run module integrity check *)
-  let module_issues = if modules then begin
-    let specs = Module_spec.load_all_specs dir in
-    List.concat_map (fun (spec : Module_spec.module_def) ->
-      let impl_files = Module_spec.find_implementation_files spec.path in
-      List.concat_map (fun impl_path ->
-        let (missing, undocumented) = Module_spec.check_integrity spec impl_path in
-        List.map (fun name ->
-          Printf.sprintf "module %s: missing implementation of %s" spec.module_name name
-        ) missing @
-        List.map (fun name ->
-          Printf.sprintf "module %s: undocumented function %s" spec.module_name name
-        ) undocumented
-      ) impl_files
-    ) specs
-  end else [] in
+  (* The --modules flag used to run Module_spec integrity checks. That
+     command and its module were deleted in Phase C of the orchestration
+     deprecation: the check resolved a .borg file's SIBLING .ml files, so
+     any spec without adjacent code (including lib.borg, its own headline
+     case) folded over an empty list and reported "all exports
+     documented". It was a gate that could not fail.
+
+     The flag is kept as a no-op with a warning rather than removed
+     outright so an old CI invocation still builds and says why instead
+     of dying on an unknown option. Delete the flag itself in Phase D. *)
+  let module_issues = [] in
+  if modules then
+    Printf.eprintf
+      "  warning: --modules is a no-op; module integrity checking was removed\n\
+      \  (it could not fail — see docs/orchestration-deprecation.borg).\n\
+      \  Use borge drift and borge lint --code-doc instead.\n";
 
   if json then begin
     (* TODO: include module_issues in JSON *)

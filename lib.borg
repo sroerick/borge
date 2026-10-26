@@ -33,16 +33,10 @@
   "lib/bug/bug.borg"
  )
  (inline
-  "lib/distributed/distributed.borg"
- )
- (inline
   "lib/review/review.borg"
  )
  (inline
   "lib/doc/doc.borg"
- )
- (inline
-  "lib/merge/merge.borg"
  )
  (inline
   "lib/lang/lang.borg"
