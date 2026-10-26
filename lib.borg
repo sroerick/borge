@@ -9,9 +9,6 @@
   "lib/format/format.borg"
  )
  (inline
-  "lib/generate/generate.borg"
- )
- (inline
   "lib/metrics/metrics.borg"
  )
  (inline
@@ -21,9 +18,6 @@
   "lib/ui/ui.borg"
  )
  (inline
-  "lib/lock/lock.borg"
- )
- (inline
   "lib/db/db.borg"
  )
  (inline
@@ -31,9 +25,6 @@
  )
  (inline
   "lib/bug/bug.borg"
- )
- (inline
-  "lib/review/review.borg"
  )
  (inline
   "lib/doc/doc.borg"
@@ -75,16 +66,6 @@
   bug_parse
   bug_write
   bug_registry
-  review_types
-  review_prompt
-  review_parse
-  review_agent
-  extract_parsetree
-  extract_functions
-  extract_docs
-  borg_comment
-  module_spec
-  semantic_review
   convention
   go_parse
   go_surface
@@ -125,15 +106,18 @@
              Return the configured developer name, or "agent"
              if not set.
 
-         The developer_name function is used by lock-prompt,
-         lint, and comment-generating code to set the authorship
-         on annotated comments. Today these default to "agent";
-         with config, they use the developer's chosen name.
+         The developer_name function was used by lock-prompt to set
+         authorship on annotated comments. lock-prompt was deleted in
+         Phase D of docs/orchestration-deprecation.borg, so nothing
+         reads developer_name today; lint still defaults the authorship
+         literal to "agent".
 
-         resolve_api_key is used by agent.ml and review_agent.ml
-         when calling LLMs directly (not via pi). Today they
-         only support BORGE_AGENT_CMD env var; config adds
-         per-provider key resolution with env var indirection.
+         resolve_api_key existed for agent.ml and review_agent.ml calling
+         LLMs directly. Both were deleted in Phase D (and Phase B removed
+         the pi subprocess before that), so the api-keys block now has no
+         consumer. It is retained because the .borgerc format is a
+         documented, git-tracked interface, but Phase E should decide
+         whether Config survives at all.
        |))
    )
   )

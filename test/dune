@@ -17,9 +17,6 @@
   (name test_ui_db)
   (libraries borge.lang borge.lib alcotest))
 (test
-  (name test_review)
-  (libraries borge.lang borge.lib alcotest))
-(test
   (name test_doc_coverage)
   (libraries borge.lang borge.lib alcotest))
 (test
