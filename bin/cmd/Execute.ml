@@ -1,6 +1,8 @@
 open Borge_lib
 
 let run section dir quiet =
+  Deprecation.warn ~cmd:"execute"
+    ~replacement:"implement the section directly, then run borge drift";
   ignore quiet;
   if section = "" then begin
     Printf.eprintf "Error: SECTION argument is required.\n";

@@ -2,6 +2,8 @@ open Borge_lib
 
 (** Generate a .borg section from a todo description using LLM *)
 let run_spec todo dir quiet =
+  Deprecation.warn ~cmd:"generate spec"
+    ~replacement:"write the .borg section yourself; the spec is the human artifact";
   match Generate.generate_spec todo dir with
   | Some sexp ->
     if not quiet then Printf.printf "%s\n" sexp;
@@ -12,6 +14,8 @@ let run_spec todo dir quiet =
 
 (** Generate code to implement a planned section *)
 let run_code section dir quiet =
+  Deprecation.warn ~cmd:"generate code"
+    ~replacement:"implement the section directly, then run borge drift";
   ignore quiet;
   match Generate.generate_code section dir with
   | Some _ ->

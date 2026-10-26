@@ -137,6 +137,8 @@ let all =
     ~doc:"Merge all ready items")
 
 let run strategy dry_run next all =
+  Deprecation.warn ~cmd:"merge"
+    ~replacement:"use git; the merge queue only existed because borge launched agents";
   if not next && not all then begin
     Printf.eprintf "Error: specify --next or --all\n";
     exit 1

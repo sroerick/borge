@@ -45,6 +45,8 @@ let write_prompt role =
   path
 
 let run no_commit dir quiet =
+  Deprecation.warn ~cmd:"plan"
+    ~replacement:"edit the .borg spec yourself, then run borge balance/check/drift";
   ignore dir;
   (match Lock.create () with
    | Error msg ->

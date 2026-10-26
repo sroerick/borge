@@ -5,6 +5,8 @@
     Code file changes are NOT reverted — use git to undo those. *)
 
 let run quiet =
+  Deprecation.warn ~cmd:"abort"
+    ~replacement:"use git restore; the .borge.lock snapshot is going away";
   if not (Borge_lib.Lock.is_locked ()) then begin
     Printf.eprintf "No active lock. Nothing to abort.\n";
     exit 1

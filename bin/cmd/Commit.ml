@@ -13,6 +13,8 @@
 open Borge_lib
 
 let run force dir quiet =
+  Deprecation.warn ~cmd:"commit"
+    ~replacement:"use git commit; the .borge.lock snapshot is going away";
   ignore dir;
   if not (Lock.is_locked ()) then begin
     Printf.eprintf "Error: No active lock. Nothing to commit.\n";

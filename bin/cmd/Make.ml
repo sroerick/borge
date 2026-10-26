@@ -45,6 +45,8 @@ let write_prompt role =
   path
 
 let run no_commit dir quiet =
+  Deprecation.warn ~cmd:"make"
+    ~replacement:"implement against the spec with your own agent, then run borge drift";
   ignore dir;  (* TODO: support non-root dirs *)
   (match Lock.create () with
    | Error msg ->

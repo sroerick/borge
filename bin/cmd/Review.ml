@@ -141,6 +141,8 @@ let mark_drifted_in_file path findings =
   ) findings
 
 let run file dir all stale dry_run focus mark_drifted =
+  Deprecation.warn ~cmd:"review"
+    ~replacement:"run borge drift and borge lint, and review the code yourself";
   ignore focus;
   ignore mark_drifted;
   if stale then

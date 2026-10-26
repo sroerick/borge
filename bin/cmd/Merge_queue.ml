@@ -118,6 +118,8 @@ let show_item id =
  *   successful completion.
  * |) *)
 let submit_worktree ~worktree_path ~summary ~confidence =
+  Deprecation.warn ~cmd:"merge-queue submit"
+    ~replacement:"use git worktrees and ordinary merges";
   (* Validate worktree exists *)
   if not (Sys.file_exists worktree_path) then begin
     Printf.eprintf "Error: Worktree not found: %s\n" worktree_path;
@@ -198,6 +200,8 @@ let submit_worktree ~worktree_path ~summary ~confidence =
              | _ -> ())))
 
 let cancel_item id =
+  Deprecation.warn ~cmd:"merge-queue cancel"
+    ~replacement:"use git; the queue is being removed";
   (match Queue_storage.load () with
    | Error e ->
        Printf.eprintf "Error loading queue: %s\n" e;

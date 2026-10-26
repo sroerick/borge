@@ -23,7 +23,7 @@
 
         DEPRECATED (the orchestration):
           plan, make, execute, generate, review (agent mode), commit,
-          abort, undo, merge, merge-queue, inbox, issue.
+          abort, merge, merge-queue, inbox, issue.
 
           These all presuppose that borge is the thing driving an agent:
           it writes a prompt, launches pi, holds a lock, watches an exit
@@ -183,13 +183,19 @@
 
         Phase D — kill the loops and the lock.
           Delete plan, make, execute, generate, review, commit, abort,
-          undo, lib/lock (437), lib/generate, lib/review, and
+          lib/lock (437), lib/generate, lib/review, and
           Drift.run_agent. This is the big one and the least risky,
-          because by now nothing depends on it: D removed the merge
+          because by now nothing depends on it: C removed the merge
           queue's consumers, B removed pi, and C removed the shared
           lockfile types.
-          Keep `borge undo` if it is only a git revert wrapper — check
-          first; if it names the lock, drop it.
+
+          `borge undo` SURVIVES and was wrongly listed here when this
+          chapter was first written. Read at bin/cmd/Undo.ml, it is a
+          `git revert HEAD` wrapper with output — no lock, no prompt, no
+          subprocess that talks to a model. It fails the §thesis
+          boundary test (it does not need to know what an agent is) and
+          it is the only convenience wrapper over git that the gate
+          half benefits from directly after a bad commit. Keeping it.
 
         Phase E — kill the inbox.
           Delete lib/inbox, lib/bug, and the inbox/issue commands.
