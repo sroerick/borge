@@ -1,7 +1,7 @@
 (project borge-lib-book
  (section book
-  (doc "Codebase book printer. lib/book/")
-  (status planned)
+  (doc "Codebase book printer. lib/book/ — print, export, manifest, structure all implemented; absorb (scan -> inbox) is not.")
+  (status partial)
   (subsection book-print-impl
    (doc "Linearize source files to a paginated PDF (inline-aware order: the root's (inline ...) tree, then unreferenced files lexicographically; register is a render flag: --mode workshop|reader, default workshop)")
    (status implemented)
@@ -279,6 +279,48 @@
          - build : dir:string -> files:string list -> manifest
          - to_json : manifest -> string
          - tree_checksum : files:string list -> string
+       |))
+   )
+  )
+  (subsection book-structure-impl
+   (doc "The shared parse+register pass both projections consume")
+   (status implemented)
+   (implements lib
+    book
+    book_structure.ml
+   )
+   (details
+    (doc (|
+         lib/book/book_structure.ml — decision 3's "one parser, two
+         projections". Book_print renders chapters; Book_export emits
+         them as JSON. Both call of_file, so the two can never disagree
+         about what a chapter contains.
+
+         Types:
+         - mode = Workshop | Reader
+         - node — project/section/subsection headings, doc, and the
+           register-filtered scaffolding (status/verify/agent-note/
+           untracked/inline/raw)
+         - example = {lang; src; expected} — one fenced record
+         - segment = Text of string | Code of example
+         - chapter_body = {title_hint; status; nodes; examples}
+
+         Functions:
+         - of_file : mode:mode -> content:string -> chapter_body
+             Parse one .borg file into a renderable chapter. Raises
+             Fallback_raw on a parse error so the caller degrades to a
+             lone code chapter instead of losing the file.
+         - fence_split : string -> segment list
+             Split a doc body into text and ```nopales/```ocaml example
+             fences, carrying the `expect =>` trailer as expected.
+         - examples_of : node list -> example list
+         - title_hint_of / status_of : Ast.file -> string option
+         - agent_note_node / comment_node : annotated comment -> node
+
+         Why it needed its own subsection: it was implemented and load-
+         bearing but undeclared, so `borge drift` reported
+         "unspecified-module Book_structure" — code the book claimed did
+         not exist. Declaring it is the whole point of the chapter.
        |))
    )
   )

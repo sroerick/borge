@@ -905,5 +905,31 @@
         hook more load-bearing than it was.
       |))
   )
+  (subsection discipline-cheatsheet
+   (doc "The one-page cheat sheet agents are pointed at")
+   (status implemented)
+   (implements docs/agent-cheatsheet.md)
+   (details
+    (doc (|
+         docs/agent-cheatsheet.md — a short markdown page, not a chapter.
+         It exists because the rules above are long and an agent in the
+         middle of an edit needs the operational part in one screen:
+         balance before you build, the error table for the four common
+         paren/verbatim/comment failures, which tool answers which
+         question (balance vs parse vs check), and the lexical contexts
+         the balance scanner ignores.
+
+         It remains accurate after the orchestration deprecation: every
+         command it names — balance, parse, check, and `dune runtest` —
+         is still live. That was the test for declaring it rather than
+         deleting it.
+
+         It is deliberately not a .borg chapter. A cheap reference that
+         is fast to read beats a book page that is complete, and
+         duplicating these rules into the .borg tree would create two
+         copies of the same guidance that drift apart.
+       |))
+   )
+  )
  )
 )

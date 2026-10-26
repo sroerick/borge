@@ -101,13 +101,65 @@ let ocaml_section_to_module name =
  *   Reproduces the exact paths and names the old check_code_drift emitted
  *   ("lib/<lib>/<mod>.ml", capitalized module) so drift output is unchanged.
  * |) *)
+(* agent note (|
+ *   WHAT: Normalize a path to repo-relative form ("lib/x/y.ml").
+ *
+ *   WHY: Drift reports repo-relative paths; dune gives us "./lib". Both
+ *   forms must render identically or the report stops being greppable.
+ * |) *)
+let strip_dot_slash p =
+  let n = String.length p in
+  if n >= 2 && String.sub p 0 2 = "./" then String.sub p 2 (n - 2) else p
+
+(* agent note (|
+ *   WHAT: Module name -> real file path, for one dune library's tree.
+ *
+ *   WHY: [include_subdirs unqualified] flattens every .ml under a dune
+ *   directory into that library, so a module's path is NOT derivable from
+ *   the library name. Fabricating "lib/<libname>/<module>.ml" produced
+ *   paths that do not exist (lib/borge_lib/book_structure.ml, when the real
+ *   file is lib/book/book_structure.ml) — a drift report naming a
+ *   nonexistent file is worse than no report, because every finding is
+ *   unopenable.
+ *
+ *   A subdirectory containing its own dune file is a separate library, so
+ *   the walk stops there rather than claiming that library's modules too.
+ * |) *)
+let modules_in_dune_dir dune_dir =
+  let rec walk acc d =
+    try
+      Sys.readdir d
+      |> Array.fold_left (fun acc entry ->
+        let full = Filename.concat d entry in
+        if Sys.is_directory full then
+          if Sys.file_exists (Filename.concat full "dune") then acc
+          else walk acc full
+        else
+          match Filename.chop_suffix_opt ~suffix:".ml" entry with
+          | Some m -> (m, strip_dot_slash full) :: acc
+          | None -> acc
+      ) acc
+    with Sys_error _ -> acc
+  in
+  walk [] dune_dir
+
 let ocaml_index dir =
   let dune_files = Dune_parse.parse_all dir in
   List.concat_map (fun df ->
+    let dune_dir = Filename.dirname df.Dune_parse.path in
+    let table = modules_in_dune_dir dune_dir in
     List.concat_map (function
       | Dune_parse.Library lib ->
           List.map (fun m ->
-            { unit_path = Printf.sprintf "lib/%s/%s.ml" lib.Dune_parse.name m;
+            let unit_path = match List.assoc_opt m table with
+              | Some p -> p
+              | None ->
+                (* dune says the module exists but no .ml matched. Keep the
+                   finding (an unspecced module is still unspecced) but do
+                   not invent a plausible-looking path. *)
+                Printf.sprintf "%s/%s.ml" (strip_dot_slash dune_dir) m
+            in
+            { unit_path;
               unit_name = String.capitalize_ascii m;
               unit_kind = "unspecified-module" }
           ) lib.Dune_parse.modules

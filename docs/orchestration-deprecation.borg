@@ -317,6 +317,83 @@
       |))
   )
  )
+ (section tooling
+  (doc "Scripts this work produced, declared so they are not orphans")
+  (status implemented)
+  (details
+   (doc (|
+        Two scripts came out of the deprecation and are load-bearing for
+        how it was verified. They are declared here rather than excused
+        with (untracked ...) because both are still the tools you would
+        reach for next time, not one-shot debris.
+       |))
+  )
+  (subsection capture-baseline
+   (doc "Freeze drift/lint/report output so a refactor can be proved inert")
+   (status implemented)
+   (implements scripts/capture-baseline.sh)
+   (details
+    (doc (|
+         scripts/capture-baseline.sh — the regression test that does not
+         exist in alcotest, because there is no unit test for "does drift
+         still find the same things across five real repos".
+
+         Usage:
+           BORGE_BIN=/path/to/borge.exe scripts/capture-baseline.sh OUTDIR
+           BORGE_BIN=... scripts/capture-baseline.sh --diff OUTDIR
+
+         It captures drift --json, lint --json and report for borge,
+         eyegor, rein, pricklypear and teachings, with absolute paths
+         normalised to <REPO> so the baseline is portable.
+
+         BORGE_BIN IS REQUIRED AND PATH IS REFUSED. That is deliberate:
+         an earlier version resolved `borge` from PATH, which is the
+         opam-installed binary that lags the tree under edit — so every
+         baseline measured old code and every diff falsely passed. The
+         diff arm also used to write current output into the baseline
+         directory before comparing, making the comparison
+         current-vs-current. Both bugs are why the script now fails loudly
+         instead of defaulting.
+
+         A genuinely useful side effect: `--diff` is how the convention
+         refactor proved byte-identical drift output on the Go repo,
+         which is the only place the collapsed pipeline could have
+         silently diverged.
+       |))
+   )
+  )
+  (subsection migrate-borge-bugs
+   (doc "Render .borge-bug sexp to markdown without the borge binary")
+   (status implemented)
+   (implements scripts/migrate-borge-bugs.py)
+   (details
+    (doc (|
+         scripts/migrate-borge-bugs.py — reads every *.borge-bug in a
+         directory and emits one markdown archive.
+
+         Why it exists: `borge issue` and lib/bug were deleted, so the
+         .borge-bug files stay on disk as plain sexp but nothing in the
+         repo can render them any more. This is the readable projection.
+
+         Usage:
+           migrate-borge-bugs.py <bugs-dir> [--out FILE]
+
+         It recovers malformed records rather than dropping them. Three
+         files across the repos contain unescaped double quotes inside
+         their (doc "...") body — the exact corruption
+         BORGE-1783789294 documents — and a strict sexp reader rejects
+         them. Those fall back to lenient field extraction and are marked
+         in the output, because the malformed ones were the most
+         interesting bugs in the set.
+
+         Used to produce ARCHIVE.md in borge (7 records), pricklypear
+         (103) and pricklypear-gate (12). The latter two gitignore
+         .borge-bugs/ as "design-session debris (never re-commit)", so
+         their archives are local-only by intent.
+       |))
+   )
+  )
+ )
  (section migration
   (doc "Where the behavior goes, so it is not just deleted")
   (status planned)
