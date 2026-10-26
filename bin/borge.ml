@@ -11,7 +11,6 @@ let cmds = [
   Drift.cmd;
   Fmt.cmd;
   Inline.cmd;
-  Inbox.cmd;
   Issue.cmd;
   Lint.cmd;
   Log.cmd;

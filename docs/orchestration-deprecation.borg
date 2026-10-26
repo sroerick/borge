@@ -13,7 +13,7 @@
 
         KEPT (the gates):
           borge balance, parse, check, fmt, drift, lint, report, book,
-          inline, nodes, stats, log, diff, normalize, version, modules,
+          inline, nodes, stats, log, diff, normalize, version, issue,
           print.
 
           These are the parts that make borge borge: a spec format, a
@@ -23,7 +23,7 @@
 
         DEPRECATED (the orchestration):
           plan, make, execute, generate, review (agent mode), commit,
-          abort, merge, merge-queue, inbox, issue.
+          abort, merge, merge-queue, inbox.
 
           These all presuppose that borge is the thing driving an agent:
           it writes a prompt, launches pi, holds a lock, watches an exit
@@ -126,6 +126,9 @@
                           never needed an agent.
           book          — survives whole (print/export/manifest).
           stats         — survives; needs conv.component_ext.
+          issue, bug    — SURVIVE (Phase E). Git-backed .borge-bug sexp
+                          tracker, no lock/prompt/pi. Kept deliberately,
+                          with a live open bug in it.
           modules       — DELETED in Phase C, not preserved. Investigated
                           2026-10-26: it reports "all exports documented"
                           for any spec without sibling .ml files, which
@@ -230,13 +233,45 @@
           half benefits from directly after a bad commit. Keeping it.
 
         Phase E — kill the inbox.
-          Delete lib/inbox, lib/bug, and the inbox/issue commands.
-          Inbox exists to give a gated agent somewhere to file scope
-          concerns instead of editing the spec. With no gated agent, the
-          queue has no producer.
-          Before deleting: check for live .borge-inbox files in other
-          repos and convert them (they are plain sexp; a one-shot
-          markdown dump is enough). Same for lib/bug.
+          Delete lib/inbox and the `inbox` command. Inbox exists to give
+          a gated agent somewhere to file scope concerns instead of
+          editing the spec. With no gated agent, the queue has no
+          producer — and there is no live data anywhere: .borge-inbox in
+          borge is an empty directory, and no *.borge-inbox file exists
+          in any repo. Nothing to migrate.
+
+          `borge issue` SURVIVES, and so does lib/bug. This chapter
+          originally said to delete both; applying the §thesis boundary
+          test to the code rather than to the name says otherwise:
+          Issue.ml and lib/bug touch no lock, no prompt, and no pi. They
+          read and write .borge-bug sexp files in git. It is a plain
+          issue tracker that happens to live in the same binary, and it
+          fails the "does borge need to know what an agent is" test in
+          the direction that means keep.
+
+          Practical reason as well: borge's own tracker holds a live
+          OPEN bug (BORGE-1788068865, the borge.borg -> lib.borg inline
+          mismatch that makes `borge inline` and `borge report` hard-fail
+          on borge itself). Deleting the reader while an open bug sits in
+          it would bury the issue that this very work keeps running into.
+
+          lib/bug was nonetheless slated for deletion in the original
+          inventory, on the theory that inbox superseded it (per
+          lib/inbox/inbox.borg). Since inbox is the thing being deleted
+          and issue is the thing being kept, bug stays and inbox goes —
+          the supersession ran the other way in practice.
+
+          The .borge-bugs/ archives: pricklypear and pricklypear-gate
+          gitignore that directory as "agent / design-session debris
+          (never re-commit)", so their records are local-only by intent.
+          borge tracks its seven. scripts/migrate-borge-bugs.py renders
+          any .borge-bugs/ directory to markdown for reading without the
+          borge binary, and was used to produce ARCHIVE.md in all three
+          repos before this phase. Note it handles malformed records: two
+          pricklypear files and one borge file contain unescaped quotes
+          in their doc body — the exact corruption BORGE-1783789294
+          documents — and the script recovers those leniently rather
+          than dropping them.
 
         Ordering rationale: B severs the harness, C removes the
         concurrency machinery that only the harness needed, D removes
