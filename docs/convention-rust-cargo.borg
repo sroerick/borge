@@ -1,0 +1,284 @@
+(project convention-rust-cargo
+ (doc "rust-cargo convention: crates as build units, modules as spec components, and a line-comment carrier for actionable drift on Rust projects.")
+ (status planned)
+ (no-inline
+ )
+ (section definition
+  (doc "What (convention rust-cargo) declares about project structure")
+  (status planned)
+  (details
+   (doc (|
+        A root .borg file declaring (convention rust-cargo) gets these
+        structural rules.
+
+        WORKSPACE LAYOUT:
+        - Cargo.toml at the root is a workspace manifest; members are
+          the crates.
+        - crates/NAME/ or NAME/ each hold one crate with their own
+          Cargo.toml. A single-crate repo has src/ at the root.
+        - src/lib.rs is a library target; src/main.rs or src/bin/NAME.rs
+          is a binary target.
+        - tests/ holds integration tests; each file there is its own
+          crate by the compiler's rules.
+        - benches/, examples/ are additional cargo targets.
+        - target/ is build output and is never scanned.
+
+        UNITS AND COMPONENTS (the two levels):
+        - UNIT = crate. `cargo build`/`cargo test` operate here. A crate
+          that no .borg section admits to owning is drift.
+        - COMPONENT = module file. A section like transcript-parse maps
+          to src/transcript_parse.rs inside a crate. A module file with
+          no section is drift.
+        - The spec names components; the crate is context. Where a
+          crate is a single module (src/lib.rs plus submodules), a
+          section may target the crate itself with (implements src/lib.rs).
+
+        NAMING:
+        - Section name kebab-case -> module file snake_case:
+          transcript-parse -> src/transcript_parse.rs.
+        - Section name matching a crate directory -> that crate's
+          lib.rs (cargo package names are kebab; Rust module names are
+          snake; the mapping is mechanical both ways).
+        - A (mod ...) declaration is not a component; it is internal
+          structure and borge does not require a section per mod.
+
+        DOC COMMENTS (carrier):
+        - Rust has /// doc comments, // line comments, and /* */ block
+          comments (which nest).
+        - The borge grammar in Rust uses the LINE carrier, not the
+          block carrier:
+              // (* agent note (|
+              //   WHAT: Parse transcript lines into events.
+              //   WHY: The timeline needs structured events, not text.
+              // |) *)
+              pub fn parse_transcript(...)
+          Rationale: /* (* ... *) */ is valid Rust but reads as
+          lunacy next to ///. The line carrier keeps the grammar
+          visible while the code still looks like Rust.
+        - The block form stays supported (it is what Go uses, and the
+          carrier is a convention field) but is not the default for
+          rust-cargo and should not appear in new Rust code.
+        - /// doc comments are the language's documentation; they count
+          as documented for doc coverage but carry no authorship or
+          literacy score. Lint rules that require (| ... |) content
+          apply only to the borge form.
+
+        VERIFY VOCABULARY:
+        - rust-cargo: build, test, clippy, bench, smoke
+          (build = cargo build --workspace; test = cargo test
+          --workspace; clippy = cargo clippy; bench = cargo bench)
+
+        EXCLUDED DIRECTORIES:
+        - target, .git, and any directory named in .gitignore at a
+          crate root.
+
+        DRIFT LAYERS:
+        - Spec drift: a section claims implemented and its component
+          file is absent, or its verify apparatus is missing.
+        - Code drift: a crate or module file that no section admits to
+          owning.
+        - Structural drift: domain logic in src/main.rs or src/bin/
+          when the convention says lib targets own logic; a crate with
+          no Cargo.toml; a src/ file outside any target's module tree.
+      |))
+  )
+ )
+ (section unit-map
+  (doc "Section to file resolution for Rust")
+  (status planned)
+  (details
+   (doc (|
+        component_paths is derived, not guessed:
+
+          1. Explicit (implements path ...) wins, always. Relative to
+             the .borg file's directory.
+          2. Exact component match: kebab->snake the section name and
+             look for MODULE.rs in every crate's src/ tree. Found in
+             exactly one crate -> that path. Found in several -> drift
+             (ambiguous-component); the spec must disambiguate with
+             (implements).
+          3. Crate match: if the section name equals a crate's package
+             name (kebab) or its directory name, the target is that
+             crate's src/lib.rs, or src/main.rs for a bin-only crate.
+          4. Otherwise: unresolved. A planned section with no target
+             path is fine; an implemented section with no resolvable
+             path is spec drift.
+
+        Rules 2 and 3 exist because a section may describe either a
+        module ("this parses transcripts") or a crate ("this is the
+        timeline server"). Borge must not silently pick one.
+
+        What is NOT a mapping:
+          - Rust's module tree (mod foo; in lib.rs) is not a path
+            declaration. Files can exist without a mod declaring them
+            (dead files), and mods can be declared for nonexistent
+            files (compile error). Drift reports the first case; the
+            second is cargo's problem.
+          - Macro-generated modules (include!, macro_rules) are
+            invisible to file scanning. Sections covering them need
+            explicit (implements) or should be specced against the
+            macro's own file.
+      |))
+  )
+ )
+ (section discovery
+  (doc "cargo metadata is the source of truth for crates and targets")
+  (status planned)
+  (details
+   (doc (|
+        `cargo metadata --format-version 1 --no-deps` returns, as JSON,
+        every workspace member with its targets, target kinds
+        (lib/bin/test/bench/example), and src_path. That is exactly the
+        unit_spec shape from convention-abstract §unit-model, and it is
+        authoritative in a way manifest parsing never is (path
+        dependencies, workspace inheritance, [lib] path overrides,
+        auto-discovered bins and tests).
+
+        Fallback when cargo is unavailable or metadata fails:
+          - Parse the workspace Cargo.toml [workspace] members list.
+          - For each member, parse [package] name and [lib]/[[bin]]
+            path overrides, defaulting to src/lib.rs and src/main.rs.
+          - Auto-discovered targets (src/bin/*.rs, tests/*.rs) by
+            directory convention.
+        The fallback is a degraded mode, not an equal mode: borge
+        reports Unit_discovery_degraded once per run so a silent
+        difference from cargo's view is visible.
+
+        Component surfaces:
+          - Exported symbols: `pub` items at module top level. Parsing
+            Rust's visibility grammar by hand is a trap (pub(crate),
+            pub(in path), re-exports, pub use with rename). Preferred:
+            `cargo doc --no-deps --document-private-items` output, or
+            rustdoc JSON (--output-format json, nightly). If neither is
+            available, a conservative regex over `^pub (fn|struct|enum|
+            trait|const|static|mod|type|use)` is acceptable for
+            coverage counting but must be labelled inferred, exactly as
+            Surface.ml labels its .ml inference.
+      |))
+  )
+ )
+ (section carrier-rust
+  (doc "Line-comment carrier details that are Rust-specific")
+  (status planned)
+  (details
+   (doc (|
+        Shared adapter mechanics live in convention-abstract §carrier.
+        Rust specifics:
+
+          // (* agent note (|
+          //   WHAT: ...
+          // |) *)
+          pub fn thing()
+
+        - The adapter strips "//" plus ONE following space, preserving
+          additional indentation. This keeps the (| ... |) body aligned
+          in the source, so the printed book reads the same as the code.
+        - /// doc comments are NOT carrier lines. They are the language's
+          own docs, and folding them into the borge grammar would either
+          lose them from rustdoc or duplicate them.
+        - A run may mix // and //! *only* if //! is at the top of
+          lib.rs (module docs); otherwise the run ends at the change.
+        - rustfmt: the carrier is inside a comment, so rustfmt leaves it
+          alone. No formatter integration needed. `borge fmt` must not
+          rewrite inside carrier runs either.
+        - Attributes (#[cfg(test)], #[derive(..)]) between the carrier
+          run and the item do not break attachment: doc attachment
+          resolves to the next non-attribute item line, which is the
+          same rule Doc_detect already uses for OCaml's val/let.
+      |))
+  )
+ )
+ (section bootstrap
+  (doc "Spec'ing an existing or new Rust crate without drowning")
+  (status planned)
+  (details
+   (doc (|
+        The onboarding problem is not the convention; it is that a
+        200-module crate produces 200 unspecified-component findings on
+        day one. Three mechanisms, in order of preference:
+
+        1. (untracked path "reason") on the root project for code that
+           is deliberately outside the spec (generated bindings, vendored
+           deps, build scripts). This exists in drift today
+           (extract_untracked, drift.ml:319) and needs no new mechanism.
+        2. Coarse-first spec chapters: one section per crate that says
+           what the crate is, marked implemented, explicitly stating it
+           does not yet cover its modules. Components stay unspecified
+           until a chapter claims them. Drift distinguishes
+           unspecified-component-inside-specced-crate from
+           unspecified-component-alone — the first is a todo, the second
+           is a hole.
+        3. (status deprecated) sections for code being retired, so the
+           exit path is also spec'd.
+
+        For a NEW project the order is the other way round and much
+        cheaper: write the chapters, mark them planned, then implement.
+        That is the whole point of building in these languages with
+        borge rather than retrofitting.
+      |))
+  )
+ )
+ (section modules
+  (doc "New modules for rust-cargo")
+  (status planned)
+  (details
+   (doc (|
+        New (each is one registration line plus one module — see
+        convention-abstract §convention-record):
+          lib/convention/convention_rust.ml   — the record above
+          lib/convention/rust_metadata.ml     — cargo metadata parse + fallback
+          lib/convention/rust_lexer.ml        — pub-item scan + mod tree
+        Reused unchanged:
+          lib/convention/carrier_line.ml      — the adapter, shared with Py/Rb
+          lib/doc/doc_detect.ml               — carrier-supplied offsets only
+
+        No new drift module. If implementing rust-cargo requires editing
+        lib/check/drift.ml, Phase 0 was not finished — stop and fix the
+        abstraction rather than adding a check_rust_code_drift.
+
+        Acceptance for this chapter:
+          1. `borge drift` on a rust-cargo root lists crates, targets,
+             and components correctly (spot-check against
+             `cargo metadata`).
+          2. A carrier run above a pub fn is read as a Borg_note, and
+             borge report shows its status.
+          3. A module file with no section is reported once, as
+             unspecified-component, with its crate as context.
+          4. `borge check --worktree` runs cargo build and cargo test,
+             not dune.
+          5. Removing a carrier run makes lint report the missing
+             annotation (with --code-doc), proving the adapter is
+             actually feeding Doc_detect.
+      |))
+  )
+ )
+ (section open-questions
+  (doc "Rust decisions to settle during implementation")
+  (status planned)
+  (details
+   (doc (|
+        1. Workspace vs single-crate .borg placement. One root book
+           with (inline) per crate matches how lib.borg indexes lib/.
+           Consistent answer: root book inlines one chapter per crate,
+           mirroring the directory.
+
+        2. rustdoc JSON requires nightly. Decide whether surfacing is
+           nightly-optional (better) or regex-only (simpler). If regex,
+           the "inferred" label must be visible in report output, not
+           buried in meta.
+
+        3. tests/ files are separate crates to cargo but conceptually
+           belong to the module they test. Proposal: a tests/x.rs file
+           is not required to have its own section when its name matches
+           an existing section plus a test suffix (tests/transcript.rs
+           for section transcript-parse). Confirm during implementation;
+           if it produces false negatives, require explicit (implements).
+
+        4. Whether clippy is a verify method or folded into build.
+           Keeping it separate is better: clippy failures are quality,
+           build failures are existence, and borge should be able to
+           report them differently.
+      |))
+  )
+ )
+)

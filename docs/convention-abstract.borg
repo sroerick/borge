@@ -1,0 +1,353 @@
+(project convention-abstract
+ (doc "Convention as registered data, not a closed variant: one drift pipeline, one carrier adapter, one build/test declaration per language.")
+ (status planned)
+ (no-inline
+ )
+ (section why
+  (doc "What the current Convention dispatch cannot survive")
+  (status implemented)
+  (details
+   (doc (|
+        Convention.t is today a two-constructor variant (Ocaml_dune |
+        Go_standard) in lib/convention.ml, and language support is
+        threaded through by hand at each site:
+
+          - lib/check/drift.ml:716 dispatches run_code_drift to
+            check_go_code_drift or check_code_drift — two functions,
+            not one hook. Go got its own generate_go_findings and
+            write_go_meta_files too (drift.ml:594, :694), so the
+            "pipeline" is already three parallel copies deep.
+          - ~41 hardcoded ".ml"/".mli" checks live outside
+            convention.ml: surface.ml:225, code_quality.ml:194,
+            drift.ml:99 and :242 and :447, generate/generate.ml:150,
+            generate/agent.ml:250, metrics/stats.ml:162,
+            review/semantic_review.ml:27/:56/:113, doc/doc_extract.ml:184,
+            book/book_print.ml:63, inbox/inbox.ml:358.
+          - bin/cmd/Check.ml runs a literal `dune build` in
+            run_worktree, so --worktree fails on every non-OCaml repo.
+          - bin/cmd/Plan.ml and bin/cmd/Make.ml gather their module
+            list exclusively from Dune_parse, so the agent prompts
+            hand an empty module list to the implementer outside
+            ocaml-dune.
+          - Convention.suggest_module_files takes _t and ignores it;
+            it only resolves dune module lists.
+
+        Adding a third convention in this shape means a third copy of
+        drift, a third meta writer, and a third set of extension
+        guesses. The rule for this chapter: if adding a language forces
+        an edit to drift.ml, the abstraction is still wrong.
+      |))
+  )
+ )
+ (section convention-record
+  (doc "One record, registered in a list, one module per convention")
+  (status planned)
+  (details
+   (doc (|
+        Convention.t becomes a record of functions and data, and each
+        language ships as a module that constructs it:
+
+          type carrier = {
+            line_prefix : string option;   (* "//" "#" — None = block *)
+            open_delim : string;           (* "(*" *)
+            close_delim : string;          (* "*)" *)
+          }
+
+          type unit_kind =
+            | Package    (* dir is the unit: Go *)
+            | Crate      (* build unit above modules: Rust *)
+            | Distribution (* pyproject/setup: Python *)
+            | Gem        (* gemspec: Ruby *)
+            | Library    (* dune library: OCaml *)
+
+          type t = {
+            name : string;
+            unit : unit_kind;
+            component_ext : string list;         (* [".rs"], [".py"] *)
+            interface_ext : string option;       (* Some ".mli" | None *)
+            excluded_dirs : string list;
+            conventional_files : string list;    (* Cargo.toml, ... *)
+            index : string -> unit_spec list;    (* discover build units *)
+            surface : string -> symbol list;     (* component -> exports *)
+            component_paths : section_name:string -> string list;
+            carrier : carrier;
+            build : string list;                 (* ["cargo";"build";"--workspace"] *)
+            test : string list;                  (* ["cargo";"test";"--workspace"] *)
+            verify_methods : string list;
+            naming : naming_rule;                (* Explicit | Zeitwerk | Snake *)
+          }
+
+        Registration is a list, not a match: Convention.all : t list,
+        Convention.of_string resolves against it, and Convention.resolve
+        reads the root (convention NAME) as it does today. The closed
+        variant and its four match sites disappear at the same commit
+        that migrates Go onto the record — Go is the free test case,
+        since its behaviour is already known and already specced in
+        docs/convention-go.borg.
+
+        naming is its own field because section-to-path is not derivable
+        from directory layout in every language (see convention-rust-cargo
+        §unit-map and the Ruby note in §open-questions). Explicit means
+        (implements path) wins; the convention default only applies when
+        the spec is silent.
+      |))
+  )
+ )
+ (section unit-model
+  (doc "Build unit and spec component are two different levels")
+  (status planned)
+  (details
+   (doc (|
+        Borge's model today is one section -> one module -> one file.
+        That holds for ocaml-dune (dune library over modules) and holds
+        by accident for go-standard (the package dir IS the build unit
+        AND the component), which is why Go needed only one level and
+        why check_go_code_drift could be a single flat pass.
+
+        Rust breaks the coincidence: `cargo build` and `cargo test`
+        operate on crates, but a section like transcript-parse maps to
+        src/transcript_parse.rs inside a crate. Python breaks it again:
+        the dist is pyproject.toml, the component is a module or
+        package inside it. Ruby: gem, then class file.
+
+        So unit_spec carries both levels:
+
+          type unit_spec = {
+            unit_name : string;              (* crate/package/dist name *)
+            unit_path : string;              (* dir containing its manifest *)
+            manifest : string;               (* Cargo.toml, pyproject.toml *)
+            components : component list;
+          }
+          type component = {
+            comp_path : string;              (* relative file path *)
+            comp_name : string;              (* module name for matching *)
+            is_build_target : bool;          (* crate/lib/bin *)
+          }
+
+        Drift then reports at the level where the finding is meaningful:
+        "unspecified-component" for a .rs file with no section, and
+        "unspecified-unit" for a crate nothing admits to owning. Today's
+        Go pass merges both into kind = "unspecified-package".
+      |))
+  )
+ )
+ (section carrier
+  (doc "How annotations attach to bindings, per language")
+  (status planned)
+  (details
+   (doc (|
+        Go works with zero new parsing code because the borge (* *)
+        grammar nests intact inside Go's /* */ block comment delimiters,
+        so Doc_detect and Borg_comment read it unchanged. That was luck,
+        and it runs out immediately:
+
+          go-standard   /* (* agent note (| ... |) *) */   unchanged
+          rust-cargo    /* (* agent note (| ... |) *) */   unchanged, but alien
+          python        # (* agent note (| ... |) *)       needs adapter
+          ruby          # (* agent note (| ... |) *)       needs adapter
+
+        A line_carrier adapter collects a contiguous run of prefixed
+        lines, strips the prefix and the comment framing, and hands the
+        reconstructed text to the EXISTING Doc_detect. One adapter buys
+        Rust, Python, and Ruby; Go keeps its block form untouched.
+
+        Contract the adapter must honour:
+          - A blank line or a non-prefixed line ends the run.
+          - Equally-prefixed runs merge; a run whose open-pipe is never
+            closed is reported as Unterminated_carrier, not silently
+            dropped.
+          - extract_comment_content (doc/detect.ml:170) currently
+            hardcodes a 2-char open and 4-char total; the offsets must
+            become carrier-supplied, not string literals.
+          - Adapter output is line-aligned to the original file so
+            Doc_detect's binding_line matching still works.
+
+        Splitting carrier out of the structural convention is the whole
+        point: structure (dir layout, build unit, naming) and annotation
+        syntax (block vs line) are independent axes, and Go only looked
+        like one axis because Go is a block-comment language.
+      |))
+  )
+ )
+ (section discovery
+  (doc "Ask the language's own tooling instead of parsing manifests by hand")
+  (status planned)
+  (details
+   (doc (|
+        Dune_parse and Go_parse both hand-roll manifest parsing. For the
+        next three conventions there is no reason:
+
+          rust-cargo   cargo metadata --format-version 1 --no-deps
+                       -> crates, targets, src paths, as JSON
+          python       stdlib ast -> module-level def/class, __all__
+          ruby         stdlib Ripper -> top-level class/module/def
+
+        This is strictly better than Surface.ml's line heuristics
+        (surface.ml:32): a real AST rather than prefix matching. Borge
+        already shells out for git (drift.ml:130 read_git_head), so a
+        subprocess is not a new dependency class — but it must degrade:
+        if cargo metadata fails, drift reports Unit_discovery_failed
+        rather than claiming zero findings.
+
+        The index function is the single seam a new convention must
+        implement. Manual manifest parsing stays available as a fallback
+        for offline or locked-down environments.
+      |))
+  )
+ )
+ (section drift-pipeline
+  (doc "One code-drift path that takes index, not one function per language")
+  (status planned)
+  (details
+   (doc (|
+        Target shape of lib/check/drift.ml:
+
+          let check_code_drift dir =
+            let conv = Convention.resolve dir in
+            let borg = File_utils.find_borg_files dir in
+            let covered = build_covered_modules borg in
+            let units = conv.index dir in
+            unspecified_components conv covered units
+            @ unspecified_units conv covered units
+            @ check_orphan_files ~conv dir
+
+        check_go_code_drift, generate_go_findings, and write_go_meta_files
+        collapse into this path parameterised by conv. Meta generation
+        takes conv.surface; there is no per-language meta writer.
+
+        check_orphan_files needs convention input too: is_conventional_file
+        (drift.ml:258) allowlists dune, dune-project, and *.opam, so every
+        Cargo.toml and pyproject.toml reports as an orphan today.
+        conv.conventional_files supplies that list.
+
+        looks_like_path (drift.ml:99) enumerates extensions for verify
+        apparatus existence — add .rs .py .rb .toml .gemspec .json, or
+        check_verify_apparatus silently becomes a no-op on every new
+        repo. Silent no-ops are the failure mode this chapter is written
+        against.
+      |))
+  )
+ )
+ (section gates
+  (doc "build and test come from the convention, not from a literal dune call")
+  (status planned)
+  (details
+   (doc (|
+        Check.run_worktree (bin/cmd/Check.ml) is the CI gate and it
+        hardcodes `dune build`. It becomes:
+
+          run_step "build" conv.build
+          run_step "test"  conv.test
+
+        Same sourcing for Plan/Make module lists (drop the Dune_parse
+        block, use conv.index) and for borge drift --fix's build check.
+
+        Where a language has no meaningful compile step, the convention
+        says so rather than pretending: python's build is
+        `python -m compileall` for syntax only, and its real gate is
+        `verify (types "pyright")` / `verify (lint "ruff")`. A convention
+        may declare test = [] and then borge reports "no test gate
+        declared" instead of passing silently.
+
+        verify_methods stays a per-convention allowlist, but gains
+        optional runnable forms so a verify item can be executed later
+        without a schema change:
+
+          (verify (test "test/auth.ml"))        ; existing form, existence-only
+          (verify (test "cargo test"))          ; new: argv form, runnable
+      |))
+  )
+ )
+ (section migration-go
+  (doc "Go is the acceptance test for Phase 0")
+  (status planned)
+  (verify
+   (build
+   )
+   (test
+    "test/test_drift.ml"
+   )
+   (smoke
+    "borge drift --dir ~/dev/cavitycalc"
+   )
+  )
+  (details
+   (doc (|
+        Phase 0 is not done when the record type compiles; it is done
+        when go-standard runs on it and nothing observable changes.
+
+        Acceptance:
+          1. Convention.all has exactly two entries (ocaml-dune,
+             go-standard) constructed by the record, and grep finds no
+             match on Convention.Go_standard outside convention modules.
+          2. `borge drift` on ~/dev/cavitycalc, ~/dev/wyo.tech/gregor,
+             and ~/dev/wyo.tech/teachings reports the same finding set
+             as the pre-change binary. Capture both with --json and diff
+             them; a difference is a bug in the migration, not a bonus.
+          3. `borge drift` on borge itself (ocaml-dune) reports the same
+             set. This is the regression that catches over-generalising
+             the OCaml path.
+          4. `borge check --worktree` on borge still builds.
+          5. grep for ".ml" outside convention modules drops from ~41
+             sites to the handful that are genuinely OCaml-specific
+             (mli handling), with the rest reading conv fields.
+      |))
+  )
+ )
+ (section modules
+  (doc "New and changed modules")
+  (status planned)
+  (details
+   (doc (|
+        New:
+          lib/convention/convention.ml        — record type, registry, resolve
+          lib/convention/carrier_line.ml      — line-comment adapter
+          lib/convention/convention_ocaml.ml  — the existing OCaml rules as data
+          lib/convention/convention_go.ml     — the existing Go rules as data
+
+        Changed:
+          lib/convention.ml     — deleted, superseded by the directory
+          lib/check/drift.ml    — one pipeline, conv-parameterised
+          bin/cmd/Check.ml      — build/test from conv
+          bin/cmd/Plan.ml       — module list from conv.index
+          bin/cmd/Make.ml       — module list from conv.index
+          lib/doc/doc_detect.ml — carrier offsets supplied, not hardcoded
+          lib/metrics/stats.ml, lib/review/*, lib/book/book_print.ml,
+          lib/inbox/inbox.ml, lib/check/code_quality.ml
+                                — read conv.component_ext instead of ".ml"
+
+        Note on scope: the last group is why this chapter exists. Each
+        of those files is a place where a third language would otherwise
+        be silently wrong rather than loudly unsupported.
+      |))
+  )
+ )
+ (section open-questions
+  (doc "Decisions this chapter deliberately leaves to the implementing change")
+  (status planned)
+  (details
+   (doc (|
+        1. Ruby section-to-path. Directory layout is NOT the namespace:
+           Zeitwerk maps app/models/user.rb -> User, a gem maps
+           lib/foo/bar.rb -> Foo::Bar, and Rails apps inflect. Ruby
+           should require explicit (implements path) or a configured
+           naming rule, and borge should refuse to guess rather than
+           invent a mapping that looks authoritative.
+
+        2. Whether carrier belongs in the record or is resolved through
+           a separate registry keyed by extension. Separate registry is
+           cleaner if two conventions ever share a language (e.g. a
+           rails-app convention and a gem convention both want '#').
+
+        3. Unit vs component reporting thresholds. A 200-crate workspace
+           will drown in unspecified-unit findings; the answer is a
+           (untracked path "reason") declaration, not a lower default.
+
+        4. Whether `borge facts --json` (sections, status, implements,
+           verify per file) ships with Phase 0. It is the thing that lets
+           non-OCaml tooling consume spec state without linking borge,
+           and it is cheap once the record exists.
+      |))
+  )
+ )
+)

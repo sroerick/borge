@@ -1,0 +1,325 @@
+(project borge-orchestration-deprecation
+ (doc "Retiring borge's orchestration half: the pi harness, phase lock, merge queue, and inbox. Plan, not a nuke.")
+ (status planned)
+ (no-inline
+ )
+ (section thesis
+  (doc "What is being deprecated and what is not")
+  (status implemented)
+  (details
+   (doc (|
+        Borge has two halves that grew together and should not survive
+        together.
+
+        KEPT (the gates):
+          borge balance, parse, check, fmt, drift, lint, report, book,
+          inline, nodes, stats, log, diff, normalize, version, modules,
+          print.
+
+          These are the parts that make borge borge: a spec format, a
+          structural checker, a drift detector, and a renderer. They are
+          deterministic, they compare files to files, and they run in a
+          git hook or CI without asking anyone's opinion.
+
+        DEPRECATED (the orchestration):
+          plan, make, execute, generate, review (agent mode), commit,
+          abort, undo, merge, merge-queue, inbox, issue.
+
+          These all presuppose that borge is the thing driving an agent:
+          it writes a prompt, launches pi, holds a lock, watches an exit
+          code, commits on success, and mediates conflicts between
+          concurrent agent branches. That is a harness, and it is the
+          failed experiment: the loop is duplicated three times
+          (bin/cmd/Plan.ml, Make.ml, Drift.ml run_agent), the lock is a
+          snapshot mechanism pretending to be isolation, and the merge
+          queue solves a concurrency problem borge created by launching
+          agents itself.
+
+        The boundary test for anything in between: does it require
+        borge to know what an agent is? If yes, it is orchestration. If
+        it only needs an editor and git, it stays.
+
+        The replacement is not "no workflow". It is that the agent
+        runtime (rein, or pi invoked by a human, or an editor) owns the
+        loop, the lock, and the merge, and borge owns the gates it can
+        actually enforce: balance before edit, drift after edit, lint
+        before commit. Borge becomes a thing you run, not a thing that
+        runs.
+      |))
+  )
+ )
+ (section inventory
+  (doc "What actually gets deleted, and how much code that is")
+  (status implemented)
+  (details
+   (doc (|
+        Measured on 2026-10-26 from the repo, not from memory:
+
+        ORCHESTRATION LIBRARIES (delete):
+          lib/lock/         lock.ml 228, lock_prompt.ml 62,
+                            lock_pi_launch.ml 7, prompt_minimal.ml 140  = 437
+          lib/merge/        agent_submit 225, branch 187,
+                            conflict_detect 150, lockfile 166,
+                            merge_strategies 184, queue_storage 139,
+                            queue_types 162, rollback 162,
+                            worktree 163                              = 1538
+          lib/inbox/        inbox.ml 391
+          lib/distributed/  borg_comment 121, module_spec 122            = 243
+          lib/bug/          bug_ast 82, bug_parse 82,
+                            bug_registry 49, bug_write 41
+                            (already superseded by inbox per
+                            lib/inbox/inbox.borg)                          = 254
+          lib/generate/     agent.ml 291 (pi print-mode invocation),
+                            generate.ml 183 (spec/code generation),
+                            review_quality.ml 115                            = 589
+          lib/review/       review_agent 133, review_prompt 179,
+                            review_parse 221, semantic_review 351,
+                            review_types 144, extract_docs 164,
+                            extract_functions 125, extract_parsetree 57
+                            (all LLM-facing)                              = 1374
+
+        ORCHESTRATION COMMANDS (delete):
+          Plan 115, Make 115, Execute 40, Generate 323, Review 205,
+          Commit 82, Abort 43, Undo 41, Merge 163, Merge_queue 275,
+          Inbox 174, Issue 131                                 = 1707
+
+        Roughly 6,350 of the repo's 19,638 lines of ML (lib/ and bin/
+        together). Not a small edit, which is exactly why it is a plan
+        and not tonight's commit.
+
+        ALSO AFFECTED:
+          bin/borge.ml        — command list and man page
+          bin/cmd/Drift.ml    — run_agent (~70 lines) uses Lock + Lock_pi_launch
+          bin/cmd/Modules.ml  — uses distributed/module_spec
+          lib/config.ml       — api-keys block, agent config, exists only
+                                for the LLM half
+
+        PI COUPLING (the whole footprint):
+          lib/lock/lock_pi_launch.ml:4   `pi @prompt`
+          lib/generate/agent.ml:138      `command -v pi`, then
+          lib/generate/agent.ml:172      `pi -p --no-session --no-tools`
+          plus BORGE_PI_PATH and BORGE_AGENT_CMD environment variables.
+          Four sites. The harness is not deeply woven in; it is worn on
+          top, which is why removing it is tractable.
+      |))
+  )
+ )
+ (section keep-set
+  (doc "What survives and what it has to learn")
+  (status implemented)
+  (details
+   (doc (|
+        Survivors and their dependencies on the deprecated half:
+
+          balance, parse, fmt, normalize, nodes, print, inline, version
+                        — no dependencies. Untouched.
+          check         — uses Check.run only for --worktree's dune
+                          build step, which becomes conv.build
+                          (see convention-abstract §gates).
+          lint          — check_comment_integrity shells `git diff HEAD`,
+                          which is fine and stays. check_literacy and
+                          check_code_doc are --code-doc/--literacy opt-in
+                          and stay.
+          drift         — static path unchanged once the convention
+                          record lands; run_agent is deleted.
+          report        — survives whole. This is the dashboard and it
+                          never needed an agent.
+          book          — survives whole (print/export/manifest).
+          stats         — survives; needs conv.component_ext.
+          modules       — currently reads distributed/module_spec. Either
+                          reimplement on Spec.extract_implements (the
+                          data is in the .borg (implements) forms) or
+                          delete with the rest. Leaning reimplement: it
+                          is 73 lines of CLI over spec data.
+          log, diff     — survive. `log` is git log over .borg files,
+                          `diff` is git diff with status annotations.
+                          Neither needs a lock.
+
+        The point of listing this: the gate set is self-contained. Every
+        survivor's dependency on the deprecated half is either none or a
+        single line that has a named replacement.
+      |))
+  )
+ )
+ (section phases
+  (doc "Five phases, each independently revertable")
+  (status planned)
+  (details
+   (doc (|
+        Phase A — freeze and announce (no code).
+          1. Mark every deprecated command's .borg section
+             (status deprecated) with a doc body naming the replacement.
+             borge report already counts deprecated; this makes the
+             count visible and honest instead of a backlog nobody reads.
+          2. Add a runtime deprecation banner: one stderr line on each
+             deprecated command naming the phase and the date. Exit code
+             unchanged. This is the cheapest thing that stops new usage
+             from accreting.
+          3. Write down the keep-set boundary (§thesis) in AGENTS.md so
+             new features get filed against the right half.
+
+          Gate: no new orchestration code lands after this phase. Any
+          PR touching lib/lock, lib/merge, lib/inbox, lib/generate, or
+          lib/review is a bug fix only.
+
+        Phase B — cut the pi dependency (smallest reversible step).
+          Delete lib/lock/lock_pi_launch.ml and the pi branch of
+          Agent.run_pi_print. Deprecated commands then fail with
+          "orchestration removed; run your agent yourself" instead of
+          launching pi. Everything else keeps working — the lock snapshot
+          and merge queue are still there, just not useful.
+          Why first: it severs the harness on 7 lines, and it is the
+          change that makes the rest obviously dead rather than
+          plausibly-needed.
+
+        Phase C — kill the merge machinery.
+          Delete lib/merge (1538 lines) and the merge, merge-queue, and
+          agent-submit commands. Nothing in the keep-set imports them.
+          Verify: dune build, then `borge check --worktree` and
+          `borge drift` on three OCaml and three Go repos.
+          Also delete lib/distributed and reimplement `borge modules` on
+          Spec.extract_implements in the same commit, so the command
+          does not blink out and back.
+
+        Phase D — kill the loops and the lock.
+          Delete plan, make, execute, generate, review, commit, abort,
+          undo, lib/lock (437), lib/generate, lib/review, and
+          Drift.run_agent. This is the big one and the least risky,
+          because by now nothing depends on it: D removed the merge
+          queue's consumers, B removed pi, and C removed the shared
+          lockfile types.
+          Keep `borge undo` if it is only a git revert wrapper — check
+          first; if it names the lock, drop it.
+
+        Phase E — kill the inbox.
+          Delete lib/inbox, lib/bug, and the inbox/issue commands.
+          Inbox exists to give a gated agent somewhere to file scope
+          concerns instead of editing the spec. With no gated agent, the
+          queue has no producer.
+          Before deleting: check for live .borge-inbox files in other
+          repos and convert them (they are plain sexp; a one-shot
+          markdown dump is enough). Same for lib/bug.
+
+        Ordering rationale: B severs the harness, C removes the
+        concurrency machinery that only the harness needed, D removes
+        the loops that only the harness ran, E removes the queue that
+        only the gated harness wrote to. Each phase leaves the tree
+        building and linting.
+      |))
+  )
+ )
+ (section migration
+  (doc "Where the behavior goes, so it is not just deleted")
+  (status planned)
+  (details
+   (doc (|
+        Deprecating is not the same as dropping. Each removed
+        capability has a named home, and if it does not, that is a
+        signal it was never real:
+
+          phase gating (plan vs make)     -> the agent runtime's own
+                                            tool permissions. Rein already
+                                            has Rein_gate.Borge_rules,
+                                            and it is the thing holding
+                                            the editor, so it is the
+                                            thing that can refuse a write.
+          transactional isolation         -> git worktrees, created by the
+                                            human or the runtime, not by
+                                            borge.
+          merge queue / conflict handling -> ordinary git. The queue only
+                                            existed because borge launched
+                                            N agents into one tree.
+          prompt assembly                 -> whatever prompt the runtime
+                                            uses. It does not need
+                                            borge's role enum.
+          LLM semantic review             -> keep as a manual tool only if
+                                            wanted: `borge review` becomes
+                                            a thin wrapper that reads
+                                            files and prints a prompt to
+                                            stdout for a human to paste.
+                                            No subprocess, no temp files,
+                                            no parsing of responses.
+                                            Consider deleting entirely.
+          inbox filing                    -> a plain markdown TODO file, or
+                                            the runtime's own queue.
+
+        Note on rein: rein's lib/rein_borge has borge_tool (runs balance,
+        check, drift, fmt), borge_gate (file protection), borge_inbox
+        (files inbox items), and borge_subagent (specs for "borge make/
+        drift/check"). borge_tool and borge_gate are exactly the keep-set
+        and should be unaffected. borge_subagent and borge_inbox die with
+        Phases D and E, and rein's dune.disabled in lib/rein_borge
+        already shows the module is not currently wired — so this is a
+        cleanup, not a break.
+
+        Also live to fix: ~/dev/wyo.tech/rein/.borge.lock/ has been
+        sitting in state "running" since a session that ended without
+        teardown. After Phase D nothing will ever clean it up, so it
+        should be removed and the whole snapshot mechanism documented as
+        gone.
+      |))
+  )
+ )
+ (section risks
+  (doc "What could go wrong, and the check for each")
+  (status planned)
+  (details
+   (doc (|
+        1. Deleting something the keep-set actually needs. Check:
+           after each phase, `dune build @all` plus a grep for the
+           module name outside its own directory. The keep-set
+           dependency audit in §keep-set is the source list.
+
+        2. Losing spec prose that only lives in an orchestration
+           chapter. docs/agent.borg is 845 lines and mostly about plan/
+           make/execute. Its durable content — comment discipline, the
+           case for gating, the "spec as truth" argument — belongs in
+           the root book and docs/literate.borg. Rewrite before delete;
+           do not let the book lose its argument along with its code.
+
+        3. Silently breaking `borge modules` or `report` by removing a
+           shared type. Check: run all keep-set commands against borge
+           itself and one Go repo after each phase, diff the output
+           against the previous phase.
+
+        4. The trap of replacing orchestration with orchestration. The
+           deprecation is only complete if borge stops knowing what an
+           agent is. A new `borge run` that shells out to rein would
+           recreate the problem with a new name. If a phase starts
+           growing a subprocess that talks to a model, stop.
+
+        5. Version/name churn. The CLI loses 12 of 28 commands. Worth a
+           major version bump and a README rewrite that describes borge
+           as a spec toolkit, not "a spec-driven code orchestrator" —
+           the tagline in bin/borge.ml and borge.opam is itself the
+           deprecated claim.
+      |))
+  )
+ )
+ (section done
+  (doc "How we know it is finished")
+  (status planned)
+  (details
+   (doc (|
+        1. bin/borge.ml lists no command that launches, prompts, or
+           locks. Its man page's WORKFLOW section describes edit ->
+           balance -> fmt -> check -> report, with no agent.
+        2. `grep -ri "pi \|pi -p\|BORGE_PI_PATH\|BORGE_AGENT_CMD" lib bin`
+           returns nothing.
+        3. `grep -rn "borge.lock" lib bin` returns nothing, and the
+           .borge.lock/ directory is gone from every local repo.
+        4. borge.opam and the CLI description no longer say
+           "orchestrator".
+        5. The gate commands (balance, fmt, check, drift, lint, report,
+           book, stats, inline, nodes, log, diff, parse, normalize,
+           modules, print, version) all run on borge, on three OCaml
+           repos, and on three Go repos, with drift output identical to
+           the pre-deprecation baseline captured in Phase A.
+        6. Adding convention number three still touches no file outside
+           the convention module — proving the two efforts compose and
+           that borge's remaining surface is the part that scales to
+           languages.
+      |))
+  )
+ )
+)
