@@ -10,14 +10,11 @@
   cmd_issue
   cmd_lint
   cmd_log
-  cmd_make
   cmd_nodes
   cmd_normalize
   cmd_parse
-  cmd_plan
   cmd_print
   cmd_report
-  cmd_review
   cmd_stats
   cmd_undo
   cmd_version
@@ -120,8 +117,8 @@
    (status implemented)
   )
   (subsection review
-   (doc "Non-deterministic advisory review: lint + drift")
-   (status implemented)
+   (doc "Non-deterministic advisory review: lint + drift — REMOVED")
+   (status deprecated)
   )
  )
  (section history-commands
@@ -141,23 +138,26 @@
   )
  )
  (section agent-commands
-  (doc "Agent-driven commands that launch pi interactively")
-  (status implemented)
-  (subsection make
-   (doc "Implement planned sections interactively with pi")
-   (status implemented)
-  )
-  (subsection plan
-   (doc "Edit the spec interactively with pi")
-   (status implemented)
-  )
-  (subsection commit
-   (doc "Finalize the current agent session")
-   (status implemented)
-  )
-  (subsection abort
-   (doc "Abort session and restore .borg files from snapshot")
-   (status implemented)
+  (doc "Agent-driven commands that launched pi interactively — REMOVED")
+  (status deprecated)
+  (details
+   (doc (|
+        plan, make, commit and abort were deleted in Phase D of
+        docs/orchestration-deprecation.borg, along with lib/lock and the
+        .borge.lock snapshot mechanism they operated on.
+
+        What replaced each:
+          borge plan     -> edit the .borg file directly, then run
+                            borge balance and borge check.
+          borge make     -> implement against the spec with whatever agent
+                            runtime you already use, then run borge drift.
+          borge commit   -> git commit. There is no snapshot to finalize.
+          borge abort    -> git restore. There is no snapshot to restore.
+
+        The section is kept rather than deleted because the book records
+        what was tried; delete it only if the 2026-10 decision to stop
+        owning an agent loop is itself reversed.
+       |))
   )
  )
  (section output-conventions
@@ -168,8 +168,8 @@
    (status implemented)
   )
   (subsection make-spec
-   (doc "Single-shot spec generation from todo description")
-   (status planned)
+   (doc "Single-shot spec generation from a todo description — REMOVED")
+   (status deprecated)
    (details
     (doc (|
          borge make spec "description of what to build"
@@ -203,9 +203,9 @@
    (doc "Issue tracker commands: new, list, show, close")
    (status implemented)
   )
-  (subsection review
-   (doc "Semantic code review (planned, not fully active)")
-   (status planned)
+  (subsection review-semantic
+   (doc "LLM semantic code review — REMOVED")
+   (status deprecated)
   )
  )
 )

@@ -21,9 +21,6 @@
   "lib/db/db.borg"
  )
  (inline
-  "lib/proof/proof.borg"
- )
- (inline
   "lib/bug/bug.borg"
  )
  (inline
