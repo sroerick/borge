@@ -111,6 +111,13 @@
         management.
       - docs/book.borg — the codebase book printer: print and export
         projections over one shared walk, plus the manifest sidecar.
+      - docs/convention-abstract.borg — conventions as registered
+        data: one drift pipeline, one carrier adapter, one build/test
+        declaration per language. Phase 0 for any new language.
+      - docs/convention-rust-cargo.borg — the rust-cargo convention:
+        crates as units, modules as components, line-comment carrier.
+      - docs/orchestration-deprecation.borg — retiring the pi harness,
+        phase lock, merge queue, and inbox; what stays and why.
       - docs/{cli,db,ui,meta,history,convention-go}.borg — other
         design documents and conventions.
       - lib.borg — the implementation index; each lib/DIR/DIR.borg
@@ -154,6 +161,15 @@
  )
  (inline
   "docs/convention-go.borg"
+ )
+ (inline
+  "docs/convention-abstract.borg"
+ )
+ (inline
+  "docs/convention-rust-cargo.borg"
+ )
+ (inline
+  "docs/orchestration-deprecation.borg"
  )
  (inline
   "lib.borg"
