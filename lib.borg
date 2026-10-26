@@ -21,9 +21,6 @@
   "lib/db/db.borg"
  )
  (inline
-  "lib/bug/bug.borg"
- )
- (inline
   "lib/doc/doc.borg"
  )
  (inline
@@ -32,10 +29,7 @@
  (inline
   "lib/book/book.borg"
  )
- (inline
-  "lib/future/future.borg"
- )
- (doc "Domain operations: checking, reporting, formatting, spec extraction.\n       Organized into concern-based subdirectories under lib/ with\n       include_subdirs unqualified — same flat namespace, better layout.")
+  (doc "Domain operations: checking, reporting, formatting, spec extraction.\n       Organized into concern-based subdirectories under lib/ with\n       include_subdirs unqualified — same flat namespace, better layout.")
  (status implemented)
  (exports project_name
   find_roots
@@ -51,18 +45,9 @@
   count_sections
   status_counts
   tree_status_counts
-  new_bug
-  list_bugs
-  load_bug
-  save_bug
-  close_bug
   json_drift
   json_report
   json_spec
-  bug_ast
-  bug_parse
-  bug_write
-  bug_registry
   convention
   go_parse
   go_surface

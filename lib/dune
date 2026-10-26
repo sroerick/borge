@@ -9,14 +9,11 @@
            ui_ast ui_parse ui_validate ui_json ui_dream ui_clay
            db_ast db_parse db_validate db_json db_sql
            config
-           bug_ast bug_parse bug_write bug_registry
            ; DOC COVERAGE
            doc_extract doc_detect doc_coverage
            go_parse
            go_surface
            go_doc_extract
-           ; FUTURE COMMAND
-           future depends format
            ; BOOK
            book_structure book_print book_export book_manifest)
   (libraries borge.lang unix str yojson))

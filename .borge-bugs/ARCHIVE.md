@@ -6,17 +6,8 @@ Source files are unchanged; this is a readable projection of them.
 
 | status | count |
 |---|---|
-| open | 1 |
 | triage | 2 |
-| closed | 4 |
-
----
-
-## BORGE-1788068865 — borge.borg inlines a nonexistent lib.borg — borge inline/report hard-fail on borge's own repo. Root borge.borg ends its inline list with (inline "lib.borg") but no root lib.borg exists (docs/architecture.borg:271 documents the mismatch). Repro: borge inline . -> 'Error: file not found: ./docs/lib.borg'... note the path says docs/ because the quoted target resolves against the parent dir; either way the target is missing. borge book print now degrades (lone-chapter warning) after the inline-aware walk (94c4aa4), but inline/report still abort. Fix: restore/drop the lib.borg target (or point it at docs/architecture.borg which indexes the lib dirs).
-
-- **status:** open
-- **created:** 2026-08-29
-- **filed by:** roerick
+| closed | 5 |
 
 ---
 
@@ -131,5 +122,14 @@ Borge's status enum (spec.ml) is: planned, in-progress,
 
 - **status:** closed
 - **created:** 2026-07-31
+- **filed by:** roerick
+
+---
+
+## BORGE-1788068865 — borge.borg inlines a nonexistent lib.borg — borge inline/report hard-fail on borge's own repo. Root borge.borg ends its inline list with (inline 
+
+- **status:** closed
+- **created:** 2026-08-29
+- **note:** source record is malformed (unescaped quotes in its doc body); fields recovered leniently
 - **filed by:** roerick
 

@@ -7,20 +7,16 @@ let cmds = [
   Balance.cmd;
   Book.cmd;
   Check.cmd;
-  Diff.cmd;
   Drift.cmd;
   Fmt.cmd;
   Inline.cmd;
-  Issue.cmd;
   Lint.cmd;
-  Log.cmd;
   Nodes.cmd;
   Normalize.cmd;
   Parse.cmd;
   Print.cmd;
   Report.cmd;
   Stats.cmd;
-  Undo.cmd;
   Version.cmd;
 ]
 
@@ -46,9 +42,6 @@ let () =
     `I ("drift", "Detect spec/code/structural drift");
     `I ("normalize", "Fmt all + accept comment deletions");
     `I ("stats", "Code intelligence metrics (lines, functions, exports)");
-    `I ("log", "Git log for .borg changes");
-    `I ("diff", "Git diff with status annotations");
-    `I ("undo", "Revert last commit");
     `S "WORKFLOW";
     `P "1. Edit .borg files in your editor";
     `P "2. Run 'borge balance' to catch structural errors";

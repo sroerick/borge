@@ -34,10 +34,6 @@
   (libraries borge.lib alcotest unix))
 
 (test
-  (name test_bug)
-  (libraries borge.lang borge.lib alcotest))
-
-(test
   (name test_drift)
   (libraries borge.lang borge.lib alcotest unix str))
 (test

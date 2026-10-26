@@ -1,10 +1,6 @@
 (project borge-history
  (doc "Git is the history engine. Every agent action gets a commit.")
  (status implemented)
- (exports log_commit
-  log_action
-  show_history
- )
  (section philosophy
   (doc "Why git IS the history system")
   (status implemented)
@@ -59,7 +55,7 @@
           - dune runtest passes
           This is pass/fail. CI-friendly. No judgment calls.
 
-        Non-deterministic (borge review):
+        Non-deterministic (was borge review, now deleted — run these by hand):
           - borge lint: any human comment deletions?
           - borge drift: any undocumented functions?
           - Does the commit match what the agent claimed to do?
@@ -74,8 +70,8 @@
   )
  )
  (section semantic-operations
-  (doc "Git operations that understand borge structure")
-  (status implemented)
+  (doc "Git frontends — REMOVED (borge log, diff, undo)")
+  (status deprecated)
   (details
    (doc (|
         borge log: git log but with borge-aware summaries.
@@ -94,8 +90,8 @@
   )
  )
  (section session-reports
-  (doc "Structured HTML output for every agent session")
-  (status planned)
+  (doc "Structured HTML output for every agent session — MOOT (harness removed)")
+  (status deprecated)
   (details
    (doc (|
         Every borge command that opens a harness (make, plan,

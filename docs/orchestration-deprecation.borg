@@ -13,8 +13,7 @@
 
         KEPT (the gates):
           borge balance, parse, check, fmt, drift, lint, report, book,
-          inline, nodes, stats, log, diff, normalize, version, issue,
-          print.
+          inline, nodes, stats, normalize, version, print.
 
           These are the parts that make borge borge: a spec format, a
           structural checker, a drift detector, and a renderer. They are
@@ -24,6 +23,29 @@
         DEPRECATED (the orchestration):
           plan, make, execute, generate, review (agent mode), commit,
           abort, merge, merge-queue, inbox.
+
+        DEPRECATED (not ours to own) — added 2026-10-26 after the
+        orchestration phases landed:
+          log, diff, undo  (git frontends)
+          issue            (git-backed .borge-bug tracker, with lib/bug)
+
+          These passed the first boundary test — none of them knows what
+          an agent is — and were kept through phases A-E on that basis.
+          They fail a stricter one: is this borge's job at all?
+
+          borge log was `git log --oneline -20 -- *.borg`. borge undo was
+          `git revert HEAD`. borge diff was `git diff -- *.borg` plus
+          status highlighting. A second binary that shells out to git to
+          re-render git's own output is a wrapper, not a tool, and its
+          only real value (status highlighting) belongs in a pager.
+
+          borge issue is the same argument one level up. It never touched
+          a lock or a model, so it survived the orchestration cull — but
+          retaining it meant borge owned an issue FILE FORMAT, a
+          timestamp-based ID scheme that collided when two bugs were
+          filed in the same second (BORGE-1785545310 documents the
+          collision), a status workflow, and prose resolution records.
+          No check reads any of it.
 
           These all presuppose that borge is the thing driving an agent:
           it writes a prompt, launches pi, holds a lock, watches an exit
@@ -35,9 +57,14 @@
           queue solves a concurrency problem borge created by launching
           agents itself.
 
-        The boundary test for anything in between: does it require
-        borge to know what an agent is? If yes, it is orchestration. If
-        it only needs an editor and git, it stays.
+        The boundary test, in two passes. First: does it require borge
+        to know what an agent is? If yes, it is orchestration. Second,
+        for what survives: does it compare the spec against the code, or
+        does it merely format somebody else's output? borge READS git
+        where history is the question — lint reads `git diff HEAD` to
+        catch deleted human comments, drift reads `git show HEAD:<path>`
+        to detect verify stanzas modified since the last commit — and
+        that stays. Rendering git's log, diff or revert is git's job.
 
         The replacement is not "no workflow". It is that the agent
         runtime (rein, or pi invoked by a human, or an editor) owns the
@@ -224,13 +251,12 @@
           queue's consumers, B removed pi, and C removed the shared
           lockfile types.
 
-          `borge undo` SURVIVES and was wrongly listed here when this
-          chapter was first written. Read at bin/cmd/Undo.ml, it is a
-          `git revert HEAD` wrapper with output — no lock, no prompt, no
-          subprocess that talks to a model. It fails the §thesis
-          boundary test (it does not need to know what an agent is) and
-          it is the only convenience wrapper over git that the gate
-          half benefits from directly after a bad commit. Keeping it.
+          Note on `borge undo`, which this phase first kept and then
+          removed. It is a `git revert HEAD` wrapper — no lock, no
+          prompt, no model subprocess — so it passed the orchestration
+          test and looked like a keeper. It was deleted the same day
+          under the stricter second test in §thesis: rendering git's own
+          operations is git's job. See the "not ours to own" paragraph.
 
         Phase E — kill the inbox.
           Delete lib/inbox and the `inbox` command. Inbox exists to give
@@ -240,26 +266,18 @@
           borge is an empty directory, and no *.borge-inbox file exists
           in any repo. Nothing to migrate.
 
-          `borge issue` SURVIVES, and so does lib/bug. This chapter
-          originally said to delete both; applying the §thesis boundary
-          test to the code rather than to the name says otherwise:
-          Issue.ml and lib/bug touch no lock, no prompt, and no pi. They
-          read and write .borge-bug sexp files in git. It is a plain
-          issue tracker that happens to live in the same binary, and it
-          fails the "does borge need to know what an agent is" test in
-          the direction that means keep.
+          `borge issue` and lib/bug were kept at the end of this phase,
+          then deleted with the git frontends under the stricter second
+          test in §thesis — borge owned an issue format, a colliding
+          timestamp ID scheme, and a status workflow that no check reads.
+          They never touched a lock or a model, so they were never
+          orchestration; they were simply not spec operations.
 
-          Practical reason as well: borge's own tracker holds a live
-          OPEN bug (BORGE-1788068865, the borge.borg -> lib.borg inline
-          mismatch that makes `borge inline` and `borge report` hard-fail
-          on borge itself). Deleting the reader while an open bug sits in
-          it would bury the issue that this very work keeps running into.
-
-          lib/bug was nonetheless slated for deletion in the original
-          inventory, on the theory that inbox superseded it (per
-          lib/inbox/inbox.borg). Since inbox is the thing being deleted
-          and issue is the thing being kept, bug stays and inbox goes —
-          the supersession ran the other way in practice.
+          Ordering mattered here: the inline bug (BORGE-1788068865) was
+          closed through `borge issue` BEFORE the reader was deleted, so
+          the record shows a resolution rather than staying open forever.
+          That is the one real cost of dropping the tracker — close what
+          is fixed first, then remove the tool.
 
           The .borge-bugs/ archives: pricklypear and pricklypear-gate
           gitignore that directory as "agent / design-session debris

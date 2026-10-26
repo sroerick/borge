@@ -1,5 +1,5 @@
 (library
   (name borge_cmd)
   (libraries borge.lang borge.lib cmdliner unix yojson)
-  (modules Balance Book Check Diff Drift Fmt Inline Issue Lint Log Nodes Normalize Parse Print Report Stats Undo Version)
+  (modules Balance Book Check Drift Fmt Inline Lint Nodes Normalize Parse Print Report Stats Version)
 )
